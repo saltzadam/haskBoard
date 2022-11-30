@@ -1,7 +1,14 @@
+{-# Language NoFieldSelectors #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DataKinds #-}
 module Count where
 import Control.Applicative (liftA2)
 import Data.Map (Map)
@@ -9,6 +16,10 @@ import qualified Data.Map as M
 import Data.List ((\\), nub)
 import Data.Bifunctor (first)
 import Data.Foldable (foldl')
+import Numeric.Natural
+-- import Data.Finitary
+import GHC.Generics (Generic)
+import GHC.TypeNats
 
 -- This is Maybe a with the opposite order for Nothing
 -- Use it for counting things, think about "unlimited" stuff
@@ -51,3 +62,8 @@ histogramF = foldl' (flip (M.alter plusOrInsertOne)) M.empty
     where
         plusOrInsertOne = Just . maybe 0 (+1)
 
+root :: Enum a => a
+root = toEnum 0
+
+enumerateFromRoot :: (Bounded a, Enum a) => [a]
+enumerateFromRoot = toEnum <$> [0..maxBound]

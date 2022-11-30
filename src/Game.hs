@@ -1,44 +1,69 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 module Game
     where
 import Data.Set (Set)
 
 import Count
-
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Monoid (Sum)
+import GHC.Base (Type)
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
+-- import Data.Finitary
+import Control.Lens (makeLenses, view, at) 
 
 -- given some locations and resources...
 newtype Player = Player String deriving (Eq, Show, Ord)
 
 
-data Location name resource = Location name (Stack resource)
+data Resource = Card Int | Gem Bool deriving (Eq, Ord, Show)
 
-data GameObjects resources locations visibility = 
-    GameObjects {
-        players :: Set Player,
-        inventory :: locations -> Stack resources,
-        visibility :: locations -> Player -> visibility}
+-- data GameObjects resources locations =
+--     GameObjects {
+--         players :: Set Player,
+--         inventory :: locations -> Location locations
+--                 }
+
+-- data GameObjects resources locations visibility = 
+--     GameObjects {
+--         players :: Set Player,
+--         inventory :: locations -> Stack resources,
+--         visibility :: locations -> Player -> visibility}
 
 
 
-data Move resources locations = Move (Stack resources) locations locations
--- -- stuff source target
+-- data Move resources locations = Move (Stack resources) locations locations
+-- -- -- stuff source target
 
-data Condition r l v = And (Condition r l v) (Condition r l v)
-                   | Or (Condition r l v) (Condition r l v)
-                   | Not (Condition r l v) (Condition r l v)
-                   | If (Condition r l v) (Condition r l v) (Condition r l v) -- if then else
-                   | Has l (Stack r)
-                   | HasAtLeast l (Stack r)
-                   | Turn Int
-                   | TurnAtLeast Int
+-- data Condition r l v = And (Condition r l v) (Condition r l v)
+--                    | Or (Condition r l v) (Condition r l v)
+--                    | Not (Condition r l v) (Condition r l v)
+--                    | If (Condition r l v) (Condition r l v) (Condition r l v) -- if then else
+--                    | Has l (Stack r)
+--                    | HasAtLeast l (Stack r)
+--                    | Turn Int
+--                    | TurnAtLeast Int
 
-type EvalCondition r l v c = GameObjects r l v -> Condition r l v -> c
+-- type EvalCondition r l v c = GameObjects r l v -> Condition r l v -> c
 
 -- ppCondition :: EvalCondition r l String
 -- ppCondition = undefined
@@ -47,7 +72,7 @@ type EvalCondition r l v c = GameObjects r l v -> Condition r l v -> c
 -- validateCondition :: EvalCondition r l Bool -- dunno
 -- validateCondition = undefined
 
-data Play r l v = Play Player (Condition r l v) (GameObjects r l v -> [Move r l ])
+-- data Play r l v = Play Player (Condition r l v) (GameObjects r l v -> [Move r l ])
 
 -- move res    source source = id
 -- move mempty source target = id

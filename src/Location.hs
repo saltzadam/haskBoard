@@ -1,129 +1,101 @@
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+    {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# LANGUAGE DerivingVia #-}
+{-# Language TemplateHaskell #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveFoldable #-}
 module Location where
-import Data.Map (Map)
-import qualified Data.Map as M
-import Count
-import Data.Bifunctor (first)
-import Data.Finitary (Finitary (..), inhabitants)
-import Data.Maybe (listToMaybe, fromMaybe)
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IM
-import Data.Monoid (First(..))
-import GHC.Base (Applicative(..))
-
--- Try again with associated types
--- just like https://wiki.haskell.org/GHC/Type_families
--- except `insert` isn't public
-
-class Location f slots where
-    empty :: f slots a
-    moveTo :: a -> f slots a -> (f slots a, Maybe a)
-    moveFrom :: Eq a => a -> f slots a -> (f slots a, Maybe a)
-    histogram :: Ord a => f slots a -> Map a (Cnt Int)
-    lookup :: f slots a -> slots -> Maybe a
-
-instance Location Map Int where
-    empty = M.empty
-    moveTo a stack = (M.insert ((+1) . fst . M.findMax $ stack) a stack, Just a)
-    moveFrom a stack = case listToMaybe . M.toList $ M.filter (== a) stack of
-                        Nothing -> (stack, Nothing)
-                        Just (i, _) -> (downshift i . M.delete i $ stack, Just a) where
-                            downshift i = M.mapKeys (\j -> if j > i then j - 1 else j)
-    histogram = histogramF
-    lookup = flip M.lookup
-
-newtype Stack' i a = Stack' {getStack :: Map i a} deriving (Eq, Ord, Show, Foldable, Functor)
-
-instance (Ord i, Finitary i) => Location Stack' i where
-    empty = Stack' empty
-    moveTo a = first Stack' . moveTo a . getStack
-    moveFrom a = first Stack' . moveFrom a . getStack
-    histogram = histogramF
-    lookup = flip M.lookup . getStack
-
-newtype Cards = Card Int deriving (Eq, Show, Ord)
-type Deck = Map Int
+import Count
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IM
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
+import GHC.Generics (Generic)
+import Data.Map (Map)
+import qualified Data.Map as M
+import Control.Lens
+import Data.Array (Array)
+import Data.Array as A
+import Data.Generics.Labels
+import Control.Monad (guard)
 
 
-pile :: Int -> a -> Deck a
-pile i a = M.fromList (zip [0..] (replicate i a))
+-- Goal of this module is to enforce 'conversion of pieces', not game rules.
+-- Right now OLoc and ULoc are "piles of stuff" and "FIFO decks." Could work
+-- on other things. If you need more control over placement then should probably
+-- be creating more locations rather than more complicated location types.
 
-single :: a -> Deck a
-single = pile 1
-
--- assumes `es` is ascending!!
-findFirstMissing :: (Finitary e) => [e] -> Maybe e
-findFirstMissing es = go es inhabitants where
-    go :: Eq e => [e] -> [e] -> Maybe e
-    go (e:es) (i:inh) | e == i = go es inh
-                      | otherwise = Just e
-    go (e:_) [] = Just e
-    go _ _ = Nothing
-
-findFirstEmptySlot :: (Finitary e) => Map e a -> Maybe e
-findFirstEmptySlot = findFirstMissing . M.keys
-
-instance (Ord enum, Finitary enum) => Location Map enum where
-    empty = M.empty
-    moveTo a aMap = case findFirstEmptySlot aMap of
-                       Nothing -> (aMap, Nothing)
-                       Just e -> (M.insert e a aMap, Just a)
-    moveFrom a aMap = case listToMaybe . M.toList . M.filter (== a) $ aMap of
-                         Nothing -> (aMap, Nothing)
-                         Just (e, _) -> (M.delete e aMap, Just a)
-    histogram = histogramF
-    lookup = flip M.lookup
+--- Games can have multiple resource types!
+-- data FResource deriving (Eq, Ord, Show, Generic)
+-- data NFResource deriving (Eq, Ord, Show, Generic)
+-- for fungible and non-fungible
+--
+-- Can't subtype them (easily) but shouldn't be an issue?
 
 
-newtype InfStackC s a = InfStackC {runInf :: Maybe a} deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
+data OrderedLocation name resource = OLoc  {name :: name,
+                                            permitted :: [resource],
+                                            stuff :: Seq resource}
+                                            deriving (Eq, Ord, Generic, Show)
 
-instance Location InfStackC () where
-    empty = InfStackC Nothing
-    moveTo _ stack = (stack, Nothing)
-    moveFrom b stack = if Just b == runInf stack then (stack, Just b) else (stack, Nothing)
-    histogram stack = case runInf stack of
-                         Just a -> M.singleton a Infinity
-                         Nothing -> M.empty
-    lookup stack = const (runInf stack)
+data UnorderedLocation name resource = ULoc {name :: name,
+                                             stuff :: Map resource (Cnt Int)
+                                            } deriving (Eq, Ord, Show, Generic)
 
+makeFields ''UnorderedLocation
+makeFields ''OrderedLocation
 
+class Location l n r where
+    moveFrom :: r -> l n r -> (l n r, Maybe r)
+    moveTo :: r -> l n r -> (l n r, Maybe r)
+    inventory :: l n r -> Map r (Cnt Int)
 
+instance Ord r => Location UnorderedLocation n r where
+    moveFrom r l@(ULoc _ s) = case fmap (> 0) (M.lookup r s) of
+                              Nothing -> (l, Nothing)
+                              Just False -> (l, Nothing)
+                              Just True -> (over (#stuff . at r . mapped) (subtract 1) l, Just r)
+    moveTo r l@(ULoc _ s) = if r `M.member` s
+                            then (over (#stuff . at r . mapped) (+1) l, Just r)
+                            else (l, Nothing)
+    inventory (ULoc _ s) = s
 
-firstEmptyKey :: IntMap a -> Maybe Int
-firstEmptyKey im = getFirst $ foldMap (\(asc, imkey) -> First (if imkey > asc then Just asc else Nothing)) (zip [1..] (IM.keys im))
-
-moveToStack :: a -> IntMap a -> (IntMap a, Maybe a)
-moveToStack a im = case firstEmptyKey im of
-                     Just i -> (IM.insert i a im, Just a)
-                     Nothing -> (im, Nothing)
-
-findInIntMap :: Eq a => IntMap a -> a -> Maybe Int
-findInIntMap im a = getFirst . foldMap (\(i,b) -> First (if a == b then Just i else Nothing)) . IM.toList $ im
-
-moveFromStack :: Eq a => a -> IntMap a -> (IntMap a, Maybe a)
-moveFromStack a im = case findInIntMap im a of
-                       Just i -> (IM.delete i im, Just a)
-                       Nothing -> (im, Nothing)
-
--- check if loc0 covers loc1 given some wildcards
-deficitWithWildcards :: (Ord a, Location f s, Location f' s') => f s a -> f' s' a -> [a] -> Cnt Int
-deficitWithWildcards loc0 loc1 wildcards = deficit - nWildcards
-    where
-        nWildcards = sum (M.filterWithKey (\k _ -> k `elem` wildcards) hist0)
-        maybeDeficit = fmap sum . sequence $ [liftA2 subtract (M.lookup k hist1) (M.lookup k hist0) | k <- M.keys hist0]
-        deficit = fromMaybe Infinity maybeDeficit
-        hist0 = histogram loc0
-        hist1 = histogram loc1
+instance Ord r => Location OrderedLocation n r where
+    moveFrom r l = case view (#stuff . to (Seq.elemIndexL r))  l of
+            Nothing -> (l, Nothing)
+            Just i -> (over #stuff (Seq.deleteAt i) l, Just r)
+    moveTo r l@(OLoc _ p _) = if r `notElem` p then (l, Nothing)
+                              else (over #stuff (r <|) l, Just r)
+    inventory (OLoc _ _ s) = histogramF s
 
 
-deficit :: (Ord a, Location f s, Location f' s') => f s a -> f' s' a -> Cnt Int
-deficit loc0 loc1 = deficitWithWildcards loc0 loc1 []
+-- laws!
+transfer :: (Location l n r, Location l' n' r) => r -> l n r -> l' n' r -> (l n r, l' n' r, Maybe r)
+transfer r loc loc' = case moveFrom r loc of 
+                        (newLoc, Just r) -> case moveTo r loc' of 
+                                                 (newLoc', Just r) -> (newLoc, newLoc', Just r)
+                                                 (_, Nothing) -> (loc, loc', Nothing)
+                        (_, Nothing) -> (loc, loc', Nothing)
+
+peek :: OrderedLocation n r -> Maybe r
+peek (OLoc _ _ s) = Seq.lookup 0 s
+
+draw :: OrderedLocation n r -> (OrderedLocation n r, Maybe r)
+draw l = case peek l of
+                        Nothing -> (l, Nothing)
+                        Just r -> (over #stuff (Seq.drop 0) l, Just r)
