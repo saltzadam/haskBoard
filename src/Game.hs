@@ -1,3 +1,4 @@
+{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -29,13 +30,13 @@ import GHC.Base (Type)
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 -- import Data.Finitary
-import Control.Lens (makeLenses, view, at) 
+import Control.Lens (makeFields) 
+import Data.These
+
+import Location
 
 -- given some locations and resources...
-newtype Player = Player String deriving (Eq, Show, Ord)
-
-
-data Resource = Card Int | Gem Bool deriving (Eq, Ord, Show)
+-- newtype Player = Player String deriving (Eq, Show, Ord)
 
 -- data GameObjects resources locations =
 --     GameObjects {

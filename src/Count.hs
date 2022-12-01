@@ -62,8 +62,4 @@ histogramF = foldl' (flip (M.alter plusOrInsertOne)) M.empty
     where
         plusOrInsertOne = Just . maybe 0 (+1)
 
-root :: Enum a => a
-root = toEnum 0
 
-enumerateFromRoot :: (Bounded a, Enum a) => [a]
-enumerateFromRoot = toEnum <$> [0..maxBound]

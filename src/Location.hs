@@ -33,6 +33,7 @@ import Data.Array (Array)
 import Data.Array as A
 import Data.Generics.Labels
 import Control.Monad (guard)
+import Data.Foldable (toList)
 
 
 -- Goal of this module is to enforce 'conversion of pieces', not game rules.
@@ -83,7 +84,6 @@ instance Ord r => Location OrderedLocation n r where
                               else (over #stuff (r <|) l, Just r)
     inventory (OLoc _ _ s) = histogramF s
 
-
 -- laws!
 transfer :: (Location l n r, Location l' n' r) => r -> l n r -> l' n' r -> (l n r, l' n' r, Maybe r)
 transfer r loc loc' = case moveFrom r loc of 
@@ -99,3 +99,45 @@ draw :: OrderedLocation n r -> (OrderedLocation n r, Maybe r)
 draw l = case peek l of
                         Nothing -> (l, Nothing)
                         Just r -> (over #stuff (Seq.drop 0) l, Just r)
+
+countPieces :: Location l n r => l n r -> Cnt Int
+countPieces = sum . inventory
+
+data GameLocations lnames fresources nfresources =
+    GameLocations {decks :: Map lnames (OrderedLocation lnames nfresources),
+                   piles :: Map lnames (UnorderedLocation lnames fresources),
+                   queues :: Map lnames (OrderedLocation lnames fresources),
+                   hands :: Map lnames (UnorderedLocation lnames nfresources)}
+                   deriving (Eq, Ord, Show, Generic)
+
+makeFields ''GameLocations
+
+emptyLocs :: GameLocations lnames fresources nfresources
+emptyLocs = GameLocations M.empty M.empty M.empty M.empty
+
+addPile :: Ord l => l -> Map f (Cnt Int) -> GameLocations l f n -> GameLocations l f n
+addPile name stuff = set (#piles . at name) (Just (ULoc name stuff))
+
+addDeck :: Ord l => l -> [n] -> Seq n -> GameLocations l f n -> GameLocations l f n
+addDeck name permitted stuff = set (#decks . at name) (Just (OLoc name permitted stuff))
+
+addFullDeck :: Ord l => l -> Seq n -> GameLocations l f n -> GameLocations l f n
+addFullDeck name fullStuff = addDeck name (toList fullStuff) fullStuff
+
+addEmptyDeck :: Ord l => l -> Seq n -> GameLocations l f n -> GameLocations l f n
+addEmptyDeck name = addDeck name (Seq.empty)
+
+addQueue :: Ord l => l -> [f] -> Seq f -> GameLocations l f n -> GameLocations l f n
+addQueue name permitted stuff = set (#queues . at name) (Just (OLoc name permitted stuff))
+
+addHand :: Ord l => l -> Map n (Cnt Int) -> GameLocations l f n -> GameLocations l f n
+addHand name stuff = set (#hands . at name) (Just (ULoc name stuff))
+
+addHandUnique :: (Ord n, Ord l) => l -> [n] -> [n] -> GameLocations l f n -> GameLocations l f n
+addHandUnique name permitted listOfSingles = let
+    theMap = M.fromList ([(s,1) | s <- listOfSingles] ++ [(s,0) | s <- permitted])
+    in
+        set (#hands . at name) (Just (ULoc name theMap))
+
+
+
