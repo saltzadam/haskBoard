@@ -1,25 +1,13 @@
 {-# Language NoFieldSelectors #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE DataKinds #-}
 module Count where
 import Control.Applicative (liftA2)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.List ((\\), nub)
-import Data.Bifunctor (first)
 import Data.Foldable (foldl')
-import Numeric.Natural
 -- import Data.Finitary
-import GHC.Generics (Generic)
-import GHC.TypeNats
 
 -- This is Maybe a with the opposite order for Nothing
 -- Use it for counting things, think about "unlimited" stuff
@@ -55,7 +43,6 @@ instance Num a => Num (Cnt a) where
     (-) Infinity _ = Infinity
     (-) _ Infinity = error "no negative infinity"
     (-) (Cnt a) (Cnt b) = Cnt ((-) a b)
-
 
 histogramF :: (Foldable f, Ord a) => f a -> Map a (Cnt Int)
 histogramF = foldl' (flip (M.alter plusOrInsertOne)) M.empty

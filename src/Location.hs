@@ -17,23 +17,19 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE EmptyDataDeriving #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module Location where
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IM
 import Count
-import Data.IntMap (IntMap)
-import qualified Data.IntMap as IM
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Control.Lens
-import Data.Array (Array)
-import Data.Array as A
-import Data.Generics.Labels
-import Control.Monad (guard)
-import Data.Foldable (toList)
+-- import Data.Array (Array)
+import Data.Generics.Labels()
+import Data.Maybe (isNothing)
 
 
 -- Goal of this module is to enforce 'conversion of pieces', not game rules.
@@ -41,103 +37,118 @@ import Data.Foldable (toList)
 -- on other things. If you need more control over placement then should probably
 -- be creating more locations rather than more complicated location types.
 
---- Games can have multiple resource types!
+--- Games can have multiple resource types! --< NO, switch to one resource type.
 -- data FResource deriving (Eq, Ord, Show, Generic)
 -- data NFResource deriving (Eq, Ord, Show, Generic)
 -- for fungible and non-fungible
 --
--- Can't subtype them (easily) but shouldn't be an issue?
 
 
-data OrderedLocation name resource = OLoc  {name :: name,
-                                            permitted :: [resource],
-                                            stuff :: Seq resource}
-                                            deriving (Eq, Ord, Generic, Show)
+-- data OrderedLocation resource = OLoc {stuff :: Seq resource} deriving (Eq, Ord, Generic, Show)
 
-data UnorderedLocation name resource = ULoc {name :: name,
-                                             stuff :: Map resource (Cnt Int)
-                                            } deriving (Eq, Ord, Show, Generic)
+-- data UnorderedLocation resource = ULoc {stuff :: Map resource (Cnt Int)} deriving (Eq, Ord, Show, Generic)
 
-makeFields ''UnorderedLocation
-makeFields ''OrderedLocation
+data OrderedLocation deriving (Generic, Show, Eq, Ord)
+data UnorderedLocation deriving (Generic, Show, Eq, Ord)
+data SingletonLocation deriving (Generic, Show, Eq, Ord)
 
-class Location l n r where
-    moveFrom :: r -> l n r -> (l n r, Maybe r)
-    moveTo :: r -> l n r -> (l n r, Maybe r)
-    inventory :: l n r -> Map r (Cnt Int)
+data Location t resource where
+    PileL :: Map resource (Cnt Int) -> Location UnorderedLocation resource
+    DeckL :: Seq resource -> Location OrderedLocation resource -- add permitted
+    SingleL :: Maybe resource -> Location SingletonLocation resource
 
-instance Ord r => Location UnorderedLocation n r where
-    moveFrom r l@(ULoc _ s) = case fmap (> 0) (M.lookup r s) of
-                              Nothing -> (l, Nothing)
-                              Just False -> (l, Nothing)
-                              Just True -> (over (#stuff . at r . mapped) (subtract 1) l, Just r)
-    moveTo r l@(ULoc _ s) = if r `M.member` s
-                            then (over (#stuff . at r . mapped) (+1) l, Just r)
-                            else (l, Nothing)
-    inventory (ULoc _ s) = s
+deriving instance (Eq r, Eq t) => Eq (Location t r)
+deriving instance (Ord r, Ord t) => Ord (Location t r)
+deriving instance (Show r, Show t) => Show (Location t r)
+-- makeFields ''UnorderedLocation
+-- makeFields ''OrderedLocation
+-- makeFields ''Location
 
-instance Ord r => Location OrderedLocation n r where
-    moveFrom r l = case view (#stuff . to (Seq.elemIndexL r))  l of
-            Nothing -> (l, Nothing)
-            Just i -> (over #stuff (Seq.deleteAt i) l, Just r)
-    moveTo r l@(OLoc _ p _) = if r `notElem` p then (l, Nothing)
-                              else (over #stuff (r <|) l, Just r)
-    inventory (OLoc _ _ s) = histogramF s
+lensPile :: Lens' (Location UnorderedLocation r) (Map r (Cnt Int))
+lensPile f (PileL pile) = fmap PileL (f pile)
+
+lensDeck :: Lens' (Location OrderedLocation r) (Seq r)
+lensDeck f (DeckL deck) = fmap DeckL (f deck)
+
+moveFrom :: Ord r => r -> Location t r -> (Location t r, Maybe r)
+moveFrom r l@(PileL pile) = case fmap (> 0) (M.lookup r pile) of
+                          Nothing -> (l, Nothing)
+                          Just False -> (l, Nothing)
+                          Just True -> (over (lensPile . at r . mapped) (subtract 1) l, Just r)
+moveFrom r l@(DeckL _) = case view (lensDeck . to (Seq.elemIndexL r))  l of
+        Nothing -> (l, Nothing)
+        Just i -> (over lensDeck (Seq.deleteAt i) l, Just r)
+moveFrom r l@(SingleL s) = if s == Just r
+                             then (SingleL Nothing, Just r)
+                             else (l, Nothing)
+
+moveTo :: Ord r => r -> Location t r -> (Location t r, Maybe r)
+moveTo  r l@(PileL s) = if r `M.member` s
+                           then (over (lensPile . at r . mapped) (+1) l, Just r)
+                           else (l, Nothing)
+moveTo  r l@(DeckL _) = (over lensDeck (r <|) l, Just r)
+moveTo  r l@(SingleL s) = if isNothing s then (SingleL (Just r), Just r) else (l, Nothing)
+
+inventory :: Ord r => Location t r -> Map r (Cnt Int)
+inventory (PileL s) = s
+inventory (DeckL s) = histogramF s
+inventory (SingleL Nothing) = M.empty
+inventory (SingleL (Just r)) = M.singleton r 1
 
 -- laws!
-transfer :: (Location l n r, Location l' n' r) => r -> l n r -> l' n' r -> (l n r, l' n' r, Maybe r)
-transfer r loc loc' = case moveFrom r loc of 
-                        (newLoc, Just r) -> case moveTo r loc' of 
+transfer :: Ord r => r -> Location t r -> Location t' r -> (Location t r, Location t' r, Maybe r)
+transfer r loc loc' = case moveFrom r loc of
+                        (newLoc, Just r) -> case moveTo r loc' of
                                                  (newLoc', Just r) -> (newLoc, newLoc', Just r)
                                                  (_, Nothing) -> (loc, loc', Nothing)
                         (_, Nothing) -> (loc, loc', Nothing)
 
-peek :: OrderedLocation n r -> Maybe r
-peek (OLoc _ _ s) = Seq.lookup 0 s
+lookTop :: Location OrderedLocation r -> Maybe r
+lookTop (DeckL s) = Seq.lookup 0 s
 
-draw :: OrderedLocation n r -> (OrderedLocation n r, Maybe r)
-draw l = case peek l of
+peek :: Location SingletonLocation r -> Maybe r
+peek (SingleL s) = s
+
+draw :: Location OrderedLocation r -> (Location OrderedLocation r, Maybe r)
+draw l = case lookTop l of
                         Nothing -> (l, Nothing)
-                        Just r -> (over #stuff (Seq.drop 0) l, Just r)
+                        Just r -> (over lensDeck (Seq.drop 0) l, Just r)
 
-countPieces :: Location l n r => l n r -> Cnt Int
+countPieces :: Ord r => Location t r -> Cnt Int
 countPieces = sum . inventory
 
-data GameLocations lnames fresources nfresources =
-    GameLocations {decks :: Map lnames (OrderedLocation lnames nfresources),
-                   piles :: Map lnames (UnorderedLocation lnames fresources),
-                   queues :: Map lnames (OrderedLocation lnames fresources),
-                   hands :: Map lnames (UnorderedLocation lnames nfresources)}
+data GameObjects onames unames resources =
+    GameObjects   {piles :: Map unames (Location UnorderedLocation resources),
+                   decks :: Map onames (Location OrderedLocation resources),
+                   counters :: Map unames (Cnt Int)}
                    deriving (Eq, Ord, Show, Generic)
 
-makeFields ''GameLocations
 
-emptyLocs :: GameLocations lnames fresources nfresources
-emptyLocs = GameLocations M.empty M.empty M.empty M.empty
+makeFields ''GameObjects
 
-addPile :: Ord l => l -> Map f (Cnt Int) -> GameLocations l f n -> GameLocations l f n
-addPile name stuff = set (#piles . at name) (Just (ULoc name stuff))
+emptyLocs :: GameObjects o u r
+emptyLocs = GameObjects M.empty M.empty M.empty
 
-addDeck :: Ord l => l -> [n] -> Seq n -> GameLocations l f n -> GameLocations l f n
-addDeck name permitted stuff = set (#decks . at name) (Just (OLoc name permitted stuff))
+addPile :: Ord u => u -> Map r (Cnt Int) -> GameObjects o u r -> GameObjects o u r
+addPile name stuff = set (#piles . at name) (Just (PileL stuff))
 
-addFullDeck :: Ord l => l -> Seq n -> GameLocations l f n -> GameLocations l f n
-addFullDeck name fullStuff = addDeck name (toList fullStuff) fullStuff
+addDeck :: Ord o => o -> Seq r -> GameObjects o u r -> GameObjects o u r
+addDeck name stuff = set (#decks . at name) (Just (DeckL stuff))
 
-addEmptyDeck :: Ord l => l -> Seq n -> GameLocations l f n -> GameLocations l f n
-addEmptyDeck name = addDeck name (Seq.empty)
+-- addFullDeck :: Ord o => o -> Seq r -> GameObjects o u r -> GameObjects o u r
+-- addFullDeck name fullStuff = addDeck name (toList fullStuff) fullStuff
 
-addQueue :: Ord l => l -> [f] -> Seq f -> GameLocations l f n -> GameLocations l f n
-addQueue name permitted stuff = set (#queues . at name) (Just (OLoc name permitted stuff))
+addEmptyDeck :: Ord o => o -> GameObjects o u r -> GameObjects o u r
+addEmptyDeck name = addDeck name Seq.empty
 
-addHand :: Ord l => l -> Map n (Cnt Int) -> GameLocations l f n -> GameLocations l f n
-addHand name stuff = set (#hands . at name) (Just (ULoc name stuff))
-
-addHandUnique :: (Ord n, Ord l) => l -> [n] -> [n] -> GameLocations l f n -> GameLocations l f n
-addHandUnique name permitted listOfSingles = let
-    theMap = M.fromList ([(s,1) | s <- listOfSingles] ++ [(s,0) | s <- permitted])
+addPileCnt :: (Ord r, Ord u) => u -> [r] -> Cnt Int -> GameObjects o u r -> GameObjects o u r
+addPileCnt name listOfSingles cnt = let
+    theMap = M.fromList ([(s,cnt) | s <- listOfSingles])
     in
-        set (#hands . at name) (Just (ULoc name theMap))
+        set (#piles. at name) (Just (PileL theMap))
+
+addCounter :: Ord u => u -> Cnt Int -> GameObjects o u r -> GameObjects o u r
+addCounter name i = set (#counters . at name) (Just i)
 
 
 

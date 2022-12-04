@@ -43,7 +43,7 @@ fakeCards = M.empty
 allCards :: [CardInfo]
 allCards = concat (M.elems fakeCards)
 
-type SplendorLocations = GameLocations SplendorFResource SplendorNFResource SplendorLocation 
+type SplendorLocations = GameObjects SplendorFResource SplendorNFResource SplendorLocation 
 
 -- somePlayers :: Set Player
 -- somePlayers = S.fromList [Player "Schwaid", Player "Justin", Player "Uri"]
@@ -52,22 +52,22 @@ type SplendorLocations = GameLocations SplendorFResource SplendorNFResource Sple
 --     finitary?
 --     real cards?
 
-initGemPiles :: GameLocations SplendorLocation SplendorFResource n -> GameLocations SplendorLocation SplendorFResource n
+initGemPiles :: GameObjects SplendorLocation SplendorFResource n -> GameObjects SplendorLocation SplendorFResource n
 initGemPiles = addPile GemPiles (enumConstMap 4)  -- enumConstMap works because Gems are the only fungible resource
 
-initDecks :: [GameLocations SplendorLocation f CardInfo -> GameLocations SplendorLocation f CardInfo]
+initDecks :: [GameObjects SplendorLocation f CardInfo -> GameObjects SplendorLocation f CardInfo]
 initDecks = [addFullDeck (Deck tier) (Seq.fromList (fakeCards M.! tier)) | tier <- enumerateFromRoot @CardTier]
 
-initHands :: [GameLocations SplendorLocation f CardInfo -> GameLocations SplendorLocation f CardInfo]
+initHands :: [GameObjects SplendorLocation f CardInfo -> GameObjects SplendorLocation f CardInfo]
 initHands = [addHand (Hand player) (M.fromList [(c, 0) | c <- allCards]) | player <- enumerateFromRoot @Player] 
 
-initTabs :: [GameLocations SplendorLocation SplendorFResource n -> GameLocations SplendorLocation SplendorFResource n]
+initTabs :: [GameObjects SplendorLocation SplendorFResource n -> GameObjects SplendorLocation SplendorFResource n]
 initTabs = [addPile (Tableau player) (enumConstMap 0) | player <- enumerateFromRoot @Player]
 
-initBoards :: [GameLocations SplendorLocation f CardInfo -> GameLocations SplendorLocation f CardInfo]
+initBoards :: [GameObjects SplendorLocation f CardInfo -> GameObjects SplendorLocation f CardInfo]
 initBoards = [addEmptyDeck (Deck tier) (Seq.fromList (fakeCards M.! tier)) | tier <- enumerateFromRoot @CardTier]
 
-initLocs :: GameLocations SplendorLocation SplendorFResource CardInfo
+initLocs :: GameObjects SplendorLocation SplendorFResource CardInfo
 initLocs = compose 
            (initGemPiles : initDecks ++ initHands ++ initTabs ++ initBoards)
            emptyLocs
