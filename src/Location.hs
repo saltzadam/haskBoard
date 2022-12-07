@@ -117,37 +117,39 @@ draw l = case lookTop l of
 countPieces :: Ord r => Location t r -> Cnt Int
 countPieces = sum . inventory
 
-data GameObjects onames unames resources =
+data GameObjects onames unames snames resources =
     GameObjects   {piles :: Map unames (Location UnorderedLocation resources),
                    decks :: Map onames (Location OrderedLocation resources),
+                   slots :: Map snames (Location SingletonLocation resources),
                    counters :: Map unames (Cnt Int)}
                    deriving (Eq, Ord, Show, Generic)
 
 
 makeFields ''GameObjects
 
-emptyLocs :: GameObjects o u r
-emptyLocs = GameObjects M.empty M.empty M.empty
 
-addPile :: Ord u => u -> Map r (Cnt Int) -> GameObjects o u r -> GameObjects o u r
+emptyLocs :: GameObjects o u s r
+emptyLocs = GameObjects M.empty M.empty M.empty M.empty
+
+addPile :: Ord u => u -> Map r (Cnt Int) -> GameObjects o u s r -> GameObjects o u s r
 addPile name stuff = set (#piles . at name) (Just (PileL stuff))
 
-addDeck :: Ord o => o -> Seq r -> GameObjects o u r -> GameObjects o u r
+addDeck :: Ord o => o -> Seq r -> GameObjects o u s r -> GameObjects o u s r
 addDeck name stuff = set (#decks . at name) (Just (DeckL stuff))
 
 -- addFullDeck :: Ord o => o -> Seq r -> GameObjects o u r -> GameObjects o u r
 -- addFullDeck name fullStuff = addDeck name (toList fullStuff) fullStuff
 
-addEmptyDeck :: Ord o => o -> GameObjects o u r -> GameObjects o u r
+addEmptyDeck :: Ord o => o -> GameObjects o u s r -> GameObjects o u s r
 addEmptyDeck name = addDeck name Seq.empty
 
-addPileCnt :: (Ord r, Ord u) => u -> [r] -> Cnt Int -> GameObjects o u r -> GameObjects o u r
+addPileCnt :: (Ord r, Ord u) => u -> [r] -> Cnt Int -> GameObjects o u s r -> GameObjects o u s r
 addPileCnt name listOfSingles cnt = let
     theMap = M.fromList ([(s,cnt) | s <- listOfSingles])
     in
         set (#piles. at name) (Just (PileL theMap))
 
-addCounter :: Ord u => u -> Cnt Int -> GameObjects o u r -> GameObjects o u r
+addCounter :: Ord u => u -> Cnt Int -> GameObjects o u s r -> GameObjects o u s r
 addCounter name i = set (#counters . at name) (Just i)
 
 
