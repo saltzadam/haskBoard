@@ -17,17 +17,12 @@
 module Game where
 
 -- import Data.Finitary
-import Control.Lens (at, makeFields, preview, to, view)
-import Control.Lens.Prism
-import Count
-import Data.Text.Lazy (Text, pack)
 import GHC.Generics (Generic)
-import Location
-import Text.Show.Functions ()
-import Data.Maybe (listToMaybe)
-import Game.Player
 import Game.Condition
 import Game.Game
+import Game.Player
+import Location
+import Text.Show.Functions ()
 
 -- Data representations of a Transfer
 -- Key interpreter is to transfer function
@@ -38,8 +33,7 @@ mkTransfer' :: Ord r => Transfer r (Location t r) (Location t' r) -> (Location t
 mkTransfer' (Transfer r l l') = transfer r l l'
 
 -- mkTransfer :: Ord r => Transfer r (Location t r) (Location t' r) -> Game o u r ph -> Game o u r ph
--- mkTransfer (Transfer r (Location  r) ) g = 
-    
+-- mkTransfer (Transfer r (Location  r) ) g =
 
 --
 -- tons of redundancy
@@ -95,4 +89,3 @@ data Play o u s r phase play = Play
     makeMoves :: Game o u s r phase -> [Transfer o u r],
     owner :: Maybe Player
   }
-

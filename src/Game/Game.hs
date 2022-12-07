@@ -1,10 +1,12 @@
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TemplateHaskell #-}
+
 module Game.Game where
-import Game.Player ( Player )
-import Location ( GameObjects )
-import GHC.Generics ( Generic )
-import Control.Lens ( makeFields )
+
+import Control.Lens (makeFields)
+import GHC.Generics (Generic)
+import Game.Player (Player)
+import Location (GameObjects)
 
 data Game onames unames snames resources phase = Game
   { players :: [Player],
@@ -15,5 +17,3 @@ data Game onames unames snames resources phase = Game
   deriving (Generic)
 
 makeFields ''Game
-
-

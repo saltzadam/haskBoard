@@ -1,23 +1,24 @@
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE GADTs #-}
+
 module Game.Condition where
 
+import Control.Lens (at, ix, preview, to, view, _Just)
+import Count
+import Data.Maybe (listToMaybe)
 import Data.Text.Lazy (Text, pack)
 import Formatting
-import Formatting.ShortFormatters ( sh)
-import Control.Lens (preview, at, _Just, to, view)
-import Data.Maybe (listToMaybe)
-
-import Count
-import Location
-import Game.Player
+import Formatting.ShortFormatters (sh)
 import Game.Game
+import Game.Player
+import Location
+
 data Condition o u s r phase play val where
   Num :: Cnt Int -> Condition o u s r phase play (Cnt Int)
   Bool :: Bool -> Condition o u s r phase play Bool
   Has :: (Eq r, Show r) => Either o u -> r -> (Cnt Int) -> Condition o u s r phase play Bool
-  HasAtLeast :: (Eq r,  Show r) => Either o u -> r -> (Cnt Int) -> Condition o u s r phase play Bool
+  HasAtLeast :: (Eq r, Show r) => Either o u -> r -> (Cnt Int) -> Condition o u s r phase play Bool
   PhaseIsIn :: (Eq phase, Show phase) => [phase] -> Condition o u s r phase play Bool
   -- PlayIsIn :: [play] -> Condition o u s r phase play Bool -- cannot fire for Plays, only triggers
   -- TransferIsIn :: [Transfer o u r] -> Condition o u s r phase play Bool -- cannot fire or Plays, only triggers
@@ -64,12 +65,12 @@ evalCondition :: (Ord o, Ord u, Ord r) => Condition o u s r phase play val -> Ga
 evalCondition (Num i) _ = i
 evalCondition (Bool b) _ = b
 evalCondition (Has (Left oloc) r cnt) g = preview (#locations . #decks . at oloc . _Just . lensDeck . to (foldl (\acc a -> if a == r then acc + 1 else acc) 0)) g == Just cnt
-evalCondition (Has (Right uloc) r cnt) g = preview (#locations . #piles . at uloc . _Just . lensPile . at r . _Just) g == Just cnt
-evalCondition (HasAtLeast (Left oloc) r cnt) g = preview (#locations . #decks . at oloc . _Just . lensDeck . to (foldl (\acc a -> if a == r then acc + 1 else acc) 0)) g >= Just cnt
-evalCondition (HasAtLeast (Right uloc) r cnt) g = preview (#locations . #piles . at uloc . _Just . lensPile . at r . _Just) g >= Just cnt
+evalCondition (Has (Right uloc) r cnt) g = preview (#locations . #piles . at uloc . _Just . lensPile . ix r) g == Just cnt
+evalCondition (HasAtLeast (Left oloc) r cnt) g = preview (#locations . #decks . ix oloc . lensDeck . to (foldl (\acc a -> if a == r then acc + 1 else acc) 0)) g >= Just cnt
+evalCondition (HasAtLeast (Right uloc) r cnt) g = preview (#locations . #piles . ix uloc . lensPile . ix r) g >= Just cnt
 evalCondition (PhaseIsIn ps) g = case listToMaybe (view #phaseStack g) of
-                                   Nothing -> False
-                                   Just i -> i `elem` ps
+  Nothing -> False
+  Just i -> i `elem` ps
 evalCondition (ObservePlayer _ pl f) g = f pl g
 evalCondition (ObservePlayerIf _ pl f) g = f pl g
 evalCondition (ObserveResource _ res f) g = f res g
@@ -87,5 +88,3 @@ evalCondition (LTc c c') g = evalCondition c g < evalCondition c' g
 
 -- validateCondition :: EvalCondition r l Bool -- dunno
 -- validateCondition = undefined
-
-
