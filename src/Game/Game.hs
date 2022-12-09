@@ -7,13 +7,17 @@ import Control.Lens (makeFields)
 import GHC.Generics (Generic)
 import Game.Player (Player)
 import Location (GameObjects)
+import Control.Monad.Random (StdGen)
 
-data Game onames unames snames resources phase = Game
+data Game lnames resources phase = Game
   { players :: [Player],
-    locations :: GameObjects onames unames snames resources,
+    objects :: GameObjects lnames resources,
     phaseStack :: [phase], -- provisional
-    activePlayer :: Maybe Player
+    activePlayer :: Maybe Player,
+    randGen :: StdGen
   }
   deriving (Generic)
+
+
 
 makeFields ''Game

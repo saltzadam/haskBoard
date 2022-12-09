@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -27,16 +28,10 @@ import Text.Show.Functions ()
 -- Data representations of a Transfer
 -- Key interpreter is to transfer function
 -- stuff source target
-data Transfer resource loc loc' = Transfer resource loc loc' deriving (Eq, Ord, Show, Generic)
+data Transfer resource lname = Transfer resource lname lname deriving (Eq, Ord, Show, Generic)
 
-mkTransfer' :: Ord r => Transfer r (Location t r) (Location t' r) -> (Location t r, Location t' r, Maybe r)
+mkTransfer' :: (Ord name, Ord r) => Transfer r name -> Locations name r -> (Locations name r, Maybe r)
 mkTransfer' (Transfer r l l') = transfer r l l'
-
--- mkTransfer :: Ord r => Transfer r (Location t r) (Location t' r) -> Game o u r ph -> Game o u r ph
--- mkTransfer (Transfer r (Location  r) ) g =
-
---
--- tons of redundancy
 
 -- What is a Play?
 --  Computes Transfers from the game state. Like buying a card costs some gems, but
@@ -80,12 +75,18 @@ mkTransfer' (Transfer r l l') = transfer r l l'
 -- Games probably shouldn't export this -- use smart constructor
 -- e.g. takeTokens color player = Play ..
 
--- For now: just Plays that do transfers!
+-- For now: just Plays that do transfers or phases!
 
--- data GameAction o u s r phase play = ChangePhase phase | MakeTransfer (Transfer o u r) | MakePlay (Play o u s r phase play)
+data GameAction l r phaseName = ChangePhase phaseName | MakeTransfer (Transfer l r) -- | MakePlay (Play o u s r phase play)
 
-data Play o u s r phase play = Play
-  { legalCondition :: Condition o u s r phase play Bool,
-    makeMoves :: Game o u s r phase -> [Transfer o u r],
+data Phase phaseName l r play = Phase {
+    name :: phaseName,
+    enterAction :: Condition l r phaseName play Bool -> Game l r phaseName -> [GameAction l r phaseName],
+    exitAction :: Condition l r phaseName play Bool -> Game l r phaseName ->  [GameAction l r phaseName]}
+
+data Play playName l r phase play = Play
+  { name :: playName,
+    legalCondition :: Condition l r phase play Bool,
+    makeMoves :: Game l r phase -> [Transfer l r],
     owner :: Maybe Player
   }
