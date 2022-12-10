@@ -33,6 +33,19 @@ data Transfer resource lname = Transfer resource lname lname deriving (Eq, Ord, 
 mkTransfer' :: (Ord name, Ord r) => Transfer r name -> Locations name r -> (Locations name r, Maybe r)
 mkTransfer' (Transfer r l l') = transfer r l l'
 
+data GameAction l r phaseName = ChangePhase phaseName | MakeTransfer (Transfer l r) -- | MakePlay (Play o u s r phase play)
+
+data Phase phaseName l r play = Phase {
+    name :: phaseName,
+    enterAction :: Condition l r phaseName play Bool -> Game l r phaseName -> [GameAction l r phaseName],
+    exitAction :: Condition l r phaseName play Bool -> Game l r phaseName ->  [GameAction l r phaseName]}
+
+data Play playName l r phase play = Play
+  { name :: playName,
+    legalCondition :: Condition l r phase play Bool,
+    makeMoves :: Game l r phase -> [Transfer l r],
+    owner :: Maybe Player
+  }
 -- What is a Play?
 --  Computes Transfers from the game state. Like buying a card costs some gems, but
 --  need the rest of the state to actually compute the Transfer.
@@ -77,16 +90,4 @@ mkTransfer' (Transfer r l l') = transfer r l l'
 
 -- For now: just Plays that do transfers or phases!
 
-data GameAction l r phaseName = ChangePhase phaseName | MakeTransfer (Transfer l r) -- | MakePlay (Play o u s r phase play)
 
-data Phase phaseName l r play = Phase {
-    name :: phaseName,
-    enterAction :: Condition l r phaseName play Bool -> Game l r phaseName -> [GameAction l r phaseName],
-    exitAction :: Condition l r phaseName play Bool -> Game l r phaseName ->  [GameAction l r phaseName]}
-
-data Play playName l r phase play = Play
-  { name :: playName,
-    legalCondition :: Condition l r phase play Bool,
-    makeMoves :: Game l r phase -> [Transfer l r],
-    owner :: Maybe Player
-  }

@@ -2,6 +2,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module Count where
 
@@ -9,12 +11,14 @@ import Control.Applicative (liftA2)
 import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as M
+import GHC.Generics (Generic)
+import Control.Monad.Random (Finite, UniformRange)
 
 -- import Data.Finitary
 
 -- This is Maybe a with the opposite order for Nothing
 -- Use it for counting things, think about "unlimited" stuff
-data Cnt a = Cnt a | Infinity deriving (Eq, Show, Functor)
+data Cnt a = Cnt a | Infinity deriving (Eq, Show, Functor, Generic, Finite, UniformRange)
 
 instance Ord a => Ord (Cnt a) where
   (Cnt a) <= (Cnt b) = a <= b

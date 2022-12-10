@@ -90,16 +90,17 @@ peek Dummy = Nothing
 countPieces :: Ord r => LocationShape r -> Cnt Int
 countPieces = sum . inventory
 
-data Counter = Counter {val :: Cnt Int,
+data Counter = Counter {val :: Maybe (Cnt Int),
                         bounds :: (Cnt Int, Cnt Int)} deriving (Eq, Show)
 
 makeCounter :: (Cnt Int, Cnt Int) -> Counter
-makeCounter (a, b) = Counter a (a, b)
+makeCounter (a, b) = Counter (Just a) (a, b)
 
 mapCounter :: (Cnt Int -> Cnt Int) -> Counter -> (Counter, Maybe (Cnt Int))
-mapCounter f (Counter a (bl, bu)) = if f a >= bl && f a <= bl 
-                                    then (Counter (f a) (bl, bu), Just (f a))
-                                    else (Counter a (bl, bu), Nothing)
+mapCounter _ c@(Counter Nothing (_,_)) = (c, Nothing)
+mapCounter f c@(Counter (Just a) (bl, bu)) = if f a >= bl && f a <= bl 
+                                    then (Counter (Just (f a)) (bl, bu), Just (f a))
+                                    else (c, Nothing)
 
 increment :: Counter -> (Counter, Maybe (Cnt Int))
 increment = mapCounter (+1)
