@@ -40,9 +40,9 @@ data Phase phaseName l r play = Phase {
     enterAction :: Condition l r phaseName play Bool -> Game l r phaseName -> [GameAction l r phaseName],
     exitAction :: Condition l r phaseName play Bool -> Game l r phaseName ->  [GameAction l r phaseName]}
 
-data Play playName l r phase play = Play
+data Play playName l r phase = Play
   { name :: playName,
-    legalCondition :: Condition l r phase play Bool,
+    legalCondition :: Condition l r phase playName Bool,
     makeMoves :: Game l r phase -> [Transfer l r],
     owner :: Maybe Player
   }

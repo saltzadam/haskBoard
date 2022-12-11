@@ -91,7 +91,9 @@ countPieces :: Ord r => LocationShape r -> Cnt Int
 countPieces = sum . inventory
 
 data Counter = Counter {val :: Maybe (Cnt Int),
-                        bounds :: (Cnt Int, Cnt Int)} deriving (Eq, Show)
+                        bounds :: (Cnt Int, Cnt Int)} deriving (Eq, Show, Generic)
+
+makeFields ''Counter
 
 makeCounter :: (Cnt Int, Cnt Int) -> Counter
 makeCounter (a, b) = Counter (Just a) (a, b)
