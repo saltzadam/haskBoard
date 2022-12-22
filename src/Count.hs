@@ -4,6 +4,10 @@
 {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 
 module Count where
 
@@ -13,12 +17,20 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)
 import Control.Monad.Random (Finite, UniformRange)
+import System.Random.Stateful (UniformRange(uniformRM), StatefulGen)
 
 -- import Data.Finitary
 
 -- This is Maybe a with the opposite order for Nothing
 -- Use it for counting things, think about "unlimited" stuff
-data Cnt a = Cnt a | Infinity deriving (Eq, Show, Functor, Generic, Finite, UniformRange)
+data Cnt a = Cnt a | Infinity deriving (Eq, Show, Functor, Generic, Finite)
+
+instance UniformRange (Cnt Int) where
+    uniformRM :: forall m g. StatefulGen g m => (Cnt Int, Cnt Int) -> g -> m (Cnt Int)
+    uniformRM (a,b) g = Cnt <$> (uniformRM (toInt a, toInt b) g :: m Int)
+        where toInt :: Cnt Int -> Int
+              toInt (Cnt a) = a
+              toInt Infinity = maxBound :: Int
 
 instance Ord a => Ord (Cnt a) where
   (Cnt a) <= (Cnt b) = a <= b

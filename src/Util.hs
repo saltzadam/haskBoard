@@ -14,3 +14,5 @@ enumerateFromRoot = toEnum <$> [0 .. maxBound]
 
 enumConstMap :: (Enum e, Bounded e, Ord e) => a -> Map e a
 enumConstMap y = M.fromList [(x, y) | x <- enumerateFromRoot]
+
+

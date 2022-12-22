@@ -9,7 +9,7 @@
 
 module Location where
 
-import Control.Lens (makeFields)
+import Control.Lens (makeFields, over, ix, at, preview, set)
 import Count
 -- import Data.Array (Array)
 import Data.Generics.Labels ()
@@ -19,6 +19,9 @@ import Data.Maybe (listToMaybe)
 import Data.Sequence (Seq ((:<|), Empty), (<|))
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
+import System.Random (StdGen(..))
+import Control.Monad.Random (mkStdGen)
+import System.Random.Stateful (uniformR)
 
 -- Goal of this module is to enforce 'conversion of pieces', not game rules.
 -- Right now OLoc and ULoc are "piles of stuff" and "FIFO decks." Could work
@@ -47,7 +50,7 @@ moveFromL _ Dummy = (Dummy, Nothing)
 
 
 moveToL :: Ord r => r -> LocationShape r -> (LocationShape r, Maybe r)
-moveToL r (Deck s) = (Deck (r <| s), Just r) 
+moveToL r (Deck s) = (Deck (r <| s), Just r)
 moveToL r (Pile pileMap) = if r `M.member` pileMap
                            then (Pile (M.adjust (+1) r pileMap), Just r)
                            else (Pile pileMap, Nothing)
@@ -90,25 +93,35 @@ peek Dummy = Nothing
 countPieces :: Ord r => LocationShape r -> Cnt Int
 countPieces = sum . inventory
 
-data Counter = Counter {val :: Maybe (Cnt Int),
-                        bounds :: (Cnt Int, Cnt Int)} deriving (Eq, Show, Generic)
+data Counter = Counter {val :: Cnt Int,
+                        bounds :: (Cnt Int, Cnt Int),
+                        gen :: StdGen} deriving (Eq, Show, Generic)
 
 makeFields ''Counter
 
 makeCounter :: (Cnt Int, Cnt Int) -> Counter
-makeCounter (a, b) = Counter (Just a) (a, b)
+makeCounter (a, b) = Counter a (a, b) (mkStdGen 100)
 
 mapCounter :: (Cnt Int -> Cnt Int) -> Counter -> (Counter, Maybe (Cnt Int))
-mapCounter _ c@(Counter Nothing (_,_)) = (c, Nothing)
-mapCounter f c@(Counter (Just a) (bl, bu)) = if f a >= bl && f a <= bl 
-                                    then (Counter (Just (f a)) (bl, bu), Just (f a))
+mapCounter f c@(Counter a (bl, bu) g) = if f a >= bl && f a <= bl
+                                    then (Counter (f a) (bl, bu) g, Just (f a))
                                     else (c, Nothing)
+
+setCounter :: Counter -> Cnt Int -> Counter
+setCounter c a = set #val a c
 
 increment :: Counter -> (Counter, Maybe (Cnt Int))
 increment = mapCounter (+1)
 
 decrement :: Counter -> (Counter, Maybe (Cnt Int))
 decrement = mapCounter (subtract 1)
+
+rollCounter :: Counter -> Counter
+rollCounter (Counter _ (bl, bu) g) = let (a', g') = uniformR (bl,bu) g
+    in Counter a' (bl,bu) g'
+
+roll :: Ord n => n -> GameObjects n r -> GameObjects n r
+roll l = over (#counters . ix l) rollCounter
 
 data GameObjects n r = GameObjects {
     locations :: Locations n r,
