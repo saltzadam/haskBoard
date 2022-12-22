@@ -65,6 +65,11 @@ inventory (Slot Nothing) = M.empty
 inventory (Slot (Just r)) = M.singleton r 1
 inventory Dummy = M.empty
 
+has' :: Ord r => LocationShape r -> r -> Bool
+has' loc r = case fmap (>0) (M.lookup r (inventory loc)) of
+              Just True -> True
+              _ -> False
+
 -- laws!
 transfer' :: Ord r => r -> LocationShape r -> LocationShape r -> (LocationShape r, LocationShape r, Maybe r)
 transfer' r loc loc' = case moveFromL r loc of

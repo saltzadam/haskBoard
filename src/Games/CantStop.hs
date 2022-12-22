@@ -12,10 +12,14 @@ import Game.Player (Player)
 import GHC.Generics
 import Game
 import qualified Data.Map as M
-import Location (Locations, LocationShape (..), Counter(..), GameObjects, counters, makeCounter, rollCounter)
+import Location (Locations, LocationShape (..), Counter(..), GameObjects (..), counters, makeCounter, rollCounter)
 import Data.Map (Map)
-import Control.Lens (bimap)
 import Count
+import Data.Tuple (swap)
+import Game.Condition
+import Data.Bitraversable
+import Control.Monad.Trans.Reader
+import Control.Monad.Random (mkStdGen)
 
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
@@ -81,80 +85,81 @@ initPlayerL ps = M.fromList [(PlayerStuff player, Pile (M.singleton (PlayerMarke
 initDice :: Map CantStopLocation Counter
 initDice = M.fromList (zip theDiceL (repeat (makeCounter (1,6))))
 
+initGameObjects :: [Player] -> CantStopGameObjects
+initGameObjects ps = GameObjects {
+    locations = initPlayerL ps <> initTrackSlots <> initBoxTop,
+    counters = initDice}
 
--- -- if there's an Eq constraint here then there may as well be below...
--- sumsOfPairs :: (Eq a, Num a) => [a] -> [[a]]
--- sumsOfPairs = nub . sumsOfPairs'
 
--- -- all the ways to sum a roll
--- -- works for any even number of dice, i.e. overengineered
--- sumsOfPairs' :: forall a. Num a => [a] -> [[a]]
--- sumsOfPairs' as = sumPairs (mkPairs as) where
---     -- pigworker here https://stackoverflow.com/questions/12869097/splitting-list-into-a-list-of-possible-tuples
---     sumPairs :: Num a => [[(a,a)]] -> [[a]]
---     sumPairs = fmap (fmap (uncurry (+)))
--- mkPairs :: [a] -> [[(a,a)]]
--- mkPairs [] = [[]]
--- mkPairs (a:as) = [(a,b):bs | (preb,b,postb) <- zippers as, bs <- mkPairs (preb++postb) ] where
---     zippers :: [a] -> [([a],a,[a])]
---     zippers as = go as [] where
---         go :: [a] -> [([a],a,[a])] -> [([a],a,[a])]
---         -- assume first list is in 'reverse' order
---         -- [1,2,3,4] -> [([],1,[2,3,4]), ([1],2,[3,4]), ([2,1],3,[4]), ([3,2,1],4,[])
---         go (x:xs) [] = go xs [([],x,xs)]
---         go (x:xs) (y@(y0,y1,_):ys) = go xs ((y1:y0, x, xs) : (y:ys))
---         go [] ys = ys
+data MoveArity = TwoValueMove TrackName TrackName | OneValueMove TrackName deriving (Eq, Ord, Show, Generic)
 
-mkPairs :: (a,a,a,a) -> [((a,a),(a,a))]
-mkPairs (x,y,w,z) = [((x,y),(w,z)),((x,w),(y,z)),((x,z),(y,w))]
-
-data CantStopPlayName = Move (Either (TrackName, TrackName) TrackName) | Stop
+data CantStopPlayName = Move Player MoveArity | Stop Player
 data CantStopPhaseName = Roll | PlayerChoice deriving (Eq, Ord, Show, Generic)
 
 type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopResource CantStopPlayName
 
-type CantStopCondition val = C2 CantStopLocation CantStopResource CantStopPhaseName val
-type CantStopGame = Game CantStopLocation CantStopResource CantStopPhaseName
+type CantStopAction = GameAction CantStopLocation CantStopResource CantStopPhaseName
+
+type CantStopCondition val = Condition CantStopLocation CantStopResource CantStopPhaseName CantStopPlayName val
+type CantStopGame = Game CantStopLocation CantStopResource CantStopPhaseName CantStopPlayName
 
 rollDice :: Counter -> Counter
 rollDice = rollCounter
 
-allPlays :: [CantStopPlayName]
-allPlays = Stop : [Move (Left (s, t)) | s <- enumerateFromRoot, t <- enumerateFromRoot, s <= t]
-                ++ [Move (Right s) | s <- enumerateFromRoot]
-
 chooseTracksPhase :: Player -> CantStopPhase
 chooseTracksPhase p = Phase {name = PlayerChoice,
-                             enterAction = Empty,
-                             exitAction = Empty,
+                             enterAction = cEmpty,
+                             exitAction = cEmpty,
                              control = One p,
-                             possiblePlays = allPlays,
-                             legal = undefined
+                             legal = moveLegal
                             }
 
-
-unorderedIn :: (Show a, Eq a) => CantStopCondition (a,a) -> CantStopCondition [(a,a)] -> CantStopCondition Bool
-unorderedIn c l = (c `In` l) `Or` (cSwap c `In` l)
-    where
-        cSwap :: (Show a, Show b) => CantStopCondition (a,b) -> CantStopCondition (b,a)
-        cSwap c = Pair `Apply` Apply Snd c `Apply` Apply Fst c
-
+-- add condition
 moveLegal :: CantStopPlayName -> CantStopCondition Bool
-moveLegal Stop = true
-moveLegal (Move (Left (s,t))) = (Pair `Apply` Lit (Cnt $ trackNum s) `Apply` Lit (Cnt $ trackNum t)) `unorderedIn` diceVals
-moveLegal (Move (Right s)) = undefined
+moveLegal (Stop _) = cTrue
+moveLegal (Move _ (TwoValueMove s t)) = cIn <*> pure (Cnt $ trackNum s, Cnt $ trackNum t) <*> diceVals
+moveLegal (Move _ (OneValueMove s)) = cIn <*> pure (Cnt $ trackNum s, Cnt $ trackNum s) <*> diceVals
 
 diceVals :: CantStopCondition [(Cnt Int, Cnt Int)]
-diceVals =  mkList $ fmap (\(a,b) -> Pair `Apply` a `Apply` b) (bimap (uncurry makeSum) (uncurry makeSum) <$> mkPairs theDice) where
-    makeSum c c' = CounterVal2 c + CounterVal2 c'
+diceVals = mapM (bitraverse makeSum makeSum) (mkPairs theDice) where
+    makeSum (c, c') = cCounterVal c + cCounterVal c'
+    mkPairs :: (a,a,a,a) -> [((a,a),(a,a))]
+    mkPairs (x,y,w,z) = let
+        pairs1 = [((x,y),(w,z)),((x,w),(y,z)),((x,z),(y,w))]
+        pairs2 = fmap swap pairs1
+                         in pairs1 ++ pairs2
 
 
-mkList :: (Eq a, Show a) => [C2 l r ph a] -> C2 l r ph [a]
-mkList = foldr Cons Empty
+cantStopPlays :: CantStopPlayName -> CantStopCondition [CantStopAction]
+cantStopPlays (Stop p) = undefined
+cantStopPlays (Move p (TwoValueMove s t)) = undefined
 
--- moveup :: TrackName -> TrackName -> Play
--- moveup track = Play {name = (MoveUp track),
---                      legalCondition = 
+initGame :: [Player] -> CantStopGame
+initGame ps = Game {
+    players = ps,
+    objects = initGameObjects ps,
+    phaseStack = [],
+    activePlayer = Nothing,
+    plays = cantStopPlays,
+    randGen = mkStdGen 100
+                   }
+-- mkList :: (Eq a, Show a) => [C2 l r ph a] -> C2 l r ph [a]
+-- mkList = foldr Cons Empty
+
+moveup :: Player -> TrackName -> CantStopCondition CantStopAction
+moveup p track = Condition $ do
+    g <- ask
+    return $ constructTransfer (currTempMarkerSpot g) (currPlayerMarkerSpot g)
+        where
+            trackSpots = [TrackSpot track num | num <- enumerateFromRoot, num <= maxSlot track]
+            currTempMarkerSpot g = dropWhile (not . cHas g TemporaryMarker) trackSpots
+            currPlayerMarkerSpot g = dropWhile (not . cHas g (PlayerMarker p)) trackSpots
+            constructTransfer :: [CantStopLocation] -> [CantStopLocation] -> CantStopAction
+            constructTransfer (curr:next:_) _ = MakeTransfer (Transfer TemporaryMarker curr next)
+            constructTransfer [_] _ = DoNothing
+            constructTransfer [] (curr:_:_) = MakeTransfer (Transfer TemporaryMarker BoxTop curr)
+            constructTransfer _ [_] = DoNothing
+            constructTransfer [] [] = MakeTransfer (Transfer TemporaryMarker BoxTop (TrackSpot track 1))
 
 
 

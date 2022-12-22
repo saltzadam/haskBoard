@@ -15,4 +15,6 @@ enumerateFromRoot = toEnum <$> [0 .. maxBound]
 enumConstMap :: (Enum e, Bounded e, Ord e) => a -> Map e a
 enumConstMap y = M.fromList [(x, y) | x <- enumerateFromRoot]
 
-
+maybeToBool :: Maybe Bool -> Bool
+maybeToBool (Just True) = True
+maybeToBool _ = False

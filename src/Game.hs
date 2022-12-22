@@ -16,6 +16,8 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Game where
 
 -- import Data.Finitary
@@ -26,15 +28,15 @@ import Text.Show.Functions ()
 import Count
 import Control.Monad.Random (StdGen)
 import Control.Lens hiding (Empty)
-import Prettyprinter (Pretty (..), viaShow, (<+>))
-import Control.Monad.Trans.Reader (ReaderT, ask, runReaderT, reader)
+import Control.Monad.Trans.Reader (ReaderT, runReaderT)
+import Control.Applicative
 
 -- Data representations of a Transfer
 -- Key interpreter is to transfer function
 -- stuff source target
-data Transfer resource lname = Transfer resource lname lname deriving (Eq, Ord, Show, Generic)
+data Transfer lname resource = Transfer resource lname lname deriving (Eq, Ord, Show, Generic)
 
-mkTransfer' :: (Ord name, Ord r) => Transfer r name -> Locations name r -> (Locations name r, Maybe r)
+mkTransfer' :: (Ord name, Ord r) => Transfer name r -> Locations name r -> (Locations name r, Maybe r)
 mkTransfer' (Transfer r l l') = transfer r l l'
 
 data GameAction l r phaseName = ChangePhase phaseName
@@ -43,6 +45,7 @@ data GameAction l r phaseName = ChangePhase phaseName
                               | DecrementCounter l
                               | SetCounter l (Cnt Int)
                               | RollCounter l
+                              | DoNothing
                                   -- | MakePlay (Play o u s r phase play)
                               deriving (Eq, Ord, Show, Generic)
 
@@ -52,129 +55,84 @@ data PhaseControl = One Player
                 | None deriving (Eq, Ord, Show, Generic)
 
 
-data C2  l r ph a where
-    -- Loc :: l -> C2 l r ph l
-    -- Res :: r -> C2 l r ph r
-    -- Num :: Cnt Int -> C2 l r ph (Cnt Int)
-    -- PhaseLit :: ph -> C2 l r ph ph
-    -- BoolLit :: Bool -> C2 l r ph Bool
-    -- Action :: GameAction l r ph -> C2 l r ph (GameAction l r ph)
-    Lit :: a -> C2 l r ph a
+newtype Condition l r ph pl a = Condition {runCondition :: ReaderT (Game l r ph pl) Identity a}
+    deriving (Functor, Applicative, Monad)
 
-    Has2 :: (Ord l, Ord r) => l -> r -> C2 l r ph (Cnt Int)
-    CounterVal2 :: Ord l => l -> C2 l r ph (Cnt Int)
-
-    Empty :: C2 l r ph [a]
-    Cons :: (Show a, Eq a) => C2 l r ph a -> C2 l r ph [a] -> C2 l r ph [a]
-    In :: (Show a,  Eq a) => C2 l r ph a -> C2 l r ph [a] -> C2 l r ph Bool
-
-    If :: C2 l r ph (Bool -> a -> a -> a)
-
-    Pair :: C2 l r ph (a -> b -> (a,b))
-    Fst :: C2 l r ph ((a,b) -> a)
-    Snd :: C2 l r ph ((a,b) -> b)
-
-    Apply :: C2 l r ph (a -> b) -> C2 l r ph a -> C2 l r ph b
-    Lam :: (C2 l r ph a -> C2 l r ph b) -> C2 l r ph (a -> b)
-
-    Plus :: C2 l r ph (Cnt Int) -> C2 l r ph (Cnt Int) -> C2 l r ph (Cnt Int)
-    Minus :: C2 l r ph (Cnt Int) -> C2 l r ph (Cnt Int) -> C2 l r ph (Cnt Int)
-    Times :: C2 l r ph (Cnt Int) -> C2 l r ph (Cnt Int) -> C2 l r ph (Cnt Int)
-    Abs :: C2 l r ph (Cnt Int) -> C2 l r ph (Cnt Int)
-    Sign :: C2 l r ph (Cnt Int) -> C2 l r ph (Cnt Int)
-
-    Or :: C2 l r ph Bool -> C2 l r ph Bool -> C2 l r ph Bool
-    And :: C2 l r ph Bool -> C2 l r ph Bool -> C2 l r ph Bool
-    Not :: C2 l r ph Bool -> C2 l r ph Bool
-
-    CEq :: Eq a => C2 l r ph a -> C2 l r ph a -> C2 l r ph Bool
-    CGTEq :: Ord a => C2 l r ph a -> C2 l r ph a -> C2 l r ph Bool
+instance Num a => Num (Condition l r ph pl a) where
+    (+) = liftA2 (+)
+    (*) = liftA2 (*)
+    (-) = liftA2 (-)
+    abs = fmap abs
+    signum = fmap signum
+    fromInteger  = pure . fromInteger
 
 data Game l r phaseName playName = Game
   { players :: [Player],
     objects :: GameObjects l r,
     phaseStack :: [phaseName], -- provisional
     activePlayer :: Maybe Player,
-    plays :: Maybe Player -> playName -> C2 l r phaseName [GameAction l r phaseName],
+    plays ::  playName -> Condition l r phaseName playName [GameAction l r phaseName],
     randGen :: StdGen
   }
   deriving (Generic)
 
 makeFields ''Game
 
-evalC ::  C2 l r ph a -> ReaderT (Game l r ph pl) Identity a
--- evalC (Loc l) = return l
--- evalC (Res r) = return  r
--- evalC (Num n) = return n
--- evalC (PhaseLit ph) = return ph
--- evalC (BoolLit b) = return b
--- evalC (Action a) = return a
-evalC (Lit a) = return a
-evalC (Has2 l r) = view (#objects . #locations . at l . non Dummy . to inventory . at r . non 0) <$> ask
-evalC (CounterVal2 l) = maybe 0 (view #val) . preview (#objects . #counters . ix l) <$> ask
+-- evalC ::  C2 l r ph a -> ReaderT (Game l r ph pl) Identity a
+-- -- evalC (Loc l) = return l
+-- -- evalC (Res r) = return  r
+-- -- evalC (Num n) = return n
+-- -- evalC (PhaseLit ph) = return ph
+-- -- evalC (BoolLit b) = return b
+-- -- evalC (Action a) = return a
+-- evalC (Lit a) = return a
+-- evalC (Has2 l r) = view (#objects . #locations . at l . non Dummy . to inventory . at r . non 0) <$> ask
+-- evalC (CounterVal2 l) = maybe 0 (view #val) . preview (#objects . #counters . ix l) <$> ask
 
-evalC If = return $ \c t f -> if c then t else f
+-- evalC If = return $ \c t f -> if c then t else f
 
-evalC Pair = return (,)
-evalC Fst = return fst
-evalC Snd = return snd
+-- evalC Pair = return (,)
+-- evalC Fst = return fst
+-- evalC Snd = return snd
 
-evalC Empty = return []
-evalC (Cons l lv) = (:) <$> evalC l <*> evalC lv
-evalC (In l lv) = elem <$> evalC l <*> evalC lv
+-- evalC Empty = return []
+-- evalC (Cons l lv) = (:) <$> evalC l <*> evalC lv
+-- evalC (In l lv) = elem <$> evalC l <*> evalC lv
 
-evalC (Apply f a) = evalC f <*> evalC a
-evalC (Lam f) = reader $ (runIdentity .) . flip (runReaderT . evalC . f . Lit)
-evalC (Plus a b) = (+) <$> evalC a <*> evalC b
-evalC (Minus a b) = (-) <$> evalC a <*> evalC b
-evalC (Times a b) = (*) <$> evalC a <*> evalC b
-evalC (Abs a) = fmap abs (evalC a)
-evalC (Sign a) = fmap signum (evalC a)
-evalC (Or a b) = (||) <$> evalC a <*> evalC b
-evalC (And a b) = (&&) <$> evalC a <*> evalC b
-evalC (Not a) = fmap not (evalC a)
-evalC (CEq a b) = (==) <$> evalC a <*> evalC b
-evalC (CGTEq a b) = (>=) <$> evalC a <*> evalC b
-
-
-instance (Show l, Show r, Show ph, Show a) => Pretty (C2 l r ph a) where
-    pretty (Lit a) = viaShow a
-    pretty (Has2 l r) = "the amount of" <+> viaShow r <+> "at" <+> viaShow l
-    pretty (CounterVal2 l) = "the value of" <+> viaShow l
-    pretty (Cons x xs@(Cons y ys)) = pretty x <> "," <> pretty xs
-    pretty (Cons x Empty) = pretty x <> "]"
-    pretty Empty = ""
-
-    pretty (If `Apply` b `Apply` t `Apply` f) = "If" <+> pretty b <+> "then" <+> pretty t <+> "else" <+> pretty f
-
-    -- pretty (I
-    -- pretty (Cons v vs) = encloseSep "[" "]" "," vs
-
-
-
-
+-- evalC (Apply f a) = evalC f <*> evalC a
+-- evalC (Lam f) = reader $ (runIdentity .) . flip (runReaderT . evalC . f . Lit)
+-- evalC (Plus a b) = (+) <$> evalC a <*> evalC b
+-- evalC (Minus a b) = (-) <$> evalC a <*> evalC b
+-- evalC (Times a b) = (*) <$> evalC a <*> evalC b
+-- evalC (Abs a) = fmap abs (evalC a)
+-- evalC (Sign a) = fmap signum (evalC a)
+-- evalC (Or a b) = (||) <$> evalC a <*> evalC b
+-- evalC (And a b) = (&&) <$> evalC a <*> evalC b
+-- evalC (Not a) = fmap not (evalC a)
+-- evalC (CEq a b) = (==) <$> evalC a <*> evalC b
+-- evalC (CGTEq a b) = (>=) <$> evalC a <*> evalC b
 
 data Phase phaseName l r playName = Phase {
     name :: phaseName,
-    enterAction :: C2 l r phaseName [GameAction l r phaseName],
-    exitAction :: C2 l r phaseName [GameAction l r phaseName],
+    enterAction :: Condition l r phaseName playName [GameAction l r phaseName],
+    exitAction :: Condition l r phaseName playName [GameAction l r phaseName],
     possiblePlays :: [playName],
-    legal :: C2 l r phaseName (playName -> Bool),
+    legal :: playName -> Condition l r phaseName playName Bool,
     control :: PhaseControl
                                       }
 
-true :: C2 l r ph Bool
-true = Lit True
-false :: C2 l r ph Bool
-false = Lit False
+-- true :: C2 l r ph Bool
+-- true = Lit True
+-- false :: C2 l r ph Bool
+-- false = Lit False
 
-instance Num (C2 l r ph (Cnt Int)) where
-    (+) a b = a `Plus` b
-    (-) a b = a `Minus` b
-    (*) a b = a `Times` b
-    abs = Abs
-    signum = Sign
-    fromInteger i = Lit (Cnt (fromInteger i))
+-- instance Num (C2 l r ph (Cnt Int)) where
+--     (+) a b = a `Plus` b
+--     (-) a b = a `Minus` b
+--     (*) a b = a `Times` b
+--     abs = Abs
+--     signum = Sign
+--     fromInteger i = Lit (Cnt (fromInteger i))
 
 
 
