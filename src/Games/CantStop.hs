@@ -2,9 +2,10 @@
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedLabels #-}
-    {-# LANGUAGE ScopedTypeVariables #-}
-        {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE EmptyDataDeriving #-}
 module Games.CantStop where
 
 import Util
@@ -20,6 +21,7 @@ import Game.Condition
 import Data.Bitraversable
 import Control.Monad.Trans.Reader
 import Control.Monad.Random (mkStdGen)
+import Game.Control (nextCyclic)
 
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
@@ -91,17 +93,19 @@ initGameObjects ps = GameObjects {
     counters = initDice}
 
 
+data CantStopTriggers deriving (Eq, Ord, Show, Generic)
 data MoveArity = TwoValueMove TrackName TrackName | OneValueMove TrackName deriving (Eq, Ord, Show, Generic)
 
 data CantStopPlayName = Move Player MoveArity | Stop Player
 data CantStopPhaseName = Roll | PlayerChoice deriving (Eq, Ord, Show, Generic)
+type CantStopTurns = Int
 
-type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopResource CantStopPlayName
+type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopResource CantStopPlayName CantStopTurns CantStopTriggers
 
 type CantStopAction = GameAction CantStopLocation CantStopResource CantStopPhaseName
 
-type CantStopCondition val = Condition CantStopLocation CantStopResource CantStopPhaseName CantStopPlayName val
-type CantStopGame = Game CantStopLocation CantStopResource CantStopPhaseName CantStopPlayName
+type CantStopCondition val = Condition CantStopLocation CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopTriggers val
+type CantStopGame = Game CantStopLocation CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopTriggers
 
 rollDice :: Counter -> Counter
 rollDice = rollCounter
@@ -132,16 +136,18 @@ diceVals = mapM (bitraverse makeSum makeSum) (mkPairs theDice) where
 
 cantStopPlays :: CantStopPlayName -> CantStopCondition [CantStopAction]
 cantStopPlays (Stop p) = undefined
-cantStopPlays (Move p (TwoValueMove s t)) = undefined
+cantStopPlays (Move p (TwoValueMove s t)) = sequence [moveup p s, moveup p t]
+cantStopPlays (Move p (OneValueMove s)) = sequence [moveup p s, moveup p s]
 
 initGame :: [Player] -> CantStopGame
 initGame ps = Game {
     players = ps,
     objects = initGameObjects ps,
-    phaseStack = [],
-    activePlayer = Nothing,
     plays = cantStopPlays,
-    randGen = mkStdGen 100
+    randGen = mkStdGen 100,
+    advancePlayer = nextCyclic,
+    activePlayer=Nothing,
+    turnNumber=1
                    }
 -- mkList :: (Eq a, Show a) => [C2 l r ph a] -> C2 l r ph [a]
 -- mkList = foldr Cons Empty

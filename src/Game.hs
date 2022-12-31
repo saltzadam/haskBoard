@@ -9,6 +9,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+    {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -25,11 +26,168 @@ import GHC.Generics (Generic)
 import Game.Player
 import Location
 import Text.Show.Functions ()
-import Count
 import Control.Monad.Random (StdGen)
-import Control.Lens hiding (Empty)
-import Control.Monad.Trans.Reader (ReaderT, runReaderT)
+import Control.Lens hiding (Empty, Choice)
 import Control.Applicative
+import Control.Monad.Trans.State
+import Data.Monoid (Endo (..))
+import Data.Maybe (mapMaybe)
+import Data.Foldable (traverse_)
+
+-- Need to define some types before Game.
+
+-- These are the fundamental actions in a game. All the "verbs" of a game (besides the observations, e.g. "check" and "count") should be phrase in terms of these.
+data GameAction l r ph = DoNothing
+    | MkTransfer l l r
+    | IncrementCounter l
+    | DecrementCounter l
+    | ChangePhase ph
+    deriving (Eq, Ord, Show, Generic)
+
+
+-- Computations within a game which produce `a`.
+-- Want a good interace here so that we can evaluate, pretty-print, parse/validate, etc.
+-- Don't have that yet.
+newtype Condition l r ph pl t tn a = Condition {runCondition :: GameT l r ph pl t tn a}
+    deriving (Functor, Applicative, Monad, Generic)
+
+instance Semigroup a => Semigroup (Condition l r ph pl t tn a) where
+    (<>) = liftA2 (<>)
+
+instance Monoid a => Monoid (Condition l r ph pl t tn a) where
+    mempty = return mempty
+
+-- Compute a condition given a `Game`.
+-- Shows redunacy of current definition?
+evalCondition ::  Condition l r ph pl t tn a  -> (GameT l r ph pl t tn) a
+evalCondition = view #runCondition
+
+-- To make Conditions easier to work with
+instance Num a => Num (Condition l r ph pl t tn a) where
+    (+) = liftA2 (+)
+    (*) = liftA2 (*)
+    (-) = liftA2 (-)
+    abs = fmap abs
+    signum = fmap signum
+    fromInteger  = pure . fromInteger
+
+
+
+-- A play `pl` is just a choice that a player must make. `Choice` is a set of plays
+-- to be presented to a player.
+data Choice pl = Choice Player [pl] deriving Generic
+
+
+
+-- The flow of a game looks like this: there is some sequence of `GameActions` (draw a card, advance the turn counter) until a player must make a `Choice`. Choices produce sequences of actions and additional choices, and so on. Also, 'GameAction` can indirectly produce choices via `Triggers`. For those `Triggers`, it's important to keep track of the parent actions and sources. Putting all of this together, we get a tree. The nodes are `GameNode`s.
+--
+-- `source` is a kind of shorthand -- just to make sure that triggers do not trigger themselves, for example.
+data GameNode l r ph pl = GameNode {
+        -- priority :: Int, -- don't need this yet
+        node :: Either (Choice pl) (GameAction l r ph),
+        source :: Maybe (l,r),
+        parents :: [GameNode l r ph pl]
+                                   } deriving (Generic)
+
+
+
+-- `Triggers` are checked after each action.
+-- The main thing is the `condition`. Given an action and a list of sources (immediate source at head)
+-- and an action, should the trigger fire? If so, it will produce `GameNodes`.
+data Trigger l r ph pl t name = Trigger { condition :: [(l,r)] -> GameAction l r ph -> Condition l r ph pl t name [GameNode l r ph pl], -- should be NE list of sources
+                                     name :: name,
+                                     source :: (l,r)
+                                     -- prioirty :: Int
+                                   } deriving (Generic)
+
+runTrigger :: Trigger l r ph pl t name -> [(l,r)] -> GameAction l r ph -> Condition l r ph pl t name [GameNode l r ph pl]
+runTrigger = view #condition
+
+instance Show name => Show (Trigger l r ph pl t name) where
+    show t = show (t ^. #name)
+
+
+
+-- For now, `Game` is a big record of functions
+-- Could be replaced by something more monadic.
+-- Define a State type right below.
+data Game l r phaseName playName turns triggerName = Game
+  { players :: [Player],
+    objects :: GameObjects l r,
+    runPlay ::  playName -> Condition l r phaseName playName turns triggerName [GameNode l r phaseName playName],
+    actor :: GameAction l r phaseName -> Endo (Game l r phaseName playName turns triggerName),
+    randGen :: StdGen,
+    chooser :: Choice playName -> playName,
+    triggers :: [Trigger l r phaseName playName turns triggerName],
+    advancePlayer :: Game l r phaseName playName turns triggerName -> Maybe Player,
+    activePlayer :: Maybe Player,
+    turnNumber :: turns
+  }
+  deriving (Generic)
+
+type GameT l r ph pl t tn = State (Game l r ph pl t tn)
+
+makeFields ''Game
+
+-- could rewrite GameT in this style?
+-- class Monad m => MonadChoice m pl where
+--     choose :: Choice pl -> m pl
+
+-- But for now use this, basically ReaderT pattern.
+choosePlay :: Choice pl -> (GameT l r ph pl t tn) pl
+choosePlay c =  do
+        g <- get
+        let chooser = view #chooser g
+        return (chooser c)
+
+-- Given a `Choice`, create the appropriate Actions and decisions
+-- TODO: Triggers should pick up plays as well.
+chooseNode ::  Choice pl -> GameT l r ph pl t tn [GameNode l r ph pl]
+chooseNode c = do
+    pl <- choosePlay c
+    playRunner <- use #runPlay
+    evalCondition (playRunner pl)
+
+-- Do actions using the `actor` function. Should just pattern match.
+-- TODO: Actor should not be a member of GameT! Just pattern match on `GameAction`!
+runAction :: GameAction l r ph -> GameT l r ph pl t tn ()
+runAction action = do
+    actor <- use #actor
+    modify (appEndo (actor action))
+
+-- Evaluate all the triggers on a particular instance of a `GameAction`.
+-- TODO: As above, Triggers should pick up plays/choices as well.
+getTriggers :: [(l,r)] -> GameAction l r ph -> GameT l r ph pl t tn [GameNode l r ph pl]
+getTriggers sources action = do
+    triggers <- use #triggers
+    let conditions =  mconcat $  fmap (\t -> runTrigger t sources action) triggers
+    evalCondition conditions -- key here is that evalCondition only uses reader part of state
+
+handleNode :: GameNode l r ph pl -> GameT l r ph pl t tn [GameNode l r ph pl]
+handleNode n = let
+        sources = mapMaybe (view #source) (n:view #parents n)
+        nodeStuff = view #node n
+        in either chooseNode (runAction >> getTriggers sources) nodeStuff
+
+runNode :: GameNode l r ph pl -> GameT l r ph pl t tn ()
+runNode n = do
+    result <- handleNode n
+    traverse_ runNode result
+
+data Phase phaseName l r playName t tn = Phase {
+    name :: phaseName,
+    enterAction :: Condition l r phaseName playName t tn [GameAction l r phaseName],
+    exitAction :: Condition l r phaseName playName t tn [GameAction l r phaseName],
+    legal :: playName -> Condition l r phaseName playName t tn Bool,
+    control :: PhaseControl
+                                      }
+
+---------------- Other stuff ------------------
+
+data PhaseControl = One Player
+                | Sequential [Player]
+                | Simultaneous [Player]
+                | None deriving (Eq, Ord, Show, Generic)
 
 -- Data representations of a Transfer
 -- Key interpreter is to transfer function
@@ -38,165 +196,5 @@ data Transfer lname resource = Transfer resource lname lname deriving (Eq, Ord, 
 
 mkTransfer' :: (Ord name, Ord r) => Transfer name r -> Locations name r -> (Locations name r, Maybe r)
 mkTransfer' (Transfer r l l') = transfer r l l'
-
-data GameAction l r phaseName = ChangePhase phaseName
-                              | MakeTransfer (Transfer l r)
-                              | IncrementCounter l
-                              | DecrementCounter l
-                              | SetCounter l (Cnt Int)
-                              | RollCounter l
-                              | DoNothing
-                                  -- | MakePlay (Play o u s r phase play)
-                              deriving (Eq, Ord, Show, Generic)
-
-data PhaseControl = One Player
-                | Sequential [Player]
-                | Simultaneous [Player]
-                | None deriving (Eq, Ord, Show, Generic)
-
-
-newtype Condition l r ph pl a = Condition {runCondition :: ReaderT (Game l r ph pl) Identity a}
-    deriving (Functor, Applicative, Monad)
-
-instance Num a => Num (Condition l r ph pl a) where
-    (+) = liftA2 (+)
-    (*) = liftA2 (*)
-    (-) = liftA2 (-)
-    abs = fmap abs
-    signum = fmap signum
-    fromInteger  = pure . fromInteger
-
-data Game l r phaseName playName = Game
-  { players :: [Player],
-    objects :: GameObjects l r,
-    phaseStack :: [phaseName], -- provisional
-    activePlayer :: Maybe Player,
-    plays ::  playName -> Condition l r phaseName playName [GameAction l r phaseName],
-    randGen :: StdGen
-  }
-  deriving (Generic)
-
-makeFields ''Game
-
--- evalC ::  C2 l r ph a -> ReaderT (Game l r ph pl) Identity a
--- -- evalC (Loc l) = return l
--- -- evalC (Res r) = return  r
--- -- evalC (Num n) = return n
--- -- evalC (PhaseLit ph) = return ph
--- -- evalC (BoolLit b) = return b
--- -- evalC (Action a) = return a
--- evalC (Lit a) = return a
--- evalC (Has2 l r) = view (#objects . #locations . at l . non Dummy . to inventory . at r . non 0) <$> ask
--- evalC (CounterVal2 l) = maybe 0 (view #val) . preview (#objects . #counters . ix l) <$> ask
-
--- evalC If = return $ \c t f -> if c then t else f
-
--- evalC Pair = return (,)
--- evalC Fst = return fst
--- evalC Snd = return snd
-
--- evalC Empty = return []
--- evalC (Cons l lv) = (:) <$> evalC l <*> evalC lv
--- evalC (In l lv) = elem <$> evalC l <*> evalC lv
-
--- evalC (Apply f a) = evalC f <*> evalC a
--- evalC (Lam f) = reader $ (runIdentity .) . flip (runReaderT . evalC . f . Lit)
--- evalC (Plus a b) = (+) <$> evalC a <*> evalC b
--- evalC (Minus a b) = (-) <$> evalC a <*> evalC b
--- evalC (Times a b) = (*) <$> evalC a <*> evalC b
--- evalC (Abs a) = fmap abs (evalC a)
--- evalC (Sign a) = fmap signum (evalC a)
--- evalC (Or a b) = (||) <$> evalC a <*> evalC b
--- evalC (And a b) = (&&) <$> evalC a <*> evalC b
--- evalC (Not a) = fmap not (evalC a)
--- evalC (CEq a b) = (==) <$> evalC a <*> evalC b
--- evalC (CGTEq a b) = (>=) <$> evalC a <*> evalC b
-
-data Phase phaseName l r playName = Phase {
-    name :: phaseName,
-    enterAction :: Condition l r phaseName playName [GameAction l r phaseName],
-    exitAction :: Condition l r phaseName playName [GameAction l r phaseName],
-    possiblePlays :: [playName],
-    legal :: playName -> Condition l r phaseName playName Bool,
-    control :: PhaseControl
-                                      }
-
--- true :: C2 l r ph Bool
--- true = Lit True
--- false :: C2 l r ph Bool
--- false = Lit False
-
--- instance Num (C2 l r ph (Cnt Int)) where
---     (+) a b = a `Plus` b
---     (-) a b = a `Minus` b
---     (*) a b = a `Times` b
---     abs = Abs
---     signum = Sign
---     fromInteger i = Lit (Cnt (fromInteger i))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
--- think of C2 l r a as being part of Reader (Game l r) a
--- so any function Game -> b should be representable as C2 l r b
---      ^ that's the 'game logic' abstracted out from the function itself
--- possibleOptions :: Game -> [Play] =====> C2 l r [Play]
--- legal :: Game -> Play -> bool =====> C2 l r (Play -> Bool)
-
-
--- What is a Play?
---  Computes Transfers from the game state. Like buying a card costs some gems, but
---  need the rest of the state to actually compute the Transfer.
---  So like state -> [Transfer]
---
---  Plays may have follow-ups from game logic. E.g. discard to hand size or "visit by
---  a noble." These should be part of the game logic, not the data of an individual play.
-
--- Before working out Play, need to think some about control flow.
--- Games have Phases. Any sequetial game has phases
--- data SequentialPhases = PreTurn Player | MainPhase Player | PostTurn Player
--- Any other time a player needs to make a choice, that's a phase.
--- data SequentialPhases aux = PreTurn Player | MainPhase Player | PostTurn Player | CustomPhase aux
--- Really need to just leave this up to game -- will have common patterns, but real danger of overengineering.
---
--- Control flow describes:
---   - what happens when you enter a phase
---   - how a Play moves from phase to phase
--- But need some memory here.
---
--- E.g. a player plays "draw a card, then discard a card." The Card is Transfered to Hand Player.
--- Phase moves from MainPhase Player to AuxPhaseDiscard Player. The player now has to choose a play.
--- (Is that a property of phases? Or?)
--- The only play legal in AuxPhaseDiscard is "discard a card", so the player chooses a card. That card is
--- Transfered to DiscardPile Player.
--- Now phase should move back to MainPhase Player.
---
--- But if in PostTurn Player, another player has to discard to hand size, then AuxPhaseDiscard has to return
--- control to PostTurn Player.
---
---
-
--- When a player choose a play, put it as the root of a tree
--- Next level is a sequence of transfers, phase changes, and plays.
--- Each of those may trigger further events.
--- So we get a tree. In most games it's traversed breadth-first.
-
--- When the tree has been completely traversed, the play is resolved.
-
--- Games probably shouldn't export this -- use smart constructor
--- e.g. takeTokens color player = Play ..
-
--- For now: just Plays that do transfers or phases!
 
 
