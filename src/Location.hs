@@ -78,8 +78,8 @@ transfer' r loc loc' = case moveFromL r loc of
     (_, Nothing) -> (loc, loc', Nothing)
   (_, Nothing) -> (loc, loc', Nothing)
 
-transfer :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> (Locations name r, Maybe r)
-transfer r name0 name1 locs = let
+transferSafe :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> (Locations name r, Maybe r)
+transferSafe r name0 name1 locs = let
     loc0 = locs M.! name0
     loc1 = locs M.! name1
     (loc0',loc1',mayber) = transfer' r loc0 loc1
@@ -87,6 +87,9 @@ transfer r name0 name1 locs = let
         case mayber of
           Nothing -> (locs, Nothing)
           Just i -> (M.insert name0 loc0' . M.insert name1 loc1' $ locs, Just i)
+
+transfer :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> Locations name r
+transfer r n0 n1 l = fst (transferSafe r n0 n1 l)
 
 peek :: LocationShape r -> Maybe r
 peek (Pile s) = listToMaybe (M.keys . M.filter (>0) $ s)
@@ -115,11 +118,17 @@ mapCounter f c@(Counter a (bl, bu) g) = if f a >= bl && f a <= bl
 setCounter :: Counter -> Cnt Int -> Counter
 setCounter c a = set #val a c
 
-increment :: Counter -> (Counter, Maybe (Cnt Int))
-increment = mapCounter (+1)
+increment' :: Counter -> (Counter, Maybe (Cnt Int))
+increment' = mapCounter (+1)
 
-decrement :: Counter -> (Counter, Maybe (Cnt Int))
-decrement = mapCounter (subtract 1)
+increment :: Counter -> Counter
+increment = fst . increment'
+
+decrement' :: Counter -> (Counter, Maybe (Cnt Int))
+decrement' = mapCounter (subtract 1)
+
+decrement :: Counter -> Counter
+decrement = fst . decrement'
 
 rollCounter :: Counter -> Counter
 rollCounter (Counter _ (bl, bu) g) = let (a', g') = uniformR (bl,bu) g

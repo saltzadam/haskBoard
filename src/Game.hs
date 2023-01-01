@@ -33,6 +33,7 @@ import Control.Monad.Trans.State
 import Data.Monoid (Endo (..))
 import Data.Maybe (mapMaybe)
 import Data.Foldable (traverse_)
+import Count
 
 -- Need to define some types before Game.
 
@@ -41,6 +42,8 @@ data GameAction l r ph = DoNothing
     | MkTransfer l l r
     | IncrementCounter l
     | DecrementCounter l
+    | SetCounter l (Cnt Int)
+    | RollCounter l
     | ChangePhase ph
     deriving (Eq, Ord, Show, Generic)
 
@@ -79,7 +82,7 @@ data Choice pl = Choice Player [pl] deriving Generic
 
 
 
--- The flow of a game looks like this: there is some sequence of `GameActions` (draw a card, advance the turn counter) until a player must make a `Choice`. Choices produce sequences of actions and additional choices, and so on. Also, 'GameAction` can indirectly produce choices via `Triggers`. For those `Triggers`, it's important to keep track of the parent actions and sources. Putting all of this together, we get a tree. The nodes are `GameNode`s.
+-- The flow of a game looks like this: there is some sequence of `GaAeActions` (draw a card, advance the turn counter) until a player must make a `Choice`. Choices produce sequences of actions and additional choices, and so on. Also, 'GameAction` can indirectly produce choices via `Triggers`. For those `Triggers`, it's important to keep track of the parent actions and sources. Putting all of this together, we get a tree. The nodes are `GameNode`s.
 --
 -- `source` is a kind of shorthand -- just to make sure that triggers do not trigger themselves, for example.
 data GameNode l r ph pl = GameNode {
@@ -106,7 +109,14 @@ runTrigger = view #condition
 instance Show name => Show (Trigger l r ph pl t name) where
     show t = show (t ^. #name)
 
-
+act :: (Ord l, Ord r) => GameAction l r phaseName -> GameT l r phaseName playName turns triggerName ()
+act DoNothing = return ()
+act (MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
+act (IncrementCounter l) = modifying (#objects . #counters . ix l) increment
+act (DecrementCounter l) = modifying (#objects . #counters . ix l) decrement 
+act (SetCounter l v) = modifying (#objects . #counters . ix l) (`setCounter` v)
+act (RollCounter l) = modifying (#objects . #counters . ix l) rollCounter
+act (ChangePhase ph) = undefined -- TODO: while we figure out control flow
 
 -- For now, `Game` is a big record of functions
 -- Could be replaced by something more monadic.
@@ -115,7 +125,6 @@ data Game l r phaseName playName turns triggerName = Game
   { players :: [Player],
     objects :: GameObjects l r,
     runPlay ::  playName -> Condition l r phaseName playName turns triggerName [GameNode l r phaseName playName],
-    actor :: GameAction l r phaseName -> Endo (Game l r phaseName playName turns triggerName),
     randGen :: StdGen,
     chooser :: Choice playName -> playName,
     triggers :: [Trigger l r phaseName playName turns triggerName],
@@ -148,13 +157,6 @@ chooseNode c = do
     playRunner <- use #runPlay
     evalCondition (playRunner pl)
 
--- Do actions using the `actor` function. Should just pattern match.
--- TODO: Actor should not be a member of GameT! Just pattern match on `GameAction`!
-runAction :: GameAction l r ph -> GameT l r ph pl t tn ()
-runAction action = do
-    actor <- use #actor
-    modify (appEndo (actor action))
-
 -- Evaluate all the triggers on a particular instance of a `GameAction`.
 -- TODO: As above, Triggers should pick up plays/choices as well.
 getTriggers :: [(l,r)] -> GameAction l r ph -> GameT l r ph pl t tn [GameNode l r ph pl]
@@ -163,13 +165,13 @@ getTriggers sources action = do
     let conditions =  mconcat $  fmap (\t -> runTrigger t sources action) triggers
     evalCondition conditions -- key here is that evalCondition only uses reader part of state
 
-handleNode :: GameNode l r ph pl -> GameT l r ph pl t tn [GameNode l r ph pl]
+handleNode :: (Ord l, Ord r) => GameNode l r ph pl -> GameT l r ph pl t tn [GameNode l r ph pl]
 handleNode n = let
         sources = mapMaybe (view #source) (n:view #parents n)
         nodeStuff = view #node n
-        in either chooseNode (runAction >> getTriggers sources) nodeStuff
+        in either chooseNode (act >> getTriggers sources) nodeStuff
 
-runNode :: GameNode l r ph pl -> GameT l r ph pl t tn ()
+runNode :: (Ord l, Ord r) => GameNode l r ph pl -> GameT l r ph pl t tn ()
 runNode n = do
     result <- handleNode n
     traverse_ runNode result
@@ -193,8 +195,5 @@ data PhaseControl = One Player
 -- Key interpreter is to transfer function
 -- stuff source target
 data Transfer lname resource = Transfer resource lname lname deriving (Eq, Ord, Show, Generic)
-
-mkTransfer' :: (Ord name, Ord r) => Transfer name r -> Locations name r -> (Locations name r, Maybe r)
-mkTransfer' (Transfer r l l') = transfer r l l'
 
 

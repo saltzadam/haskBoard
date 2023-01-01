@@ -22,6 +22,8 @@ import Data.Bitraversable
 import Control.Monad.Trans.Reader
 import Control.Monad.Random (mkStdGen)
 import Game.Control (nextCyclic)
+import Control.Monad.State.Lazy
+import Control.Lens (modifying, at, ix, (?=), (<~), (%=), (%~))
 
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
@@ -35,6 +37,7 @@ maxSlot :: TrackName -> Int
 maxSlot t =  trackNum t + 1
 
 type TrackHeight = Int
+
 -- Resource -> Condition
 -- Resource -> Game
 -- Resource -> Phase
@@ -92,14 +95,25 @@ initGameObjects ps = GameObjects {
     locations = initPlayerL ps <> initTrackSlots <> initBoxTop,
     counters = initDice}
 
+rollDie :: Counter -> Counter
+rollDie = rollCounter
+
+rollDice' :: [CantStopAction]
+rollDice' = RollCounter <$> theDiceL 
+
+
+rollDice :: CantStopCondition [CantStopAction]
+rollDice = return rollDice'
 
 data CantStopTriggers deriving (Eq, Ord, Show, Generic)
 data MoveArity = TwoValueMove TrackName TrackName | OneValueMove TrackName deriving (Eq, Ord, Show, Generic)
 
-data CantStopPlayName = Move Player MoveArity | Stop Player
-data CantStopPhaseName = Roll | PlayerChoice deriving (Eq, Ord, Show, Generic)
-type CantStopTurns = Int
+data CantStopPlayName = Move Player MoveArity | Stop Player deriving (Eq, Ord, Show, Generic)
 
+
+
+data CantStopPhaseName = Turn Player deriving (Eq, Ord, Show, Generic)
+type CantStopTurns = Int
 type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopResource CantStopPlayName CantStopTurns CantStopTriggers
 
 type CantStopAction = GameAction CantStopLocation CantStopResource CantStopPhaseName
@@ -107,16 +121,20 @@ type CantStopAction = GameAction CantStopLocation CantStopResource CantStopPhase
 type CantStopCondition val = Condition CantStopLocation CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopTriggers val
 type CantStopGame = Game CantStopLocation CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopTriggers
 
-rollDice :: Counter -> Counter
-rollDice = rollCounter
 
-chooseTracksPhase :: Player -> CantStopPhase
-chooseTracksPhase p = Phase {name = PlayerChoice,
-                             enterAction = cEmpty,
-                             exitAction = cEmpty,
-                             control = One p,
-                             legal = moveLegal
-                            }
+
+
+
+playerTurn :: Player -> CantStopPhase
+playerTurn p = Phase {
+    name = Turn p,
+    enterAction = rollDice <> undefined, -- first roll, then choice
+    exitAction = undefined, -- check winner
+    legal = undefined,
+    control = undefined
+                     }
+
+
 
 -- add condition
 moveLegal :: CantStopPlayName -> CantStopCondition Bool
@@ -143,8 +161,10 @@ initGame :: [Player] -> CantStopGame
 initGame ps = Game {
     players = ps,
     objects = initGameObjects ps,
-    plays = cantStopPlays,
+    runPlay = undefined,
     randGen = mkStdGen 100,
+    triggers = [],
+    chooser = undefined,
     advancePlayer = nextCyclic,
     activePlayer=Nothing,
     turnNumber=1
@@ -154,18 +174,18 @@ initGame ps = Game {
 
 moveup :: Player -> TrackName -> CantStopCondition CantStopAction
 moveup p track = Condition $ do
-    g <- ask
+    g <- get
     return $ constructTransfer (currTempMarkerSpot g) (currPlayerMarkerSpot g)
         where
             trackSpots = [TrackSpot track num | num <- enumerateFromRoot, num <= maxSlot track]
             currTempMarkerSpot g = dropWhile (not . cHas g TemporaryMarker) trackSpots
             currPlayerMarkerSpot g = dropWhile (not . cHas g (PlayerMarker p)) trackSpots
             constructTransfer :: [CantStopLocation] -> [CantStopLocation] -> CantStopAction
-            constructTransfer (curr:next:_) _ = MakeTransfer (Transfer TemporaryMarker curr next)
+            constructTransfer (curr:next:_) _ = MkTransfer curr next TemporaryMarker 
             constructTransfer [_] _ = DoNothing
-            constructTransfer [] (curr:_:_) = MakeTransfer (Transfer TemporaryMarker BoxTop curr)
+            constructTransfer [] (curr:_:_) = MkTransfer BoxTop curr TemporaryMarker 
             constructTransfer _ [_] = DoNothing
-            constructTransfer [] [] = MakeTransfer (Transfer TemporaryMarker BoxTop (TrackSpot track 1))
+            constructTransfer [] [] = MkTransfer BoxTop (TrackSpot track 1) TemporaryMarker 
 
 
 
