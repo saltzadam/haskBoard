@@ -6,10 +6,11 @@
 -- {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Location where
 
-import Control.Lens (makeFields, over, ix, at, preview, set)
+import Control.Lens (makeFields, over, ix, at, preview, set, assign, view, (.~))
 import Count
 -- import Data.Array (Array)
 import Data.Generics.Labels ()
@@ -26,6 +27,8 @@ import Defaultable.Map (Defaultable(..))
 import qualified Defaultable.Map as D
 import Util (updatef, mapFinitary)
 import Data.Finitary
+import Control.Monad.State
+import Control.Monad.Random (RandomGen)
 
 -- Goal of this module is to enforce 'conversion of pieces', not game rules.
 -- Right now OLoc and ULoc are "piles of stuff" and "FIFO decks." Could work
@@ -141,12 +144,16 @@ decrement' = mapCounter (subtract 1)
 decrement :: Counter -> Counter
 decrement = fst . decrement'
 
-rollCounter :: MonadRandom m => Counter -> m Counter
-rollCounter c@(Counter _ (_, Infinity )) = return c
-rollCounter c@(Counter _ (Infinity, _)) = return c
-rollCounter (Counter _ (Cnt bl, Cnt bu)) = do
-    a <- getRandomR (bl, bu)
-    return (Counter (Cnt a) (Cnt bl, Cnt bu))
+-- TODO: this is still not the right type signature. Want something like
+-- StateT g m Counter 
+-- with more/different constraints
+rollCounter :: (Monad m, RandomGen g, MonadState Counter m) => Counter -> StateT g m Counter
+rollCounter c = do
+    let (bl,bu) = view #bounds c
+    newVal <- state (uniformR (bl,bu))
+    let c' = set #val newVal c
+    return c'
+
 
 data GameObjects n cn r = GameObjects {
     locations :: Locations n r,

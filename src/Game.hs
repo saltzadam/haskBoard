@@ -36,9 +36,11 @@ import Data.Monoid (Endo (..))
 import Data.Maybe (mapMaybe)
 import Data.Foldable (traverse_)
 import Count
-import Control.Monad.Random.Class
+-- import Control.Monad.Random.Class
 import Control.Monad.Trans (lift)
 import Control.Monad.Morph
+import System.Random.Stateful (uniform)
+import System.Random (uniformR)
 
 -- Need to define some types before Game.
 
@@ -154,6 +156,7 @@ instance RandomGen (Game l cn r phaseName playName turns triggerName) where
     genWord32 game = let (out, gen') = genWord32 (game ^. #randGen)
                     in (out, game & #randGen .~ gen')
 
+
 -- instance MonadRandom (GameS l cn r ph pl t tn) where
 --     getRandomR (bl,bu) = state (randomR (bl,bu))
 --     getRandom = state random
@@ -164,8 +167,6 @@ instance RandomGen (Game l cn r phaseName playName turns triggerName) where
 --         gen <- use #randGen
 --         return $ randoms gen
 
--- TODO: how to test this?
-
 act :: (Ord l, Ord r, Ord cn) => GameAction l cn r phaseName -> GameS l cn r phaseName playName turns triggerName ()
 act DoNothing = return ()
 act (MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
@@ -173,19 +174,18 @@ act (IncrementCounter c) = modifying (#objects . #counters . ix c) increment
 act (DecrementCounter c) = modifying (#objects . #counters . ix c) decrement
 act (SetCounter c v) = modifying (#objects . #counters . ix c) (`setCounter` v)
 act (RollCounter c) = do
-    gen <- gets (view #randGen)
     c' <- gets (view (#objects . #counters . at c))
     case c' of
       Nothing -> error "non-total counter map"
-      Just c'' ->  case view #bounds c'' of
-          (Infinity,_) -> return ()
-          (_,Infinity) -> return ()
-          (a,b) -> do
-              let (newVal, newGen) = randomR (a,b) gen
-              assign #randGen newGen
-              assign (#objects . #counters . ix c . #val ) newVal
-              -- TODO: c'mon
-    -- modifying (#objects . #counters . ix l) rollCounter
+      Just c'' -> do
+          let (bl,bu) = view #bounds c''
+          newVal <- state (uniformR (bl,bu))
+          assign (#objects . #counters . ix c . #val)  newVal
+
+          --     let (newVal, newGen) = randomR (a,b) gen
+          --     assign #randGen newGen
+          --     assign (#objects . #counters . ix c . #val ) newVal
+          --     -- TODO: c'mon
 act (ChangePhase ph) = undefined -- TODO: while we figure out control flow
 
 
