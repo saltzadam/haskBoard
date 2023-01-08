@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoFieldSelectors #-}
+-- {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE InstanceSigs #-}
@@ -16,21 +16,17 @@ import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)
-import Control.Monad.Random (Finite, UniformRange)
-import System.Random.Stateful (UniformRange(uniformRM), StatefulGen)
+import System.Random.Stateful (UniformRange(uniformRM), StatefulGen, Uniform (..))
+import Defaultable.Map (Defaultable(..))
+import qualified Defaultable.Map as D
+import Control.Monad.Random
+import Data.Bifunctor (bimap, Bifunctor (first))
 
 -- import Data.Finitary
 
 -- This is Maybe a with the opposite order for Nothing
 -- Use it for counting things, think about "unlimited" stuff
 data Cnt a = Cnt a | Infinity deriving (Eq, Show, Functor, Generic, Finite)
-
-instance UniformRange (Cnt Int) where
-    uniformRM :: forall m g. StatefulGen g m => (Cnt Int, Cnt Int) -> g -> m (Cnt Int)
-    uniformRM (a,b) g = Cnt <$> (uniformRM (toInt a, toInt b) g :: m Int)
-        where toInt :: Cnt Int -> Int
-              toInt (Cnt a) = a
-              toInt Infinity = maxBound :: Int
 
 instance Ord a => Ord (Cnt a) where
   (Cnt a) <= (Cnt b) = a <= b
@@ -66,8 +62,23 @@ instance Num a => Num (Cnt a) where
   (-) _ Infinity = error "no negative infinity"
   (-) (Cnt a) (Cnt b) = Cnt ((-) a b)
 
-histogramF :: (Foldable f, Ord a) => f a -> Map a (Cnt Int)
-histogramF = foldl' (flip (M.alter plusOrInsertOne)) M.empty
+infinityToMax :: Bounded a => Cnt a -> a
+infinityToMax Infinity = maxBound
+infinityToMax (Cnt a) = a
+
+safeTuple :: (Bounded a, Bounded b) => (Cnt a, Cnt b) -> (a,b)
+safeTuple = bimap infinityToMax infinityToMax
+
+instance Uniform a => Uniform (Cnt a) where
+    uniformM = fmap Cnt . uniformM
+
+instance (Bounded a, UniformRange a) => UniformRange (Cnt a) where
+    uniformRM lohi = fmap Cnt . uniformRM (safeTuple lohi)
+
+instance Random (Cnt Int)
+
+histogramF :: (Foldable f, Ord a) => f a -> Defaultable (Map a) (Cnt Int)
+histogramF foldable = Defaultable (foldl' (flip (M.alter plusOrInsertOne)) mempty foldable) (Just 0)
   where
     plusOrInsertOne = Just . maybe 0 (+ 1)
 

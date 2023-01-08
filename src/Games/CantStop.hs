@@ -123,8 +123,6 @@ type CantStopGame = Game CantStopLocation CantStopResource CantStopPhaseName Can
 
 
 
-
-
 playerTurn :: Player -> CantStopPhase
 playerTurn p = Phase {
     name = Turn p,

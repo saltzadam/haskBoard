@@ -12,13 +12,15 @@
     {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE NoFieldSelectors #-}
+-- {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use <&>" #-}
 module Game where
 
 -- import Data.Finitary
@@ -26,7 +28,7 @@ import GHC.Generics (Generic)
 import Game.Player
 import Location
 import Text.Show.Functions ()
-import Control.Monad.Random (StdGen)
+import Control.Monad.Random (StdGen, RandomGen (..), Random (..))
 import Control.Lens hiding (Empty, Choice)
 import Control.Applicative
 import Control.Monad.Trans.State
@@ -34,16 +36,19 @@ import Data.Monoid (Endo (..))
 import Data.Maybe (mapMaybe)
 import Data.Foldable (traverse_)
 import Count
+import Control.Monad.Random.Class
+import Control.Monad.Trans (lift)
+import Control.Monad.Morph
 
 -- Need to define some types before Game.
 
 -- These are the fundamental actions in a game. All the "verbs" of a game (besides the observations, e.g. "check" and "count") should be phrase in terms of these.
-data GameAction l r ph = DoNothing
+data GameAction l cn r ph = DoNothing
     | MkTransfer l l r
-    | IncrementCounter l
-    | DecrementCounter l
-    | SetCounter l (Cnt Int)
-    | RollCounter l
+    | IncrementCounter cn
+    | DecrementCounter cn
+    | SetCounter cn (Cnt Int)
+    | RollCounter cn
     | ChangePhase ph
     deriving (Eq, Ord, Show, Generic)
 
@@ -51,22 +56,22 @@ data GameAction l r ph = DoNothing
 -- Computations within a game which produce `a`.
 -- Want a good interace here so that we can evaluate, pretty-print, parse/validate, etc.
 -- Don't have that yet.
-newtype Condition l r ph pl t tn a = Condition {runCondition :: GameT l r ph pl t tn a}
+newtype Condition l cn r ph pl t tn a = Condition {runCondition :: GameS l cn r ph pl t tn a}
     deriving (Functor, Applicative, Monad, Generic)
 
-instance Semigroup a => Semigroup (Condition l r ph pl t tn a) where
+instance Semigroup a => Semigroup (Condition l cn r ph pl t tn a) where
     (<>) = liftA2 (<>)
 
-instance Monoid a => Monoid (Condition l r ph pl t tn a) where
+instance Monoid a => Monoid (Condition l cn r ph pl t tn a) where
     mempty = return mempty
 
 -- Compute a condition given a `Game`.
 -- Shows redunacy of current definition?
-evalCondition ::  Condition l r ph pl t tn a  -> (GameT l r ph pl t tn) a
+evalCondition ::  Condition l cn r ph pl t tn a  -> (GameS l cn r ph pl t tn) a
 evalCondition = view #runCondition
 
 -- To make Conditions easier to work with
-instance Num a => Num (Condition l r ph pl t tn a) where
+instance Num a => Num (Condition l cn r ph pl t tn a) where
     (+) = liftA2 (+)
     (*) = liftA2 (*)
     (-) = liftA2 (-)
@@ -85,65 +90,111 @@ data Choice pl = Choice Player [pl] deriving Generic
 -- The flow of a game looks like this: there is some sequence of `GaAeActions` (draw a card, advance the turn counter) until a player must make a `Choice`. Choices produce sequences of actions and additional choices, and so on. Also, 'GameAction` can indirectly produce choices via `Triggers`. For those `Triggers`, it's important to keep track of the parent actions and sources. Putting all of this together, we get a tree. The nodes are `GameNode`s.
 --
 -- `source` is a kind of shorthand -- just to make sure that triggers do not trigger themselves, for example.
-data GameNode l r ph pl = GameNode {
+data GameNode l cn r ph pl = GameNode {
         -- priority :: Int, -- don't need this yet
-        node :: Either (Choice pl) (GameAction l r ph),
+        node :: Either (Choice pl) (GameAction l cn r ph),
         source :: Maybe (l,r),
-        parents :: [GameNode l r ph pl]
+        parents :: [GameNode l cn r ph pl]
                                    } deriving (Generic)
 
 
 
--- `Triggers` are checked after each action.
--- The main thing is the `condition`. Given an action and a list of sources (immediate source at head)
--- and an action, should the trigger fire? If so, it will produce `GameNodes`.
-data Trigger l r ph pl t name = Trigger { condition :: [(l,r)] -> GameAction l r ph -> Condition l r ph pl t name [GameNode l r ph pl], -- should be NE list of sources
-                                     name :: name,
-                                     source :: (l,r)
-                                     -- prioirty :: Int
-                                   } deriving (Generic)
+-- -- `Triggers` are checked after each action.
+-- -- The main thing is the `condition`. Given an action and a list of sources (immediate source at head)
+-- -- and an action, should the trigger fire? If so, it will produce `GameNodes`.
+-- data Trigger l cn r ph pl t name = Trigger { condition :: [(l,r)] -> GameAction l cn r ph -> Condition l cn r ph pl t name [GameNode l cn r ph pl], -- should be NE list of sources
+--                                      name :: name,
+--                                      source :: (l,r)
+--                                      -- prioirty :: Int
+--                                    } deriving (Generic)
 
-runTrigger :: Trigger l r ph pl t name -> [(l,r)] -> GameAction l r ph -> Condition l r ph pl t name [GameNode l r ph pl]
-runTrigger = view #condition
+-- runTrigger :: Trigger l cn r ph pl t name -> [(l,r)] -> GameAction l r ph -> Condition l cn r ph pl t name [GameNode l cn r ph pl]
+-- runTrigger = view #condition
 
-instance Show name => Show (Trigger l r ph pl t name) where
-    show t = show (t ^. #name)
-
-act :: (Ord l, Ord r) => GameAction l r phaseName -> GameT l r phaseName playName turns triggerName ()
-act DoNothing = return ()
-act (MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
-act (IncrementCounter l) = modifying (#objects . #counters . ix l) increment
-act (DecrementCounter l) = modifying (#objects . #counters . ix l) decrement 
-act (SetCounter l v) = modifying (#objects . #counters . ix l) (`setCounter` v)
-act (RollCounter l) = modifying (#objects . #counters . ix l) rollCounter
-act (ChangePhase ph) = undefined -- TODO: while we figure out control flow
+-- instance Show name => Show (Trigger l cn r ph pl t name) where
+--     show t = show (t ^. #name)
 
 -- For now, `Game` is a big record of functions
 -- Could be replaced by something more monadic.
 -- Define a State type right below.
-data Game l r phaseName playName turns triggerName = Game
+data Game l cn r phaseName playName turns triggerName = Game
   { players :: [Player],
-    objects :: GameObjects l r,
-    runPlay ::  playName -> Condition l r phaseName playName turns triggerName [GameNode l r phaseName playName],
+    objects :: GameObjects l cn r,
+    runPlay ::  playName -> Condition l cn r phaseName playName turns triggerName [GameNode l cn r phaseName playName],
     randGen :: StdGen,
     chooser :: Choice playName -> playName,
-    triggers :: [Trigger l r phaseName playName turns triggerName],
-    advancePlayer :: Game l r phaseName playName turns triggerName -> Maybe Player,
+    -- triggers :: [Trigger l cn r phaseName playName turns triggerName],
+    advancePlayer :: Game l cn r phaseName playName turns triggerName -> Maybe Player,
     activePlayer :: Maybe Player,
     turnNumber :: turns
   }
   deriving (Generic)
 
-type GameT l r ph pl t tn = State (Game l r ph pl t tn)
+type GameS l cn r ph pl t tn = State (Game l cn r ph pl t tn)
+
+-- -- withRandGen :: (Monad m, Data.Generics.Product.Fields.HasField' "randGen" s a1) => (a1 -> (a2, s)) -> StateT s m a2
+-- withRandGen :: (StdGen -> (a, StdGen)) -> GameS l cn r ph pl t tn a
+-- withRandGen f = do
+--     gen <- use #randGen
+--     let (a, gen') = f gen
+--     assign #randGen gen'
+--     return a
+
+-- instance MonadRandom (GameS l cn r ph pl t tn) where
+--     getRandomR lohi = withRandGen (randomR lohi)
+--     getRandom = withRandGen random
+--     getRandomRs lohi =  randomRs lohi <$> use #randGen
+--     getRandoms = randoms <$> use #randGen
 
 makeFields ''Game
 
--- could rewrite GameT in this style?
+instance RandomGen (Game l cn r phaseName playName turns triggerName) where
+    split game = let (gen, gen') = split (game ^. #randGen)
+                  in (game & #randGen .~ gen, game & #randGen .~ gen')
+    genWord32 game = let (out, gen') = genWord32 (game ^. #randGen)
+                    in (out, game & #randGen .~ gen')
+
+-- instance MonadRandom (GameS l cn r ph pl t tn) where
+--     getRandomR (bl,bu) = state (randomR (bl,bu))
+--     getRandom = state random
+--     getRandomRs (bl,bu) = do
+--         gen <- use #randGen
+--         return $ randomRs (bl,bu) gen 
+--     getRandoms = do
+--         gen <- use #randGen
+--         return $ randoms gen
+
+-- TODO: how to test this?
+
+act :: (Ord l, Ord r, Ord cn) => GameAction l cn r phaseName -> GameS l cn r phaseName playName turns triggerName ()
+act DoNothing = return ()
+act (MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
+act (IncrementCounter c) = modifying (#objects . #counters . ix c) increment
+act (DecrementCounter c) = modifying (#objects . #counters . ix c) decrement
+act (SetCounter c v) = modifying (#objects . #counters . ix c) (`setCounter` v)
+act (RollCounter c) = do
+    gen <- gets (view #randGen)
+    c' <- gets (view (#objects . #counters . at c))
+    case c' of
+      Nothing -> error "non-total counter map"
+      Just c'' ->  case view #bounds c'' of
+          (Infinity,_) -> return ()
+          (_,Infinity) -> return ()
+          (a,b) -> do
+              let (newVal, newGen) = randomR (a,b) gen
+              assign #randGen newGen
+              assign (#objects . #counters . ix c . #val ) newVal
+              -- TODO: c'mon
+    -- modifying (#objects . #counters . ix l) rollCounter
+act (ChangePhase ph) = undefined -- TODO: while we figure out control flow
+
+
+-- could rewrite GameS in this style?
 -- class Monad m => MonadChoice m pl where
 --     choose :: Choice pl -> m pl
 
 -- But for now use this, basically ReaderT pattern.
-choosePlay :: Choice pl -> (GameT l r ph pl t tn) pl
+choosePlay :: Choice pl -> (GameS l cn r ph pl t tn) pl
 choosePlay c =  do
         g <- get
         let chooser = view #chooser g
@@ -151,45 +202,43 @@ choosePlay c =  do
 
 -- Given a `Choice`, create the appropriate Actions and decisions
 -- TODO: Triggers should pick up plays as well.
-chooseNode ::  Choice pl -> GameT l r ph pl t tn [GameNode l r ph pl]
+chooseNode ::  Choice pl -> GameS l cn r ph pl t tn [GameNode l cn r ph pl]
 chooseNode c = do
     pl <- choosePlay c
     playRunner <- use #runPlay
     evalCondition (playRunner pl)
 
--- Evaluate all the triggers on a particular instance of a `GameAction`.
--- TODO: As above, Triggers should pick up plays/choices as well.
-getTriggers :: [(l,r)] -> GameAction l r ph -> GameT l r ph pl t tn [GameNode l r ph pl]
-getTriggers sources action = do
-    triggers <- use #triggers
-    let conditions =  mconcat $  fmap (\t -> runTrigger t sources action) triggers
-    evalCondition conditions -- key here is that evalCondition only uses reader part of state
+-- -- Evaluate all the triggers on a particular instance of a `GameAction`.
+-- -- TODO: As above, Triggers should pick up plays/choices as well.
+-- getTriggers :: [(l,r)] -> GameAction l cn r ph -> GameS l cn r ph pl t tn [GameNode l cn r ph pl]
+-- getTriggers sources action = do
+--     triggers <- use #triggers
+--     let conditions =  mconcat $  fmap (\t -> runTrigger t sources action) triggers
+--     evalCondition conditions -- key here is that evalCondition only uses reader part of state
 
-handleNode :: (Ord l, Ord r) => GameNode l r ph pl -> GameT l r ph pl t tn [GameNode l r ph pl]
+handleNode :: (Ord l, Ord r, Ord cn) => GameNode l cn r ph pl -> GameS l cn r ph pl t tn (Either [GameNode l cn r ph pl] ())
 handleNode n = let
-        sources = mapMaybe (view #source) (n:view #parents n)
+        -- sources = mapMaybe (view #source) (n:view #parents n)
         nodeStuff = view #node n
-        in either chooseNode (act >> getTriggers sources) nodeStuff
+        in case nodeStuff of
+             Left n -> Left <$> chooseNode n
+             Right n' -> Right <$> act n'
+             -- TODO: what is the right idiom here
 
-runNode :: (Ord l, Ord r) => GameNode l r ph pl -> GameT l r ph pl t tn ()
+runNode :: (Ord l, Ord r, Ord cn) => GameNode l cn r ph pl -> GameS l cn r ph pl t tn ()
 runNode n = do
-    result <- handleNode n
-    traverse_ runNode result
+    result <- handleNode n 
+    case result of
+      Left nodes -> traverse_ runNode nodes
+      Right _ -> return ()
+    -- traverse_ runNode result
 
-data Phase phaseName l r playName t tn = Phase {
+data Phase phaseName l cn r playName t tn = Phase {
     name :: phaseName,
-    enterAction :: Condition l r phaseName playName t tn [GameAction l r phaseName],
-    exitAction :: Condition l r phaseName playName t tn [GameAction l r phaseName],
-    legal :: playName -> Condition l r phaseName playName t tn Bool,
-    control :: PhaseControl
-                                      }
+    seedNodes :: [GameNode l cn r phaseName playName]
+  }
 
 ---------------- Other stuff ------------------
-
-data PhaseControl = One Player
-                | Sequential [Player]
-                | Simultaneous [Player]
-                | None deriving (Eq, Ord, Show, Generic)
 
 -- Data representations of a Transfer
 -- Key interpreter is to transfer function
