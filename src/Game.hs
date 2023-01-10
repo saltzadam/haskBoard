@@ -28,20 +28,15 @@ import GHC.Generics (Generic)
 import Game.Player
 import Location
 import Text.Show.Functions ()
-import Control.Monad.Random (StdGen, RandomGen (..), Random (..))
+import Control.Monad.Random (StdGen, RandomGen (..))
 import Control.Lens hiding (Empty, Choice)
 import Control.Applicative
 import Control.Monad.Trans.State
-import Data.Monoid (Endo (..))
-import Data.Maybe (mapMaybe, fromJust)
 import Data.Foldable (traverse_)
 import Count
 -- import Control.Monad.Random.Class
-import Control.Monad.Trans (lift)
-import Control.Monad.Morph
-import System.Random.Stateful (uniform)
 import System.Random (uniformR)
-import FinitaryMap ((!!!), reifyFn, FTMap, ftIso, ftAt)
+import FinitaryMap (ftAt)
 import Data.Finitary
 
 -- Need to define some types before Game.

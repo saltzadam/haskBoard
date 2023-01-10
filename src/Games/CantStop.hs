@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -14,18 +13,14 @@ import Util
 import Game.Player (Player)
 import GHC.Generics
 import Game
-import qualified Data.Map as M
-import Location (Locations, LocationShape (..), Counter(..), GameObjects (..), counters, makeCounter, rollCounter, Counters, d6)
-import Data.Map (Map)
+import Location (Locations, LocationShape (..), Counter(..), GameObjects (..), counters, Counters, d6)
 import Count
 import Data.Tuple (swap)
 import Game.Condition
 import Data.Bitraversable
-import Control.Monad.Trans.Reader
 import Control.Monad.Random (mkStdGen)
 import Game.Control (nextCyclic)
 import Control.Monad.State.Lazy
-import Control.Lens (modifying, at, ix, (?=), (<~), (%=), (%~))
 import Data.Finitary (Finitary, inhabitants)
 import Defaultable.Map as D
 import qualified Data.Sequence as Seq

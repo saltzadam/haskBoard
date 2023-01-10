@@ -10,7 +10,7 @@
 
 module Location where
 
-import Control.Lens (makeFields, over, ix, at, preview, set, assign, view, (.~))
+import Control.Lens (makeFields, set, view)
 import Count
 -- import Data.Array (Array)
 import Data.Generics.Labels ()
@@ -20,25 +20,15 @@ import Data.Maybe (listToMaybe)
 import Data.Sequence (Seq ((:<|), Empty), (<|))
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
-import System.Random (StdGen(..))
-import Control.Monad.Random (mkStdGen, MonadRandom, randomRIO, getRandomR)
 import System.Random.Stateful (uniformR)
 import Defaultable.Map (Defaultable(..))
 import qualified Defaultable.Map as D
-import Util (updatef, mapFinitary)
-import Data.Finitary
 import Control.Monad.State
 import Control.Monad.Random (RandomGen)
 import FinitaryMap (FTMap, (!!!))
 import qualified FinitaryMap as FT
 
-
--- Goal of this module is to enforce 'conversion of pieces', not game rules.
--- Right now OLoc and ULoc are "piles of stuff" and "FIFO decks." Could work
--- on other things. If you need more control over placement then should probably
--- be creating more locations rather than more complicated location types.
-
-data LocationShape r = Deck (Seq r) | Pile (D.Defaultable (Map r) (Cnt Int)) | Slot (Maybe r) | Dummy -- | Counter Int (Maybe Int, Maybe Int)
+data LocationShape r = Deck (Seq r) | Pile (D.Defaultable (Map r) (Cnt Int)) | Slot (Maybe r) | Dummy 
  deriving (Eq, Ord, Show, Generic)
 
 type Locations names r = FTMap names (LocationShape r)
@@ -166,11 +156,4 @@ data GameObjects n cn r = GameObjects {
     counters :: Counters cn} deriving (Generic, Show)
 
 makeFields ''GameObjects
-
--- instance (Finitary n, Finitary cn, Ord n, Ord cn, Show n, Show r, Show cn) => Show (GameObjects n cn r) where
---     show (GameObjects ls cs) = let
---         objectData = (mapFinitary ls, mapFinitary cs)
---          in show objectData
-
-
 

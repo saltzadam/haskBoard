@@ -1,13 +1,8 @@
-{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 -- {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
+{-# LANGUAGE DeriveFunctor #-}
 
 module Count where
 
@@ -16,13 +11,10 @@ import Data.Foldable (foldl')
 import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)
-import System.Random.Stateful (UniformRange(uniformRM), StatefulGen, Uniform (..))
+import System.Random.Stateful (UniformRange(uniformRM), Uniform (..))
 import Defaultable.Map (Defaultable(..))
-import qualified Defaultable.Map as D
 import Control.Monad.Random
-import Data.Bifunctor (bimap, Bifunctor (first))
-
--- import Data.Finitary
+import Data.Bifunctor (bimap)
 
 -- This is Maybe a with the opposite order for Nothing
 -- Use it for counting things, think about "unlimited" stuff

@@ -1,9 +1,6 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE OverloadedLabels #-}
 module Game.Trigger where
 import Control.Monad.Trans.Reader (ReaderT)
 import Control.Monad.Trans.Class (lift, MonadTrans)
@@ -24,7 +21,6 @@ newtype TriggerEnvT e a b m c = TriggerEnvT {unwrap :: WriterT [a] (ReaderT (Abs
     deriving (Functor, Applicative, Monad,
               MonadReader (AbsAct e a b),
               MonadWriter [a])
-    -- deriving (Semigroup, Monoid) via (WriterT [a] (ReaderT (Tri a, ActionToF a b) m))
 
 instance (Semigroup c, Monad m) => Semigroup (TriggerEnvT e a b m c) where
     (<>) = liftA2 (<>)

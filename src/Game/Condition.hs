@@ -1,25 +1,17 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-    {-# LANGUAGE ScopedTypeVariables #-}
-
 module Game.Condition where
 
 import Count
 import Game
 import Control.Lens
-import Util
 import Location
 import Control.Monad.State.Lazy (get)
 import FinitaryMap (ftAt)
--- import Data.Text.Lazy (Text, pack)
--- import Formatting
--- import Formatting.ShortFormatters (sh)
+
 cEmpty :: Condition l cn r ph pl t tn [a]
 cEmpty = pure []
 

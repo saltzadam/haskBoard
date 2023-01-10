@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes #-}
 module FinitaryMap where
 import Prelude hiding (lookup)
 import Data.Finitary
@@ -9,10 +8,8 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)
 import GHC.Base (liftA2)
-import Control.Lens ( Contravariant, at, to, lens )
-import Data.Maybe (fromJust)
+import Control.Lens ( lens )
 import Control.Lens.Iso
-import Control.Lens.Prism
 
 newtype FTMap a b = FTMap {runFn :: a -> b} deriving (Generic, Functor, Applicative)
 
