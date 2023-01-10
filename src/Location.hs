@@ -29,6 +29,9 @@ import Util (updatef, mapFinitary)
 import Data.Finitary
 import Control.Monad.State
 import Control.Monad.Random (RandomGen)
+import FinitaryMap (FTMap, (!!!))
+import qualified FinitaryMap as FT
+
 
 -- Goal of this module is to enforce 'conversion of pieces', not game rules.
 -- Right now OLoc and ULoc are "piles of stuff" and "FIFO decks." Could work
@@ -38,7 +41,7 @@ import Control.Monad.Random (RandomGen)
 data LocationShape r = Deck (Seq r) | Pile (D.Defaultable (Map r) (Cnt Int)) | Slot (Maybe r) | Dummy -- | Counter Int (Maybe Int, Maybe Int)
  deriving (Eq, Ord, Show, Generic)
 
-type Locations names r = Map names (LocationShape r)
+type Locations names r = FTMap names (LocationShape r)
 
 
 dadjust :: Ord k => (a -> a) -> k -> Defaultable (Map k) a -> Defaultable (Map k) a
@@ -93,13 +96,13 @@ transfer' r loc loc' = case moveFromL r loc of
 
 transferSafe :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> (Locations name r, Maybe r)
 transferSafe r name0 name1 locs = let
-    loc0 = locs M.! name0
-    loc1 = locs M.! name1
+    loc0 = locs !!! name0
+    loc1 = locs !!! name1
     (loc0',loc1',mayber) = transfer' r loc0 loc1
     in
         case mayber of
           Nothing -> (locs, Nothing)
-          Just i -> (M.insert name0 loc0' . M.insert name1 loc1' $ locs, Just i)
+          Just i -> (FT.update (name0, loc0') . FT.update (name1, loc1') $ locs, Just i)
 
 transfer :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> Locations name r
 transfer r n0 n1 l = fst (transferSafe r n0 n1 l)
@@ -119,10 +122,13 @@ data Counter = Counter {val :: Cnt Int,
 
 makeFields ''Counter
 
-type Counters name = Map name Counter
+type Counters name = FTMap name Counter
 
 makeCounter :: (Cnt Int, Cnt Int) -> Counter
 makeCounter (a, b) = Counter a (a, b)
+
+d6 :: Counter
+d6 = makeCounter (Cnt 1, Cnt 6)
 
 mapCounter :: (Cnt Int -> Cnt Int) -> Counter -> (Counter, Maybe (Cnt Int))
 mapCounter f c@(Counter a (bl, bu)) = if f a >= bl && f a <= bl
@@ -165,5 +171,6 @@ makeFields ''GameObjects
 --     show (GameObjects ls cs) = let
 --         objectData = (mapFinitary ls, mapFinitary cs)
 --          in show objectData
+
 
 

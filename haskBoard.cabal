@@ -26,7 +26,7 @@ library
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl, finitary, defaultable-map, mmorph
-    exposed-modules: Count, Location, Game, Util, Game.Condition, Game.Player, Games.CantStop, Game.Control, Game.Trigger, Game.ActionChoice
+    exposed-modules: Count, Location, Game, Util, Game.Condition, Game.Player, Games.CantStop, Game.Control, Game.Trigger, Game.ActionChoice, FinitaryMap
     default-language: Haskell2010
     ghc-options:  -Wall
     -- Modules included in this executable, other than Main.

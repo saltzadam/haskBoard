@@ -8,7 +8,7 @@ import Data.List (elemIndex)
 import Data.Tree as Tree
 import Control.Monad.Trans.State
 
-nextCyclic :: Game l r ph pl t tn -> Maybe Player
+nextCyclic :: Game l cn r ph pl t tn -> Maybe Player
 nextCyclic g = case view #activePlayer g of
                  Nothing -> listToMaybe (view #players g)
                  Just p -> findNextCyclic p (view #players g)
@@ -21,11 +21,11 @@ findNextCyclic x xs = let
         then listToMaybe xs 
         else (xs !!) <$> ind 
 
-data Decision l r ph pl t tn = Decision deriving (Show)
+data Decision l cn r ph pl t tn = Decision deriving (Show)
 
-type TestEventNodes l r ph pl t tn = Either (Decision l r ph pl t tn) (GameAction l r ph)
+type TestEventNodes l cn r ph pl t tn = Either (Decision l cn r ph pl t tn) (GameAction l cn r ph)
 
-type TestEventTree l r ph pl t tn = Tree.Tree (TestEventNodes l r ph pl t tn)
+type TestEventTree l cn r ph pl t tn = Tree.Tree (TestEventNodes l cn r ph pl t tn)
 
 
 

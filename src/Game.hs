@@ -33,7 +33,7 @@ import Control.Lens hiding (Empty, Choice)
 import Control.Applicative
 import Control.Monad.Trans.State
 import Data.Monoid (Endo (..))
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, fromJust)
 import Data.Foldable (traverse_)
 import Count
 -- import Control.Monad.Random.Class
@@ -41,6 +41,8 @@ import Control.Monad.Trans (lift)
 import Control.Monad.Morph
 import System.Random.Stateful (uniform)
 import System.Random (uniformR)
+import FinitaryMap ((!!!), reifyFn, FTMap, ftIso, ftAt)
+import Data.Finitary
 
 -- Need to define some types before Game.
 
@@ -167,25 +169,17 @@ instance RandomGen (Game l cn r phaseName playName turns triggerName) where
 --         gen <- use #randGen
 --         return $ randoms gen
 
-act :: (Ord l, Ord r, Ord cn) => GameAction l cn r phaseName -> GameS l cn r phaseName playName turns triggerName ()
+
+act :: (Ord l, Ord r, Ord cn, Finitary cn) => GameAction l cn r phaseName -> GameS l cn r phaseName playName turns triggerName ()
 act DoNothing = return ()
 act (MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
-act (IncrementCounter c) = modifying (#objects . #counters . ix c) increment
-act (DecrementCounter c) = modifying (#objects . #counters . ix c) decrement
-act (SetCounter c v) = modifying (#objects . #counters . ix c) (`setCounter` v)
+act (IncrementCounter c) = modifying (#objects . #counters . ftAt c) increment
+act (DecrementCounter c) = modifying (#objects . #counters . ftAt c) decrement
+act (SetCounter c v) = modifying (#objects . #counters . ftAt c) (`setCounter` v)
 act (RollCounter c) = do
-    c' <- gets (view (#objects . #counters . at c))
-    case c' of
-      Nothing -> error "non-total counter map"
-      Just c'' -> do
-          let (bl,bu) = view #bounds c''
-          newVal <- state (uniformR (bl,bu))
-          assign (#objects . #counters . ix c . #val)  newVal
-
-          --     let (newVal, newGen) = randomR (a,b) gen
-          --     assign #randGen newGen
-          --     assign (#objects . #counters . ix c . #val ) newVal
-          --     -- TODO: c'mon
+    (bl, bu) <- gets (view (#objects . #counters . ftAt c . #bounds))
+    newVal <- state (uniformR (bl,bu))
+    assign (#objects . #counters . ftAt c . #val)  newVal
 act (ChangePhase ph) = undefined -- TODO: while we figure out control flow
 
 
@@ -216,7 +210,7 @@ chooseNode c = do
 --     let conditions =  mconcat $  fmap (\t -> runTrigger t sources action) triggers
 --     evalCondition conditions -- key here is that evalCondition only uses reader part of state
 
-handleNode :: (Ord l, Ord r, Ord cn) => GameNode l cn r ph pl -> GameS l cn r ph pl t tn (Either [GameNode l cn r ph pl] ())
+handleNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl -> GameS l cn r ph pl t tn (Either [GameNode l cn r ph pl] ())
 handleNode n = let
         -- sources = mapMaybe (view #source) (n:view #parents n)
         nodeStuff = view #node n
@@ -225,7 +219,7 @@ handleNode n = let
              Right n' -> Right <$> act n'
              -- TODO: what is the right idiom here
 
-runNode :: (Ord l, Ord r, Ord cn) => GameNode l cn r ph pl -> GameS l cn r ph pl t tn ()
+runNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl -> GameS l cn r ph pl t tn ()
 runNode n = do
     result <- handleNode n 
     case result of
