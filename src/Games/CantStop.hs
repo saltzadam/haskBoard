@@ -6,6 +6,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE EmptyDataDeriving #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE DeriveAnyClass #-}
 module Games.CantStop where
 
@@ -19,12 +20,14 @@ import Data.Tuple (swap)
 import Game.Condition
 import Data.Bitraversable
 import Control.Monad.Random (mkStdGen)
-import Game.Control (nextCyclic)
 import Control.Monad.State.Lazy
 import Data.Finitary (Finitary, inhabitants)
 import Defaultable.Map as D
 import qualified Data.Sequence as Seq
 import FinitaryMap
+import GHC.Base (liftA2)
+import Control.Lens (uses, use)
+import Data.Maybe (fromJust, listToMaybe)
 
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
@@ -86,12 +89,17 @@ data CantStopPlayName = Move Player MoveArity | Stop Player deriving (Eq, Ord, S
 
 data CantStopPhaseName = Turn Player deriving (Eq, Ord, Show, Generic)
 type CantStopTurns = Int
-type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource CantStopPlayName CantStopTurns CantStopTriggers
+type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource CantStopPlayName CantStopTurns CantStopTriggers 
 
 type CantStopAction = GameAction CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 
 type CantStopCondition val = Condition CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopTriggers val
-type CantStopGame = Game CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopTriggers
+type CantStopGame = Game CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName  CantStopTurns CantStopTriggers
+type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName   CantStopTurns CantStopTriggers
+type CantStopChoice = Choice  CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName  CantStopTurns CantStopTriggers
+
+type CantStopGameS = State CantStopGame
+type CantStopActionS = CantStopGameS CantStopAction
 
 rollDice' :: [CantStopAction]
 rollDice' = RollCounter <$> (inhabitants :: [CantStopCounterName])
@@ -102,17 +110,41 @@ rollDice = return rollDice'
 playerTurn :: Player -> CantStopPhase
 playerTurn p = Phase {
     name = Turn p,
-    seedNodes = undefined
+    seedNodes = [rollNode, chooseToRollOrStopNode p]
                      }
 
--- add condition
-moveLegal :: CantStopPlayName -> CantStopCondition Bool
-moveLegal (Stop _) = cTrue
-moveLegal (Move _ (TwoValueMove s t)) = cIn <*> pure (Cnt $ trackNum s, Cnt $ trackNum t) <*> diceVals
-moveLegal (Move _ (OneValueMove s)) = cIn <*> pure (Cnt $ trackNum s, Cnt $ trackNum s) <*> diceVals
 
-diceVals :: CantStopCondition [(Cnt Int, Cnt Int)]
-diceVals = mapM (bitraverse makeSum makeSum) (mkPairs theDiceL) where
+-- good spot for a helper, esp w/ `parents`
+rollNode :: CantStopGameNode
+rollNode = GameNode {
+        node = Right rollDice',
+        source = Nothing,
+        parents = [],
+        owner = Nothing
+                    }
+
+chooseToRollOrStopNode :: Player -> CantStopGameNode -- (CantStopGameS [CantStopPlayName])
+chooseToRollOrStopNode p = GameNode {
+    node = Left (chooseToRollOrStop p),
+    source = Nothing,
+    owner = Just p,
+    parents = []
+                                  }
+
+chooseToRollOrStop :: Player -> CantStopChoice
+chooseToRollOrStop p = liftA2 (++) (legalRolls p) (pure [Stop p]) where
+    legalRolls :: Player -> CantStopGameS [CantStopPlayName]
+    legalRolls p = fmap (fmap (makeRoll p)) diceVals
+    makeRoll :: Player -> (Cnt Int, Cnt Int) -> CantStopPlayName
+    makeRoll p (x,y) = if x == y 
+                        then Move p (OneValueMove (coerceEnum x))
+                        else Move p (TwoValueMove (coerceEnum x) (coerceEnum y))
+
+
+
+
+diceVals :: CantStopGameS [(Cnt Int, Cnt Int)]
+diceVals = runCondition $ mapM (bitraverse makeSum makeSum) (mkPairs theDiceL) where
     makeSum (c, c') = cCounterVal c + cCounterVal c'
     mkPairs :: (a,a,a,a) -> [((a,a),(a,a))]
     mkPairs (x,y,w,z) = let
@@ -121,10 +153,18 @@ diceVals = mapM (bitraverse makeSum makeSum) (mkPairs theDiceL) where
                          in pairs1 ++ pairs2
 
 
-cantStopPlays :: CantStopPlayName -> CantStopCondition [CantStopAction]
-cantStopPlays (Stop p) = undefined
-cantStopPlays (Move p (TwoValueMove s t)) = sequence [moveup p s, moveup p t]
-cantStopPlays (Move p (OneValueMove s)) = sequence [moveup p s, moveup p s]
+advancePlayer :: CantStopGameS Player
+advancePlayer = do
+    ps <- use #players
+    p  <- use #activePlayer
+    case p of
+      Nothing -> return $ head ps
+      Just p' -> return (fromJust $ nextCyclic p' ps) -- Lame
+
+cantStopPlays :: CantStopPlayName -> [CantStopActionS]
+cantStopPlays (Stop _) = [ChangePhase . Turn <$> advancePlayer]
+cantStopPlays (Move p (TwoValueMove s t)) = [moveup p s, moveup p t]
+cantStopPlays (Move p (OneValueMove s)) = [moveup p s, moveup p s]
 
 initGame :: [Player] -> CantStopGame
 initGame ps = Game {
@@ -133,15 +173,14 @@ initGame ps = Game {
     runPlay = undefined,
     randGen = mkStdGen 100,
     chooser = undefined,
-    advancePlayer = nextCyclic,
     activePlayer=Nothing,
     turnNumber=1
                    }
 -- mkList :: (Eq a, Show a) => [C2 l r ph a] -> C2 l r ph [a]
 -- mkList = foldr Cons Empty
 
-moveup :: Player -> TrackName -> CantStopCondition CantStopAction
-moveup p track = Condition $ do
+moveup :: Player -> TrackName -> CantStopActionS
+moveup p track = do
     g <- get
     return $ constructTransfer (currTempMarkerSpot g) (currPlayerMarkerSpot g)
         where

@@ -38,6 +38,7 @@ import Count
 import System.Random (uniformR)
 import FinitaryMap (ftAt)
 import Data.Finitary
+import Data.Bitraversable
 
 -- Need to define some types before Game.
 
@@ -51,6 +52,7 @@ data GameAction l cn r ph = DoNothing
     | ChangePhase ph
     deriving (Eq, Ord, Show, Generic)
 
+type GameActionS l cn r ph pl t tn = GameS l cn r ph pl t tn (GameAction l cn r ph)
 
 -- Computations within a game which produce `a`.
 -- Want a good interace here so that we can evaluate, pretty-print, parse/validate, etc.
@@ -82,18 +84,19 @@ instance Num a => Num (Condition l cn r ph pl t tn a) where
 
 -- A play `pl` is just a choice that a player must make. `Choice` is a set of plays
 -- to be presented to a player.
-data Choice pl = Choice Player [pl] deriving Generic
+type Choice l cn r ph pl t tn = GameS l cn r ph pl t tn [pl]
 
 
 
 -- The flow of a game looks like this: there is some sequence of `GaAeActions` (draw a card, advance the turn counter) until a player must make a `Choice`. Choices produce sequences of actions and additional choices, and so on. Also, 'GameAction` can indirectly produce choices via `Triggers`. For those `Triggers`, it's important to keep track of the parent actions and sources. Putting all of this together, we get a tree. The nodes are `GameNode`s.
 --
 -- `source` is a kind of shorthand -- just to make sure that triggers do not trigger themselves, for example.
-data GameNode l cn r ph pl = GameNode {
+data GameNode l cn r ph pl t tn = GameNode {
         -- priority :: Int, -- don't need this yet
-        node :: Either (Choice pl) (GameAction l cn r ph),
+        node :: Either (Choice l cn r ph pl t tn) [GameAction l cn r ph],
         source :: Maybe (l,r),
-        parents :: [GameNode l cn r ph pl]
+        owner :: Maybe Player,
+        parents :: [GameNode l cn r ph pl t tn]
                                    } deriving (Generic)
 
 
@@ -119,11 +122,10 @@ data GameNode l cn r ph pl = GameNode {
 data Game l cn r phaseName playName turns triggerName = Game
   { players :: [Player],
     objects :: GameObjects l cn r,
-    runPlay ::  playName -> Condition l cn r phaseName playName turns triggerName [GameNode l cn r phaseName playName],
+    runPlay ::  playName -> Condition l cn r phaseName playName turns triggerName [GameNode l cn r phaseName playName turns triggerName],
     randGen :: StdGen,
-    chooser :: Choice playName -> playName,
+    chooser :: Choice l cn r phaseName playName turns triggerName -> playName,
     -- triggers :: [Trigger l cn r phaseName playName turns triggerName],
-    advancePlayer :: Game l cn r phaseName playName turns triggerName -> Maybe Player,
     activePlayer :: Maybe Player,
     turnNumber :: turns
   }
@@ -183,7 +185,7 @@ act (ChangePhase ph) = undefined -- TODO: while we figure out control flow
 --     choose :: Choice pl -> m pl
 
 -- But for now use this, basically ReaderT pattern.
-choosePlay :: Choice pl -> (GameS l cn r ph pl t tn) pl
+choosePlay :: Choice l cn r ph pl t tn -> (GameS l cn r ph pl t tn) pl
 choosePlay c =  do
         g <- get
         let chooser = view #chooser g
@@ -191,7 +193,7 @@ choosePlay c =  do
 
 -- Given a `Choice`, create the appropriate Actions and decisions
 -- TODO: Triggers should pick up plays as well.
-chooseNode ::  Choice pl -> GameS l cn r ph pl t tn [GameNode l cn r ph pl]
+chooseNode ::  Choice l cn r ph pl t tn -> GameS l cn r ph pl t tn [GameNode l cn r ph pl t tn]
 chooseNode c = do
     pl <- choosePlay c
     playRunner <- use #runPlay
@@ -205,26 +207,19 @@ chooseNode c = do
 --     let conditions =  mconcat $  fmap (\t -> runTrigger t sources action) triggers
 --     evalCondition conditions -- key here is that evalCondition only uses reader part of state
 
-handleNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl -> GameS l cn r ph pl t tn (Either [GameNode l cn r ph pl] ())
-handleNode n = let
-        -- sources = mapMaybe (view #source) (n:view #parents n)
-        nodeStuff = view #node n
-        in case nodeStuff of
-             Left n -> Left <$> chooseNode n
-             Right n' -> Right <$> act n'
-             -- TODO: what is the right idiom here
+handleNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl t tn -> GameS l cn r ph pl t tn (Either [GameNode l cn r ph pl t tn] ())
+handleNode n =  bitraverse chooseNode (traverse_ act) (view #node n)
 
-runNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl -> GameS l cn r ph pl t tn ()
+runNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl t tn -> GameS l cn r ph pl t tn ()
 runNode n = do
     result <- handleNode n 
     case result of
       Left nodes -> traverse_ runNode nodes
       Right _ -> return ()
-    -- traverse_ runNode result
 
 data Phase phaseName l cn r playName t tn = Phase {
     name :: phaseName,
-    seedNodes :: [GameNode l cn r phaseName playName]
+    seedNodes :: [GameNode l cn r phaseName playName t tn]
   }
 
 ---------------- Other stuff ------------------

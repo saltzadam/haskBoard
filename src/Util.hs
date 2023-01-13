@@ -1,9 +1,12 @@
 module Util where
+{-# LANGUAGE ScopedTypeVariables #-}
 
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Finitary
 import Control.Lens (lens)
+import Data.List (findIndex, elemIndex)
+import Data.Maybe (listToMaybe)
 
 compose :: [a -> a] -> (a -> a)
 compose = foldr (.) id
@@ -13,6 +16,16 @@ root = toEnum 0
 
 enumerateFromRoot :: (Bounded a, Enum a) => [a]
 enumerateFromRoot = toEnum <$> [0 .. maxBound]
+
+coerceEnum :: (Enum a, Enum b) => a -> b
+coerceEnum = toEnum . fromEnum
+
+nextCyclic :: Eq a => a -> [a] -> Maybe a
+nextCyclic y xs = go y xs xs where
+    go :: Eq a => a -> [a] -> [a] -> Maybe a
+    go y (x:x':xs) xs' = if y == x then Just x' else go y (x':xs) xs'
+    go y [x] xs' = if y == x then listToMaybe xs' else Nothing
+    go y [] _ = Nothing
 
 enumConstMap :: (Enum e, Bounded e, Ord e) => a -> Map e a
 enumConstMap y = M.fromList [(x, y) | x <- enumerateFromRoot]

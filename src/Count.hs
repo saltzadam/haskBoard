@@ -67,6 +67,11 @@ instance Uniform a => Uniform (Cnt a) where
 instance (Bounded a, UniformRange a) => UniformRange (Cnt a) where
     uniformRM lohi = fmap Cnt . uniformRM (safeTuple lohi)
 
+instance Enum (Cnt Int) where
+    toEnum = Cnt
+    fromEnum (Cnt x) = x
+    fromEnum Infinity = maxBound
+
 instance Random (Cnt Int)
 
 histogramF :: (Foldable f, Ord a) => f a -> Defaultable (Map a) (Cnt Int)
