@@ -8,7 +8,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE DeriveAnyClass #-}
-module Games.CantStop where
+module CantStop where
 
 import Util
 import Game.Player (Player)
@@ -176,8 +176,6 @@ initGame ps = Game {
     activePlayer=Nothing,
     turnNumber=1
                    }
--- mkList :: (Eq a, Show a) => [C2 l r ph a] -> C2 l r ph [a]
--- mkList = foldr Cons Empty
 
 moveup :: Player -> TrackName -> CantStopActionS
 moveup p track = do
