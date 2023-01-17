@@ -55,6 +55,13 @@ instance (Finitary a, Ord a, Ord b) => Ord (FTMap a b) where
 update :: Eq a => (a,b) -> FTMap a b  -> FTMap a b
 update (a,b) f = FTMap (\x -> if x == a then b else runFn f x)
 
+filter :: (Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
+filter filt = M.filter filt .  reifyFn
+
+filterKey :: Finitary a => (a -> Bool) -> FTMap a b -> Map a b
+filterKey filt = M.filterWithKey (\k _ -> filt k) . reifyFn
+
+
 -- Lenses
 
 -- This is not actually an isomorphism. It's a map with a section, i.e. an embedding.

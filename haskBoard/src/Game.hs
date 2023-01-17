@@ -39,6 +39,8 @@ import System.Random (uniformR)
 import FinitaryMap (ftAt)
 import Data.Finitary
 import Data.Bitraversable
+import Control.Monad (join, ap)
+import Control.Monad ((>=>))
 
 -- Need to define some types before Game.
 
@@ -122,14 +124,18 @@ data GameNode l cn r ph pl t tn = GameNode {
 data Game l cn r phaseName playName turns triggerName = Game
   { players :: [Player],
     objects :: GameObjects l cn r,
-    runPlay ::  playName -> Condition l cn r phaseName playName turns triggerName [GameNode l cn r phaseName playName turns triggerName],
+    runPlay ::  playName -> GameS l cn r phaseName playName turns triggerName [GameNode l cn r phaseName playName turns triggerName],
     randGen :: StdGen,
     chooser :: Choice l cn r phaseName playName turns triggerName -> playName,
+    -- legalMoves :: Choice l cn r phaseName playName turns triggerName
     -- triggers :: [Trigger l cn r phaseName playName turns triggerName],
     activePlayer :: Maybe Player,
     turnNumber :: turns
   }
   deriving (Generic)
+
+getRunPlay :: pl ->  GameS l cn r ph pl t tn [GameNode l cn r ph pl t tn]
+getRunPlay play = join (use #runPlay <*> pure play)
 
 type GameS l cn r ph pl t tn = State (Game l cn r ph pl t tn)
 
@@ -193,11 +199,8 @@ choosePlay c =  do
 
 -- Given a `Choice`, create the appropriate Actions and decisions
 -- TODO: Triggers should pick up plays as well.
-chooseNode ::  Choice l cn r ph pl t tn -> GameS l cn r ph pl t tn [GameNode l cn r ph pl t tn]
-chooseNode c = do
-    pl <- choosePlay c
-    playRunner <- use #runPlay
-    evalCondition (playRunner pl)
+chooseNode :: Choice l cn r ph pl t tn -> GameS l cn r ph pl t tn [GameNode l cn r ph pl t tn]
+chooseNode c = choosePlay c >>= getRunPlay
 
 -- -- Evaluate all the triggers on a particular instance of a `GameAction`.
 -- -- TODO: As above, Triggers should pick up plays/choices as well.

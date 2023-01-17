@@ -7,6 +7,7 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Location where
 
@@ -16,7 +17,7 @@ import Count
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (listToMaybe)
+import Data.Maybe (listToMaybe, isJust, mapMaybe)
 import Data.Sequence (Seq ((:<|), Empty), (<|))
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
@@ -25,13 +26,26 @@ import Defaultable.Map (Defaultable(..))
 import qualified Defaultable.Map as D
 import Control.Monad.State
 import Control.Monad.Random (RandomGen)
-import FinitaryMap (FTMap, (!!!))
+import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
+import Data.Finitary
 
-data LocationShape r = Deck (Seq r) | Pile (D.Defaultable (Map r) (Cnt Int)) | Slot (Maybe r) | Dummy 
+data LocationShape r = Deck (Seq r) | Pile (D.Defaultable (Map r) (Cnt Int)) | Slot (Maybe r) | Dummy
  deriving (Eq, Ord, Show, Generic)
 
 type Locations names r = FTMap names (LocationShape r)
+
+defaultToSearchableList :: (Ord r, Finitary r) => D.Defaultable (Map r) (Cnt Int) -> [r]
+defaultToSearchableList dmap = go (finDefaultToList dmap) [] where
+    -- for each step:   look only at keys with positive values
+    --                  add those keys to the result
+    --                  subtract one from all values
+    --                  repeat until there are no keys left
+    go :: [(r,Cnt Int)] -> [r] -> [r]
+    go pairs result = if null pairs then result
+                        else go (fmap (subtract 1) <$> pairs) (result ++ fmap fst pairs)
+    finDefaultToList :: (Ord r, Finitary r) => D.Defaultable (Map r) a -> [(r,a)]
+    finDefaultToList dmap' =  mapMaybe (\r -> sequence (r, D.lookup r dmap')) inhabitants
 
 
 dadjust :: Ord k => (a -> a) -> k -> Defaultable (Map k) a -> Defaultable (Map k) a
@@ -74,6 +88,13 @@ has' loc r = case fmap (>0) (D.lookup r (inventory loc)) of
               Just True -> True
               _ -> False
 
+findResourceWithin :: Ord r => r -> [n] -> Locations n r -> [n]
+findResourceWithin res names locs = filter (\n -> (locs !!! n) `has'` res) names
+
+findResource :: (Finitary n, Eq r, Ord r) => r -> Locations n r -> [n]
+findResource res = findResourceWithin res inhabitants
+
+--
 -- laws!
 transfer' :: Ord r => r -> LocationShape r -> LocationShape r -> (LocationShape r, LocationShape r, Maybe r)
 transfer' r loc loc' = case moveFromL r loc of
@@ -156,4 +177,6 @@ data GameObjects n cn r = GameObjects {
     counters :: Counters cn} deriving (Generic, Show)
 
 makeFields ''GameObjects
+
+
 

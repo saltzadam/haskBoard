@@ -20,12 +20,12 @@ enumerateFromRoot = toEnum <$> [0 .. maxBound]
 coerceEnum :: (Enum a, Enum b) => a -> b
 coerceEnum = toEnum . fromEnum
 
-nextCyclic :: Eq a => a -> [a] -> Maybe a
-nextCyclic y xs = go y xs xs where
-    go :: Eq a => a -> [a] -> [a] -> Maybe a
-    go y (x:x':xs) xs' = if y == x then Just x' else go y (x':xs) xs'
-    go y [x] xs' = if y == x then listToMaybe xs' else Nothing
-    go y [] _ = Nothing
+unsafeNextCyclic :: Eq a => a -> [a] -> a
+unsafeNextCyclic y xs = go y xs xs where
+    go :: Eq a => a -> [a] -> [a] -> a
+    go y (x:x':xs) xs' = if y == x then x' else go y (x':xs) xs'
+    go y [_] xs' = head xs'
+    go y [] xs' = error "unsafeNextCyclic x xs wit hx not in xs"
 
 enumConstMap :: (Enum e, Bounded e, Ord e) => a -> Map e a
 enumConstMap y = M.fromList [(x, y) | x <- enumerateFromRoot]
