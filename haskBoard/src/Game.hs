@@ -25,7 +25,6 @@ module Game where
 
 -- import Data.Finitary
 import GHC.Generics (Generic)
-import Game.Player
 import Location
 import Text.Show.Functions ()
 import Control.Monad.Random (StdGen, RandomGen (..))
@@ -38,6 +37,7 @@ import System.Random (uniformR)
 import FinitaryMap (ftAt)
 import Data.Finitary
 import Control.Monad ( join )
+import Data.Set (Set)
 
 -- Need to define some types before Game.
 
@@ -52,27 +52,27 @@ data GameAction l cn r ph = DoNothing
     | EndGame
     deriving (Eq, Ord, Show, Generic)
 
-type GameActionS l cn r ph pl t tn = GameS l cn r ph pl t tn (GameAction l cn r ph)
+type GameActionS l cn r ph pl t pls = GameS l cn r ph pl t pls (GameAction l cn r ph)
 
 -- Computations within a game which produce `a`.
 -- Want a good interace here so that we can evaluate, pretty-print, parse/validate, etc.
 -- Don't have that yet.
-newtype Condition l cn r ph pl t tn a = Condition {runCondition :: GameS l cn r ph pl t tn a}
+newtype Condition l cn r ph pl t pls a = Condition {runCondition :: GameS l cn r ph pl t pls a}
     deriving (Functor, Applicative, Monad, Generic)
 
-instance Semigroup a => Semigroup (Condition l cn r ph pl t tn a) where
+instance Semigroup a => Semigroup (Condition l cn r ph pl t pls a) where
     (<>) = liftA2 (<>)
 
-instance Monoid a => Monoid (Condition l cn r ph pl t tn a) where
+instance Monoid a => Monoid (Condition l cn r ph pl t pls a) where
     mempty = return mempty
 
 -- Compute a condition given a `Game`.
 -- Shows redunacy of current definition?
-evalCondition ::  Condition l cn r ph pl t tn a  -> (GameS l cn r ph pl t tn) a
+evalCondition ::  Condition l cn r ph pl t pls a  -> (GameS l cn r ph pl t pls) a
 evalCondition = view #runCondition
 
 -- To make Conditions easier to work with
-instance Num a => Num (Condition l cn r ph pl t tn a) where
+instance Num a => Num (Condition l cn r ph pl t pls a) where
     (+) = liftA2 (+)
     (*) = liftA2 (*)
     (-) = liftA2 (-)
@@ -84,64 +84,62 @@ instance Num a => Num (Condition l cn r ph pl t tn a) where
 
 -- A play `pl` is just a choice that a player must make. `Choice` is a set of plays
 -- to be presented to a player.
-type Choice l cn r ph pl t tn = GameS l cn r ph pl t tn [pl]
+type Choice l cn r ph pl t pls = GameS l cn r ph pl t pls [pl]
 
 
 
 -- The flow of a game looks like this: there is some sequence of `GaAeActions` (draw a card, advance the turn counter) until a player must make a `Choice`. Choices produce sequences of actions and additional choices, and so on. Also, 'GameAction` can indirectly produce choices via `Triggers`. For those `Triggers`, it's important to keep track of the parent actions and sources. Putting all of this together, we get a tree. The nodes are `GameNode`s.
 --
 -- `source` is a kind of shorthand -- just to make sure that triggers do not trigger themselves, for example.
-data GameNode l cn r ph pl t tn = GameNode {
+data GameNode l cn r ph pl t pls = GameNode {
         -- priority :: Int, -- don't need this yet
-        node :: Either (Choice l cn r ph pl t tn) [GameAction l cn r ph],
+        node :: Either (Choice l cn r ph pl t pls) [GameAction l cn r ph],
         source :: Maybe (l,r),
-        owner :: Maybe Player,
-        parents :: [GameNode l cn r ph pl t tn]
+        owner :: Maybe pls,
+        parents :: [GameNode l cn r ph pl t pls]
                                    } deriving (Generic)
 
 
 
-mkActionNode :: GameAction l cn r ph -> GameNode l cn r ph pl t tn
+mkActionNode :: GameAction l cn r ph -> GameNode l cn r ph pl t pls
 mkActionNode action = GameNode (Right [action]) Nothing Nothing []
 
-mkActionNodeS :: GameAction l cn r ph -> GameS l cn r ph pl t tn (GameNode l cn r ph pl t tn)
+mkActionNodeS :: GameAction l cn r ph -> GameS l cn r ph pl t pls (GameNode l cn r ph pl t pls)
 mkActionNodeS = pure . mkActionNode
 
-mkActionNodeL :: [GameAction l cn r ph] -> GameNode l cn r ph pl t tn
+mkActionNodeL :: [GameAction l cn r ph] -> GameNode l cn r ph pl t pls
 mkActionNodeL action = GameNode (Right action) Nothing Nothing []
 
-mkChoiceNode :: Player -> Choice l cn r ph pl t tn -> GameNode l cn r ph pl t tn
+mkChoiceNode :: pls -> Choice l cn r ph pl t pls -> GameNode l cn r ph pl t pls
 mkChoiceNode p choice = GameNode (Left choice) Nothing (Just p) []
 
 
-data Phase phaseName l cn r playName t tn = Phase {
+data Phase phaseName l cn r playName t pls = Phase {
     name :: phaseName,
-    seedNodes :: [GameNode l cn r phaseName playName t tn]
-  }
+    seedNodes :: [GameNode l cn r phaseName playName t pls]
+  } deriving (Generic)
 
 
 -- For now, `Game` is a big record of functions
 -- Could be replaced by something more monadic.
 -- Define a State type right below.
-data Game l cn r phaseName playName turns triggerName = Game
-  { players :: [Player],
+data Game l cn r phaseName playName turns players = Game
+  { players :: Set players,
     objects :: GameObjects l cn r,
-    runPlay ::  playName -> GameS l cn r phaseName playName turns triggerName [GameNode l cn r phaseName playName turns triggerName],
+    runPlay ::  playName -> GameS l cn r phaseName playName turns players [GameNode l cn r phaseName playName turns players],
     randGen :: StdGen,
-    chooser :: Choice l cn r phaseName playName turns triggerName -> playName,
-    currentStack :: [GameNode l cn r phaseName playName turns triggerName],
-    -- triggers :: [Trigger l cn r phaseName playName turns triggerName],
-    activePlayer :: Maybe Player,
+    chooser :: Choice l cn r phaseName playName turns players -> playName,
+    currentStack :: [GameNode l cn r phaseName playName turns players],
     turnNumber :: turns,
     currentPhase :: phaseName,
-    phases :: phaseName -> Phase phaseName l cn r playName turns triggerName
+    phases :: phaseName -> Phase phaseName l cn r playName turns players
   }
   deriving (Generic)
 
-getRunPlay :: pl ->  GameS l cn r ph pl t tn [GameNode l cn r ph pl t tn]
+getRunPlay :: pl ->  GameS l cn r ph pl t pls [GameNode l cn r ph pl t pls]
 getRunPlay play = join (use #runPlay <*> pure play)
 
-type GameS l cn r ph pl t tn = State (Game l cn r ph pl t tn)
+type GameS l cn r ph pl t pls = State (Game l cn r ph pl t pls)
 
 makeFields ''Game
 
@@ -182,17 +180,17 @@ act EndGame = undefined
 --     choose :: Choice pl -> m pl
 
 -- But for now use this, basically ReaderT pattern.
-choosePlay :: Choice l cn r ph pl t tn -> (GameS l cn r ph pl t tn) pl
+choosePlay :: Choice l cn r ph pl t pls -> (GameS l cn r ph pl t pls) pl
 choosePlay c =  do
         chooser <- use #chooser
         return (chooser c)
 
 -- Given a `Choice`, create the appropriate Actions and decisions
-chooseNode :: Choice l cn r ph pl t tn -> GameS l cn r ph pl t tn [GameNode l cn r ph pl t tn]
+chooseNode :: Choice l cn r ph pl t pls -> GameS l cn r ph pl t pls [GameNode l cn r ph pl t pls]
 chooseNode c = choosePlay c >>= getRunPlay
 
 -- Need to be able to stop computing for e.g. phase change.
-runNodes :: (Ord l, Ord r, Ord cn, Finitary cn) => [GameNode l cn r ph pl t tn] -> GameS l cn r ph pl t tn ()
+runNodes :: (Ord l, Ord r, Ord cn, Finitary cn) => [GameNode l cn r ph pl t pls] -> GameS l cn r ph pl t pls ()
 runNodes [] = pure () -- don't let this happen!
 runNodes (aNode:rest) = case view #node aNode of
     Left aChoice -> do
@@ -205,7 +203,7 @@ runNodes (aNode:rest) = case view #node aNode of
           Terminate -> pure ()
     where
        actControl :: (Ord l, Ord r, Ord cn, Finitary cn) => 
-           [GameAction l cn r ph] -> GameS l cn r ph pl t tn ControlAction
+           [GameAction l cn r ph] -> GameS l cn r ph pl t pls ControlAction
        actControl [] = pure None
        actControl (action:moreActions) = do
            control <- act action
