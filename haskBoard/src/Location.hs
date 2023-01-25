@@ -88,6 +88,8 @@ has' loc r = case fmap (>0) (D.lookup r (inventory loc)) of
               Just True -> True
               _ -> False
 
+
+
 findResourceWithin :: Ord r => r -> [n] -> Locations n r -> [n]
 findResourceWithin res names locs = filter (\n -> (locs !!! n) `has'` res) names
 

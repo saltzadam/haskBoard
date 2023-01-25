@@ -27,3 +27,9 @@ cCounterVal cn = Condition $ view (#objects . #counters . ftAt cn . #val) <$> ge
 cHas :: (Ord r, Ord l) => Game l cn r ph pl t tn -> r -> l -> Bool
 cHas g res loc = (`has'` res) . view (#objects . #locations . ftAt loc) $ g
 
+sHas :: (Ord r, Ord l) => r -> l -> GameS l cn r ph pl t tn Bool
+sHas res loc = do
+    locView <- use (#objects . #locations . ftAt loc)
+    return (locView `has'` res)
+
+

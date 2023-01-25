@@ -32,15 +32,12 @@ import Control.Monad.Random (StdGen, RandomGen (..))
 import Control.Lens hiding (Empty, Choice)
 import Control.Applicative
 import Control.Monad.Trans.State
-import Data.Foldable (traverse_)
 import Count
 -- import Control.Monad.Random.Class
 import System.Random (uniformR)
 import FinitaryMap (ftAt)
 import Data.Finitary
-import Data.Bitraversable
-import Control.Monad (join, ap)
-import Control.Monad ((>=>))
+import Control.Monad ( join )
 
 -- Need to define some types before Game.
 
@@ -52,6 +49,7 @@ data GameAction l cn r ph = DoNothing
     | SetCounter cn (Cnt Int)
     | RollCounter cn
     | ChangePhase ph
+    | EndGame
     deriving (Eq, Ord, Show, Generic)
 
 type GameActionS l cn r ph pl t tn = GameS l cn r ph pl t tn (GameAction l cn r ph)
@@ -103,20 +101,24 @@ data GameNode l cn r ph pl t tn = GameNode {
 
 
 
--- -- `Triggers` are checked after each action.
--- -- The main thing is the `condition`. Given an action and a list of sources (immediate source at head)
--- -- and an action, should the trigger fire? If so, it will produce `GameNodes`.
--- data Trigger l cn r ph pl t name = Trigger { condition :: [(l,r)] -> GameAction l cn r ph -> Condition l cn r ph pl t name [GameNode l cn r ph pl], -- should be NE list of sources
---                                      name :: name,
---                                      source :: (l,r)
---                                      -- prioirty :: Int
---                                    } deriving (Generic)
+mkActionNode :: GameAction l cn r ph -> GameNode l cn r ph pl t tn
+mkActionNode action = GameNode (Right [action]) Nothing Nothing []
 
--- runTrigger :: Trigger l cn r ph pl t name -> [(l,r)] -> GameAction l r ph -> Condition l cn r ph pl t name [GameNode l cn r ph pl]
--- runTrigger = view #condition
+mkActionNodeS :: GameAction l cn r ph -> GameS l cn r ph pl t tn (GameNode l cn r ph pl t tn)
+mkActionNodeS = pure . mkActionNode
 
--- instance Show name => Show (Trigger l cn r ph pl t name) where
---     show t = show (t ^. #name)
+mkActionNodeL :: [GameAction l cn r ph] -> GameNode l cn r ph pl t tn
+mkActionNodeL action = GameNode (Right action) Nothing Nothing []
+
+mkChoiceNode :: Player -> Choice l cn r ph pl t tn -> GameNode l cn r ph pl t tn
+mkChoiceNode p choice = GameNode (Left choice) Nothing (Just p) []
+
+
+data Phase phaseName l cn r playName t tn = Phase {
+    name :: phaseName,
+    seedNodes :: [GameNode l cn r phaseName playName t tn]
+  }
+
 
 -- For now, `Game` is a big record of functions
 -- Could be replaced by something more monadic.
@@ -127,10 +129,12 @@ data Game l cn r phaseName playName turns triggerName = Game
     runPlay ::  playName -> GameS l cn r phaseName playName turns triggerName [GameNode l cn r phaseName playName turns triggerName],
     randGen :: StdGen,
     chooser :: Choice l cn r phaseName playName turns triggerName -> playName,
-    -- legalMoves :: Choice l cn r phaseName playName turns triggerName
+    currentStack :: [GameNode l cn r phaseName playName turns triggerName],
     -- triggers :: [Trigger l cn r phaseName playName turns triggerName],
     activePlayer :: Maybe Player,
-    turnNumber :: turns
+    turnNumber :: turns,
+    currentPhase :: phaseName,
+    phases :: phaseName -> Phase phaseName l cn r playName turns triggerName
   }
   deriving (Generic)
 
@@ -138,20 +142,6 @@ getRunPlay :: pl ->  GameS l cn r ph pl t tn [GameNode l cn r ph pl t tn]
 getRunPlay play = join (use #runPlay <*> pure play)
 
 type GameS l cn r ph pl t tn = State (Game l cn r ph pl t tn)
-
--- -- withRandGen :: (Monad m, Data.Generics.Product.Fields.HasField' "randGen" s a1) => (a1 -> (a2, s)) -> StateT s m a2
--- withRandGen :: (StdGen -> (a, StdGen)) -> GameS l cn r ph pl t tn a
--- withRandGen f = do
---     gen <- use #randGen
---     let (a, gen') = f gen
---     assign #randGen gen'
---     return a
-
--- instance MonadRandom (GameS l cn r ph pl t tn) where
---     getRandomR lohi = withRandGen (randomR lohi)
---     getRandom = withRandGen random
---     getRandomRs lohi =  randomRs lohi <$> use #randGen
---     getRandoms = randoms <$> use #randGen
 
 makeFields ''Game
 
@@ -162,28 +152,29 @@ instance RandomGen (Game l cn r phaseName playName turns triggerName) where
                     in (out, game & #randGen .~ gen')
 
 
--- instance MonadRandom (GameS l cn r ph pl t tn) where
---     getRandomR (bl,bu) = state (randomR (bl,bu))
---     getRandom = state random
---     getRandomRs (bl,bu) = do
---         gen <- use #randGen
---         return $ randomRs (bl,bu) gen 
---     getRandoms = do
---         gen <- use #randGen
---         return $ randoms gen
+data ControlAction = None | Terminate deriving (Eq, Ord, Generic)
 
+noControl :: Monad m => m () -> m ControlAction
+noControl x = x >> pure None
 
-act :: (Ord l, Ord r, Ord cn, Finitary cn) => GameAction l cn r phaseName -> GameS l cn r phaseName playName turns triggerName ()
-act DoNothing = return ()
-act (MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
-act (IncrementCounter c) = modifying (#objects . #counters . ftAt c) increment
-act (DecrementCounter c) = modifying (#objects . #counters . ftAt c) decrement
-act (SetCounter c v) = modifying (#objects . #counters . ftAt c) (`setCounter` v)
-act (RollCounter c) = do
+terminateAfter :: Monad m => m () -> m ControlAction
+terminateAfter x = x >> pure Terminate
+
+act :: (Ord l, Ord r, Ord cn, Finitary cn) => GameAction l cn r phaseName -> GameS l cn r phaseName playName turns triggerName ControlAction
+act DoNothing = noControl $ return ()
+act (MkTransfer l l' r) = noControl $ modifying (#objects . #locations) (transfer r l l')
+act (IncrementCounter c) = noControl $ modifying (#objects . #counters . ftAt c) increment
+act (DecrementCounter c) = noControl $ modifying (#objects . #counters . ftAt c) decrement
+act (SetCounter c v) = noControl $ modifying (#objects . #counters . ftAt c) (`setCounter` v)
+act (RollCounter c) = noControl $ do
     (bl, bu) <- gets (view (#objects . #counters . ftAt c . #bounds))
     newVal <- state (uniformR (bl,bu))
     assign (#objects . #counters . ftAt c . #val)  newVal
-act (ChangePhase ph) = undefined -- TODO: while we figure out control flow
+act (ChangePhase ph) = terminateAfter $ do
+                        assign #currentPhase ph
+                        newPhase <- uses #phases ($ ph)
+                        assign #currentStack (seedNodes newPhase)
+act EndGame = undefined
 
 
 -- could rewrite GameS in this style?
@@ -193,38 +184,38 @@ act (ChangePhase ph) = undefined -- TODO: while we figure out control flow
 -- But for now use this, basically ReaderT pattern.
 choosePlay :: Choice l cn r ph pl t tn -> (GameS l cn r ph pl t tn) pl
 choosePlay c =  do
-        g <- get
-        let chooser = view #chooser g
+        chooser <- use #chooser
         return (chooser c)
 
 -- Given a `Choice`, create the appropriate Actions and decisions
--- TODO: Triggers should pick up plays as well.
 chooseNode :: Choice l cn r ph pl t tn -> GameS l cn r ph pl t tn [GameNode l cn r ph pl t tn]
 chooseNode c = choosePlay c >>= getRunPlay
 
--- -- Evaluate all the triggers on a particular instance of a `GameAction`.
--- -- TODO: As above, Triggers should pick up plays/choices as well.
--- getTriggers :: [(l,r)] -> GameAction l cn r ph -> GameS l cn r ph pl t tn [GameNode l cn r ph pl]
--- getTriggers sources action = do
---     triggers <- use #triggers
---     let conditions =  mconcat $  fmap (\t -> runTrigger t sources action) triggers
---     evalCondition conditions -- key here is that evalCondition only uses reader part of state
+-- Need to be able to stop computing for e.g. phase change.
+runNodes :: (Ord l, Ord r, Ord cn, Finitary cn) => [GameNode l cn r ph pl t tn] -> GameS l cn r ph pl t tn ()
+runNodes [] = pure () -- don't let this happen!
+runNodes (aNode:rest) = case view #node aNode of
+    Left aChoice -> do
+        chosen <- chooseNode aChoice
+        runNodes (chosen ++ rest)
+    Right anAction -> do
+        controlAction <- actControl anAction -- traverse_ actGo anAction >> runNodes rest
+        case controlAction of 
+          None -> runNodes rest
+          Terminate -> pure ()
+    where
+       actControl :: (Ord l, Ord r, Ord cn, Finitary cn) => 
+           [GameAction l cn r ph] -> GameS l cn r ph pl t tn ControlAction
+       actControl [] = pure None
+       actControl (action:moreActions) = do
+           control <- act action
+           case control of
+             None -> actControl moreActions
+             Terminate -> pure Terminate
+        
 
-handleNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl t tn -> GameS l cn r ph pl t tn (Either [GameNode l cn r ph pl t tn] ())
-handleNode n =  bitraverse chooseNode (traverse_ act) (view #node n)
-
-runNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl t tn -> GameS l cn r ph pl t tn ()
-runNode n = do
-    result <- handleNode n 
-    case result of
-      Left nodes -> traverse_ runNode nodes
-      Right _ -> return ()
-
-data Phase phaseName l cn r playName t tn = Phase {
-    name :: phaseName,
-    seedNodes :: [GameNode l cn r phaseName playName t tn]
-  }
-
+--
+--
 ---------------- Other stuff ------------------
 
 -- Data representations of a Transfer
