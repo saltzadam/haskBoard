@@ -38,20 +38,31 @@ import Data.Set (Set)
 import qualified Data.Set as S
 
 data CantStopPlayer = PlayerOne | PlayerTwo | PlayerThree | PlayerFour deriving (Eq, Ord, Show, Generic)
+instance Finitary CantStopPlayer
 type CantStopPlayers = Set CantStopPlayer
+
+dummyPlayers :: CantStopPlayers
+dummyPlayers = S.fromList inhabitants
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
   deriving (Eq, Ord, Show, Enum, Bounded, Generic)
   deriving anyclass (Finitary)
 
+data TrackHeight = HOne | HTwo | HThree | HFour | HFive | HSix | HSeven | HEight | HNine | HTen deriving (Eq, Ord, Show, Enum, Generic)
+
 trackNum :: TrackName -> Int
 trackNum t = fromEnum t + 2
 
-maxSlot :: TrackName -> Int
-maxSlot t = trackNum t + 1
+maxSlot :: TrackName -> TrackHeight
+maxSlot t = if t <= Seven
+            then toEnum (trackNum t)
+            else toEnum (14 - trackNum t)
 
+getHeight :: TrackHeight -> Int
+getHeight h = fromEnum h + 1
 
-type TrackHeight = Int
+instance Finitary TrackHeight
+
 data CantStopResource = PlayerMarker CantStopPlayer | TemporaryMarker deriving (Eq, Ord, Show, Generic)
 
 
@@ -61,9 +72,11 @@ data CantStopLocation
   | PlayerStuff CantStopPlayer
   deriving (Eq, Ord, Show, Generic)
 
+instance Finitary CantStopLocation
+
 -- TODO: what value are we getting from NonEmpty
 trackSlots :: TrackName -> NonEmpty CantStopLocation
-trackSlots track = NE.fromList $ TrackSpot track <$> [1 .. maxSlot track]
+trackSlots track = NE.fromList $ TrackSpot track <$> [HOne .. maxSlot track]
 
 data CantStopCounterName = DieOne | DieTwo | DieThree | DieFour
   deriving (Eq, Ord, Show, Generic, Enum)
@@ -76,7 +89,7 @@ type CantStopCounters = Counters CantStopCounterName
 type CantStopGameObjects = GameObjects CantStopLocation CantStopCounterName CantStopResource
 
 allSpots :: [CantStopLocation]
-allSpots = [TrackSpot name height | name <- inhabitants, height <- [1 .. maxSlot name]]
+allSpots = [TrackSpot name height | name <- inhabitants, height <- [HOne .. maxSlot name]]
 
 theDiceL :: (CantStopCounterName, CantStopCounterName, CantStopCounterName, CantStopCounterName)
 theDiceL = (DieOne, DieTwo, DieThree, DieFour)
@@ -84,7 +97,7 @@ theDiceL = (DieOne, DieTwo, DieThree, DieFour)
 initLocations' :: CantStopPlayers -> CantStopLocation -> LocationShape CantStopResource
 initLocations' _ (TrackSpot _ _) = Deck Seq.empty
 initLocations' _ BoxTop = Pile (D.singleton (TemporaryMarker, 3))
-initLocations' players (PlayerStuff player) 
+initLocations' players (PlayerStuff player)
     | player `S.member` players = Pile (D.singleton (PlayerMarker player, 11))
     | otherwise = Dummy
 
@@ -125,6 +138,8 @@ type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopRe
 
 type CantStopChoice = Choice CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopPlayer
 
+type CantStopChooser = Chooser CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopPlayer
+
 type CantStopGameS = State CantStopGame
 
 type CantStopActionS = CantStopGameS CantStopAction
@@ -132,11 +147,14 @@ type CantStopActionS = CantStopGameS CantStopAction
 rollDice' :: [CantStopAction]
 rollDice' = RollCounter <$> (inhabitants :: [CantStopCounterName])
 
+rollNodes :: [CantStopGameNode]
+rollNodes = mkActionNode <$> rollDice'
+
 playerTurn :: CantStopPlayer -> CantStopPhase
 playerTurn p =
   Phase
     { name = Turn p,
-      seedNodes = [rollNode, chooseToRollOrStopNode p]
+      seedNodes = rollNodes ++ [chooseToRollOrStopNode p]
     }
 
 winnerPhase :: CantStopPlayer -> CantStopPhase
@@ -150,10 +168,6 @@ currentPlayer :: CantStopPhaseName -> CantStopPlayer
 currentPlayer (Winner p) = p
 currentPlayer (Turn p) = p
 
--- good spot for a helper, esp w/ `parents`
-rollNode :: CantStopGameNode
-rollNode = mkActionNodeL rollDice'
-
 chooseToRollOrStopNode :: CantStopPlayer -> CantStopGameNode
 chooseToRollOrStopNode p = mkChoiceNode p (chooseToRollOrStop p)
 
@@ -161,6 +175,9 @@ chooseToRollOrStopNode p = mkChoiceNode p (chooseToRollOrStop p)
 -- andThen xs y = liftA2 (<>) xs (pure [y])
 andThen :: GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn x -> GameS l cn r ph pl t tn [x]
 andThen xs y = liftA2 (<>) xs (fmap (: []) y)
+
+andThens :: GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn [x]
+andThens = liftA2 (<>)
 
 also = andThen
 
@@ -172,8 +189,10 @@ chooseToRollOrStop p = legalRolls p `also` pure (Stop p)
     makeRoll :: CantStopPlayer -> (Cnt Int, Cnt Int) -> CantStopPlayName
     makeRoll p (x, y) =
       if x == y
-        then Move p (OneValueMove (coerceEnum x))
-        else Move p (TwoValueMove (coerceEnum x) (coerceEnum y))
+        then Move p (OneValueMove (diceToTrack x))
+        else Move p (TwoValueMove (diceToTrack x) (diceToTrack y))
+    diceToTrack :: Cnt Int -> TrackName
+    diceToTrack x = toEnum . fromEnum $ (x - 2)
 
 diceVals :: CantStopGameS [(Cnt Int, Cnt Int)]
 diceVals = runCondition $ mapM (bitraverse makeSum makeSum) (mkPairs theDiceL)
@@ -188,13 +207,19 @@ diceVals = runCondition $ mapM (bitraverse makeSum makeSum) (mkPairs theDiceL)
 advancePlayer :: CantStopGameS CantStopPlayer
 advancePlayer = do
   ps <- use #players
-  pName <- use #currentPhase 
+  pName <- use #currentPhase
   let cPlayer = currentPlayer pName
-  return (unsafeNextCyclic cPlayer (S.toList ps)) 
+  return (unsafeNextCyclic cPlayer (S.toList ps))
 
 cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (Turn p) = playerTurn p
 cantStopPhases (Winner p) = winnerPhase p
+
+
+
+testChooser :: CantStopChooser
+testChooser = (chooseRandomFromList =<<)
+
 
 initGame :: CantStopPlayers -> CantStopGame
 initGame ps =
@@ -203,21 +228,16 @@ initGame ps =
       objects = initGameObjects ps,
       runPlay = csRunPlay,
       randGen = mkStdGen 100,
-      chooser = undefined,
+      chooser = testChooser,
       turnNumber = 1,
       currentPhase = Turn (head (S.toList ps)),
       currentStack = view #seedNodes (cantStopPhases (Turn (head (S.toList ps)))), -- TODO: c'mon
       phases = cantStopPhases
     }
 
-displayObjects :: CantStopGameObjects -> String
-displayObjects objects = let
-    diceShow = show (objects ^. #counters) 
-    trackShow = show (objects ^. #locations)
-      in diceShow
 
-displayGame :: CantStopGame -> String
-displayGame game = show (game ^. #players) ++ "\n"
+
+
 
 -- Where do we decide legality?
 -- in legalMoves / chooser in Game. In other words,
@@ -237,7 +257,7 @@ csRunPlay (Stop pl) = do
   let nextp = unsafeNextCyclic pl (S.toList ps)
   resolveMarkers pl
     `andThen` checkWinner
-    `andThen` mkActionNodeS (ChangePhase (Turn nextp))
+    `andThen` pure (mkActionNode (ChangePhase (Turn nextp)))
 
 checkWinner :: CantStopGameS CantStopGameNode
 checkWinner = do
@@ -270,20 +290,20 @@ moveMarkerBy pl s amt = do
   case (listToMaybe tempMarkerLocs, listToMaybe playerMarkerLocs) of
     -- if the TemporaryMarker is out, move 2 (or 1 if there's not enough space)
     (Just slot@(TrackSpot s height), _) ->
-      let gap = min (maxSlot s - height) amt -- this is >0, otherwise move would be illegal
-          nextSlot = TrackSpot s (height + gap) -- target slot
+      let gap = min (getHeight (maxSlot s) - getHeight height) amt -- this is >0, otherwise move would be illegal
+          nextSlot = TrackSpot s (height <+ gap) -- target slot
        in return [mkMoveNode pl (MkTransfer slot nextSlot TemporaryMarker)]
     -- if you can't find the temporary marker, look for the player marker on that track
     -- if you find it, place the TemporaryMarker
     (Nothing, Just (TrackSpot s height)) ->
-      let nextSlot = TrackSpot s (height + (amt - 1)) -- subtract 1 because you use one move to line up
+      let nextSlot = TrackSpot s (height <+ (amt - 1)) -- subtract 1 because you use one move to line up
        in return [mkMoveNode pl (MkTransfer BoxTop nextSlot TemporaryMarker)]
     -- if you don't find it, just place the TemporaryMarker
     -- don't subtract here -- moving "from 0."
-    (Nothing, Nothing) -> return [mkMoveNode pl (MkTransfer BoxTop (TrackSpot s amt) TemporaryMarker)]
+    (Nothing, Nothing) -> return [mkMoveNode pl (MkTransfer BoxTop (TrackSpot s (toEnum amt)) TemporaryMarker)]
 
 mkMoveNode :: CantStopPlayer -> CantStopAction -> CantStopGameNode
-mkMoveNode p action = GameNode (Right [action]) Nothing (Just p) []
+mkMoveNode p action = GameNode (Right action) (Just p)
 
 -- ODO: knock off other markers
 -- no, leave them on. Let UI/legality-checking handle them

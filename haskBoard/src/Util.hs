@@ -46,3 +46,9 @@ fnLens = lens id (\f a b x -> if x == a then b else f x)
 
 reifyFn :: (Finitary a, Ord a) => (a -> b) -> Map a b
 reifyFn f = M.fromAscList [(a, f a) | a <- inhabitants]
+
+shift :: Enum a => a -> Int -> a
+shift a i = toEnum $ fromEnum a + i 
+
+(<+) :: Enum a => a -> Int -> a
+(<+) = shift

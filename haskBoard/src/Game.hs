@@ -21,6 +21,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use <&>" #-}
+{-# HLINT ignore "Use tuple-section" #-}
 module Game where
 
 -- import Data.Finitary
@@ -30,7 +31,7 @@ import Text.Show.Functions ()
 import Control.Monad.Random (StdGen, RandomGen (..))
 import Control.Lens hiding (Empty, Choice)
 import Control.Applicative
-import Control.Monad.Trans.State
+import Control.Monad.Trans.State.Lazy
 import Count
 -- import Control.Monad.Random.Class
 import System.Random (uniformR)
@@ -38,6 +39,8 @@ import FinitaryMap (ftAt)
 import Data.Finitary
 import Control.Monad ( join )
 import Data.Set (Set)
+import Data.Bitraversable (bitraverse)
+import Data.Tree (Tree(..), unfoldForestM)
 
 -- Need to define some types before Game.
 
@@ -51,6 +54,72 @@ data GameAction l cn r ph = DoNothing
     | ChangePhase ph
     | EndGame
     deriving (Eq, Ord, Show, Generic)
+
+-- A play `pl` is just a choice that a player must make. `Choice` is a set of plays
+-- to be presented to a player.
+type Choice l cn r ph pl t pls = GameS l cn r ph pl t pls [pl]
+
+type Chooser l cn r ph pl t pls = GameS l cn r ph pl t pls [pl] -> GameS l cn r ph pl t pls pl
+
+
+choose  :: Choice l cn r ph pl t pls -> GameS l cn r ph pl t pls pl
+choose choice =  gets chooser >>= ($ choice)
+
+-- The flow of a game looks like this: there is some sequence of `GameActions` (draw a card, advance the turn counter) until a player must make a `Choice`. Choices produce sequences of actions and additional choices, and so on. Also, 'GameAction` can indirectly produce choices via `Triggers`. For those `Triggers`, it's important to keep track of the parent actions and sources.
+--
+-- `source` is a kind of shorthand -- just to make sure that triggers do not trigger themselves, for example.
+data GameNode l cn r ph pl t pls = GameNode {
+        -- priority :: Int, -- don't need this yet
+        node :: Either (Choice l cn r ph pl t pls) (GameAction l cn r ph),
+        -- sourceL :: Maybe l, -- premature
+        -- sourceR :: Maybe r,
+        owner :: Maybe pls
+        -- parents :: [GameNode l cn r ph pl t pls]
+                                   } deriving (Generic)
+
+mkActionNode :: GameAction l cn r ph -> GameNode l cn r ph pl t pls
+mkActionNode action = GameNode (Right action) Nothing
+
+mkChoiceNode :: pls -> Choice l cn r ph pl t pls -> GameNode l cn r ph pl t pls
+mkChoiceNode p choice = GameNode (Left choice) (Just p)
+
+data Phase phaseName l cn r playName t pls = Phase {
+    name :: phaseName,
+    seedNodes :: [GameNode l cn r phaseName playName t pls]
+  } deriving (Generic)
+
+
+-- For now, `Game` is a big record of functions
+-- Could be replaced by something more monadic.
+-- Define a State type right below.
+data Game l cn r phaseName playName turns players = Game
+  { players :: Set players,
+    objects :: GameObjects l cn r,
+    runPlay ::  playName -> GameS l cn r phaseName playName turns players [GameNode l cn r phaseName playName turns players],
+    randGen :: StdGen,
+    chooser :: Chooser l cn r phaseName playName turns players,
+    -- No longer need this -- the currentPhase tells you how things start, then unfolding the tree finishes things off
+    -- ChangePhase terminates the current computation and sets a new set of seedNodes to unfold!
+    -- currentStack :: [Tree (GameNode l cn r phaseName playName turns players)],
+    turnNumber :: turns,
+    currentPhase :: phaseName,
+    phases :: phaseName -> Phase phaseName l cn r playName turns players
+  }
+  deriving (Generic)
+
+getRunPlay :: pl ->  GameS l cn r ph pl t pls [GameNode l cn r ph pl t pls]
+getRunPlay play = join (use #runPlay <*> pure play)
+
+type GameS l cn r ph pl t pls = State (Game l cn r ph pl t pls)
+
+makeFields ''Game
+
+instance RandomGen (Game l cn r phaseName playName turns triggerName) where
+    split game = let (gen, gen') = split (game ^. #randGen)
+                  in (game & #randGen .~ gen, game & #randGen .~ gen')
+    genWord32 game = let (out, gen') = genWord32 (game ^. #randGen)
+                    in (out, game & #randGen .~ gen')
+
 
 type GameActionS l cn r ph pl t pls = GameS l cn r ph pl t pls (GameAction l cn r ph)
 
@@ -82,135 +151,72 @@ instance Num a => Num (Condition l cn r ph pl t pls a) where
 
 
 
--- A play `pl` is just a choice that a player must make. `Choice` is a set of plays
--- to be presented to a player.
-type Choice l cn r ph pl t pls = GameS l cn r ph pl t pls [pl]
 
+-- TODO: need to think about Terminate more carefully.
+-- Right now, the stack is just a list, so Terminate kills the whole process
+-- Need a smarter way to do this, but overengineering for now.
+-- data ControlAction = None
+--                    -- | Terminate 
+--                    deriving (Eq, Ord, Generic)
 
+-- noControl :: Monad m => m () -> m ControlAction
+-- noControl x = x >> pure None
 
--- The flow of a game looks like this: there is some sequence of `GaAeActions` (draw a card, advance the turn counter) until a player must make a `Choice`. Choices produce sequences of actions and additional choices, and so on. Also, 'GameAction` can indirectly produce choices via `Triggers`. For those `Triggers`, it's important to keep track of the parent actions and sources. Putting all of this together, we get a tree. The nodes are `GameNode`s.
---
--- `source` is a kind of shorthand -- just to make sure that triggers do not trigger themselves, for example.
-data GameNode l cn r ph pl t pls = GameNode {
-        -- priority :: Int, -- don't need this yet
-        node :: Either (Choice l cn r ph pl t pls) [GameAction l cn r ph],
-        source :: Maybe (l,r),
-        owner :: Maybe pls,
-        parents :: [GameNode l cn r ph pl t pls]
-                                   } deriving (Generic)
-
-
-
-mkActionNode :: GameAction l cn r ph -> GameNode l cn r ph pl t pls
-mkActionNode action = GameNode (Right [action]) Nothing Nothing []
-
-mkActionNodeS :: GameAction l cn r ph -> GameS l cn r ph pl t pls (GameNode l cn r ph pl t pls)
-mkActionNodeS = pure . mkActionNode
-
-mkActionNodeL :: [GameAction l cn r ph] -> GameNode l cn r ph pl t pls
-mkActionNodeL action = GameNode (Right action) Nothing Nothing []
-
-mkChoiceNode :: pls -> Choice l cn r ph pl t pls -> GameNode l cn r ph pl t pls
-mkChoiceNode p choice = GameNode (Left choice) Nothing (Just p) []
-
-
-data Phase phaseName l cn r playName t pls = Phase {
-    name :: phaseName,
-    seedNodes :: [GameNode l cn r phaseName playName t pls]
-  } deriving (Generic)
-
-
--- For now, `Game` is a big record of functions
--- Could be replaced by something more monadic.
--- Define a State type right below.
-data Game l cn r phaseName playName turns players = Game
-  { players :: Set players,
-    objects :: GameObjects l cn r,
-    runPlay ::  playName -> GameS l cn r phaseName playName turns players [GameNode l cn r phaseName playName turns players],
-    randGen :: StdGen,
-    chooser :: Choice l cn r phaseName playName turns players -> playName,
-    currentStack :: [GameNode l cn r phaseName playName turns players],
-    turnNumber :: turns,
-    currentPhase :: phaseName,
-    phases :: phaseName -> Phase phaseName l cn r playName turns players
-  }
-  deriving (Generic)
-
-getRunPlay :: pl ->  GameS l cn r ph pl t pls [GameNode l cn r ph pl t pls]
-getRunPlay play = join (use #runPlay <*> pure play)
-
-type GameS l cn r ph pl t pls = State (Game l cn r ph pl t pls)
-
-makeFields ''Game
-
-instance RandomGen (Game l cn r phaseName playName turns triggerName) where
-    split game = let (gen, gen') = split (game ^. #randGen)
-                  in (game & #randGen .~ gen, game & #randGen .~ gen')
-    genWord32 game = let (out, gen') = genWord32 (game ^. #randGen)
-                    in (out, game & #randGen .~ gen')
-
-
-data ControlAction = None | Terminate deriving (Eq, Ord, Generic)
-
-noControl :: Monad m => m () -> m ControlAction
-noControl x = x >> pure None
-
-terminateAfter :: Monad m => m () -> m ControlAction
-terminateAfter x = x >> pure Terminate
-
-act :: (Ord l, Ord r, Ord cn, Finitary cn) => GameAction l cn r phaseName -> GameS l cn r phaseName playName turns triggerName ControlAction
-act DoNothing = noControl $ return ()
-act (MkTransfer l l' r) = noControl $ modifying (#objects . #locations) (transfer r l l')
-act (IncrementCounter c) = noControl $ modifying (#objects . #counters . ftAt c) increment
-act (DecrementCounter c) = noControl $ modifying (#objects . #counters . ftAt c) decrement
-act (SetCounter c v) = noControl $ modifying (#objects . #counters . ftAt c) (`setCounter` v)
-act (RollCounter c) = noControl $ do
+act :: (Ord l, Ord r, Ord cn, Finitary cn) => GameAction l cn r phaseName -> GameS l cn r phaseName playName turns pls ()
+act DoNothing = return ()
+act (MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
+act (IncrementCounter c) = modifying (#objects . #counters . ftAt c) increment
+act (DecrementCounter c) = modifying (#objects . #counters . ftAt c) decrement
+act (SetCounter c v) = modifying (#objects . #counters . ftAt c) (`setCounter` v)
+act (RollCounter c) = do
     (bl, bu) <- gets (view (#objects . #counters . ftAt c . #bounds))
     newVal <- state (uniformR (bl,bu))
     assign (#objects . #counters . ftAt c . #val)  newVal
-act (ChangePhase ph) = terminateAfter $ do
-                        assign #currentPhase ph
-                        newPhase <- uses #phases ($ ph)
-                        assign #currentStack (seedNodes newPhase)
+act (ChangePhase ph) = assign #currentPhase ph
 act EndGame = undefined
 
+chooseRandomFromList :: [a] -> GameS l cn r ph pl t pls a
+chooseRandomFromList list = do
+    choice <- state (uniformR (1, length list))
+    return (list !! (choice - 1))
 
--- could rewrite GameS in this style?
--- class Monad m => MonadChoice m pl where
---     choose :: Choice pl -> m pl
 
--- But for now use this, basically ReaderT pattern.
-choosePlay :: Choice l cn r ph pl t pls -> (GameS l cn r ph pl t pls) pl
-choosePlay c =  do
-        chooser <- use #chooser
-        return (chooser c)
 
 -- Given a `Choice`, create the appropriate Actions and decisions
 chooseNode :: Choice l cn r ph pl t pls -> GameS l cn r ph pl t pls [GameNode l cn r ph pl t pls]
-chooseNode c = choosePlay c >>= getRunPlay
+chooseNode c = choose c >>= getRunPlay
 
--- Need to be able to stop computing for e.g. phase change.
-runNodes :: (Ord l, Ord r, Ord cn, Finitary cn) => [GameNode l cn r ph pl t pls] -> GameS l cn r ph pl t pls ()
-runNodes [] = pure () -- don't let this happen!
-runNodes (aNode:rest) = case view #node aNode of
-    Left aChoice -> do
-        chosen <- chooseNode aChoice
-        runNodes (chosen ++ rest)
-    Right anAction -> do
-        controlAction <- actControl anAction -- traverse_ actGo anAction >> runNodes rest
-        case controlAction of 
-          None -> runNodes rest
-          Terminate -> pure ()
-    where
-       actControl :: (Ord l, Ord r, Ord cn, Finitary cn) => 
-           [GameAction l cn r ph] -> GameS l cn r ph pl t pls ControlAction
-       actControl [] = pure None
-       actControl (action:moreActions) = do
-           control <- act action
-           case control of
-             None -> actControl moreActions
-             Terminate -> pure Terminate
-        
+runNode :: (Ord l, Ord r, Ord cn, Finitary cn) => GameNode l cn r ph pl t pls -> GameS l cn r ph pl t pls [GameNode l cn r ph pl t pls]
+runNode aNode = fmap process . bitraverse chooseNode act $ view #node aNode where
+    process :: Either [a] () -> [a]
+    process (Left xs) = xs
+    process (Right _) = []
+
+-- don't need a "step" version -- just look one node at a time and use laziness! (As long as GameS is lazy.)
+-- stack can't examine itself but that's probably fine
+runFromSeeds :: (Ord l, Ord r, Ord cn, Finitary cn) => [GameNode l cn r ph pl t pls]
+    -> GameS l cn r ph pl t pls [Tree (GameNode l cn r ph pl t pls)]
+runFromSeeds = unfoldForestM (\node -> fmap ((,) node) (runNode node))
+
+
+-- -- Need to be able to stop computing for e.g. phase change.
+-- runNodes :: (Ord l, Ord r, Ord cn, Finitary cn) => [GameNode l cn r ph pl t pls] -> GameS l cn r ph pl t pls ()
+-- runNodes [] = pure () -- don't let this happen!
+-- runNodes (aNode:rest) = do
+--     result <- runNode aNode
+--     case result of
+--       moreNodes -> runNodes (moreNodes ++ rest) -- can't be runNodes moreNodes >> runNodes rest -- can't terminate
+--       -- Right Terminate -> pure ()
+
+-- advanceGame :: (Ord l, Ord r, Ord cn, Finitary cn) => Game l cn r ph pl t pls -> Game l cn r ph pl t pls
+-- advanceGame g = execState (runNode (head (g ^. #currentStack))) g
+
+playGame :: (Ord l, Ord r, Ord cn, Finitary cn) => GameS l cn r ph pl t pls ()
+playGame = do
+    phases <- use #phases
+    p <- use #currentPhase
+    _ <- runFromSeeds (phases p ^. #seedNodes)
+    return ()
 
 --
 --
