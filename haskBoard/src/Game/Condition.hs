@@ -6,30 +6,31 @@
 module Game.Condition where
 
 import Count
-import Game
+import GameE hiding (use)
 import Control.Lens
 import Location
-import Control.Monad.State.Lazy (get)
 import FinitaryMap (ftAt)
+import Effectful.Reader.Static (ask)
+import qualified Effectful.Reader.Static as R
 
-cEmpty :: Condition l cn r ph pl t tn [a]
+cEmpty :: Condition l cn r ph [a]
 cEmpty = pure []
 
-cIn :: Eq a => Condition l cn r ph pl t tn (a -> [a] -> Bool)
+cIn :: Eq a => Condition l cn r ph (a -> [a] -> Bool)
 cIn = pure elem
 
-cTrue :: Condition l cn r ph pl t tn Bool
+cTrue :: Condition l cn r ph Bool
 cTrue = pure True
 
-cCounterVal :: (Ord cn) => cn -> Condition l cn r ph pl t tn (Cnt Int)
-cCounterVal cn = Condition $ view (#objects . #counters . ftAt cn . #val) <$> get
+cCounterVal :: (Ord cn) => cn -> Condition l cn r ph (Cnt Int)
+cCounterVal cn = view (#objects . #counters . ftAt cn . #val) <$> ask
 
-cHas :: (Ord r, Ord l) => Game l cn r ph pl t tn -> r -> l -> Bool
+cHas :: (Ord r, Ord l) => GameData l cn r ph -> r -> l -> Bool
 cHas g res loc = (`has'` res) . view (#objects . #locations . ftAt loc) $ g
 
-sHas :: (Ord r, Ord l) => r -> l -> GameS l cn r ph pl t tn Bool
+sHas :: (Ord r, Ord l) => r -> l -> Condition l cn r ph Bool
 sHas res loc = do
-    locView <- use (#objects . #locations . ftAt loc)
+    locView <- R.asks (view (#objects . #locations . ftAt loc))
     return (locView `has'` res)
 
 

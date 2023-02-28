@@ -7,15 +7,12 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module CantStop where
 
-import Control.Lens (use, uses, view, (^.))
-import Control.Monad.Random (mkStdGen)
-import Control.Monad.State.Lazy
+import Control.Lens ((^.), view)
 import Count
 import Data.Bitraversable
 import Data.Finitary (Finitary, inhabitants)
@@ -25,24 +22,24 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Data.Sequence as Seq
-import Data.Tuple (swap)
 import qualified Defaultable.Map as D
 import FinitaryMap (FTMap (..), ftAt)
 import GHC.Base (liftA2)
 import GHC.Generics
-import Game
-import Game.Condition
-import Location (Counter (..), Counters, GameObjects (..), LocationShape (..), Locations, counters, d6, findResourceWithin, inventory)
+import GameE
+import Location (Counter (..), Counters, GameObjects (..), LocationShape (..), Locations, counters, d6, findResourceWithin, inventory, listAllF, has')
 import Util
 import Data.Set (Set)
 import qualified Data.Set as S
-
-data CantStopPlayer = PlayerOne | PlayerTwo | PlayerThree | PlayerFour deriving (Eq, Ord, Show, Generic)
-instance Finitary CantStopPlayer
-type CantStopPlayers = Set CantStopPlayer
-
-dummyPlayers :: CantStopPlayers
-dummyPlayers = S.fromList inhabitants
+import Game.Condition (cCounterVal)
+import Effectful.Reader.Static (asks)
+import Game.Player
+import qualified Data.Set as Set
+import Effectful (inject)
+import qualified Effectful.Reader.Static as R
+import qualified Data.Text as T
+import Effectful.Log (logInfo)
+import Control.Monad (filterM)
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
   deriving (Eq, Ord, Show, Enum, Bounded, Generic)
@@ -63,16 +60,15 @@ getHeight h = fromEnum h + 1
 
 instance Finitary TrackHeight
 
-data CantStopResource = PlayerMarker CantStopPlayer | TemporaryMarker deriving (Eq, Ord, Show, Generic)
+data CantStopResource = PlayerMarker Player | TemporaryMarker deriving (Eq, Ord, Show, Generic)
 
 
 data CantStopLocation
   = TrackSpot TrackName TrackHeight
   | BoxTop
-  | PlayerStuff CantStopPlayer
+  | PlayerStuff Player
   deriving (Eq, Ord, Show, Generic)
 
-instance Finitary CantStopLocation
 
 -- TODO: what value are we getting from NonEmpty
 trackSlots :: TrackName -> NonEmpty CantStopLocation
@@ -94,14 +90,14 @@ allSpots = [TrackSpot name height | name <- inhabitants, height <- [HOne .. maxS
 theDiceL :: (CantStopCounterName, CantStopCounterName, CantStopCounterName, CantStopCounterName)
 theDiceL = (DieOne, DieTwo, DieThree, DieFour)
 
-initLocations' :: CantStopPlayers -> CantStopLocation -> LocationShape CantStopResource
+initLocations' :: Set Player -> CantStopLocation -> LocationShape CantStopResource
 initLocations' _ (TrackSpot _ _) = Deck Seq.empty
 initLocations' _ BoxTop = Pile (D.singleton (TemporaryMarker, 3))
 initLocations' players (PlayerStuff player)
     | player `S.member` players = Pile (D.singleton (PlayerMarker player, 11))
     | otherwise = Dummy
 
-initLocations :: Set CantStopPlayer -> CantStopLocations -- FTMap CantStopLocation (LocationShape CantStopResource)
+initLocations :: Set Player -> CantStopLocations -- FTMap CantStopLocation (LocationShape CantStopResource)
 initLocations ps = FTMap (initLocations' ps)
 
 initDice' :: CantStopCounterName -> Counter
@@ -110,7 +106,7 @@ initDice' = const d6
 initDice :: CantStopCounters
 initDice = FTMap initDice'
 
-initGameObjects :: CantStopPlayers -> CantStopGameObjects
+initGameObjects :: Set Player -> CantStopGameObjects
 initGameObjects ps =
   GameObjects
     { locations = initLocations ps,
@@ -120,29 +116,34 @@ initGameObjects ps =
 
 data MoveArity = TwoValueMove TrackName TrackName | OneValueMove TrackName deriving (Eq, Ord, Show, Generic)
 
-data CantStopPlayName = Move CantStopPlayer MoveArity | Stop CantStopPlayer deriving (Eq, Ord, Show, Generic)
+data PlayName = Move Player MoveArity | Stop Player | DontStop Player deriving (Eq, Ord, Show, Generic)
 
-data CantStopPhaseName = Turn CantStopPlayer | Winner CantStopPlayer deriving (Eq, Ord, Show, Generic)
+data CantStopPhaseName = Turn Player | Winner Player deriving (Eq, Ord, Show, Generic)
 
-type CantStopTurns = Int
-
-type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource CantStopPlayName CantStopTurns CantStopPlayer
+type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource PlayName
 
 type CantStopAction = GameAction CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 
--- type CantStopCondition val = Condition CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopPlayers val
+-- type CantStopGame = Game CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName CantStopTurns Player
 
-type CantStopGame = Game CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopPlayer
+type CantStopGameData = GameData CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
+type CantStopGameRules = GameRules CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName
 
-type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopPlayer
+type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName
 
-type CantStopChoice = Choice CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopPlayer
+type CantStopChoice = Choice CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName
 
-type CantStopChooser = Chooser CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopTurns CantStopPlayer
+type Observe = ObserveGame CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 
-type CantStopGameS = State CantStopGame
+type ObserveWithRules = ObserveRulesGame  CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName
 
-type CantStopActionS = CantStopGameS CantStopAction
+type Modify = ModifyGame CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
+
+-- type CantStopChooser = Chooser CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName CantStopTurns Player
+
+-- type Observe = State CantStopGame
+
+-- type CantStopActionS = Observe CantStopAction
 
 rollDice' :: [CantStopAction]
 rollDice' = RollCounter <$> (inhabitants :: [CantStopCounterName])
@@ -150,143 +151,200 @@ rollDice' = RollCounter <$> (inhabitants :: [CantStopCounterName])
 rollNodes :: [CantStopGameNode]
 rollNodes = mkActionNode <$> rollDice'
 
-playerTurn :: CantStopPlayer -> CantStopPhase
+playerTurn :: Player -> CantStopPhase
 playerTurn p =
   Phase
     { name = Turn p,
-      seedNodes = rollNodes ++ [chooseToRollOrStopNode p]
+      seedNodes = pure rollNodes <> chooseMove p
     }
 
-winnerPhase :: CantStopPlayer -> CantStopPhase
+winnerPhase :: Player -> CantStopPhase
 winnerPhase p =
   Phase
     { name = Winner p,
-      seedNodes = [mkActionNode EndGame]
+      seedNodes = pure [mkActionNode EndGame]
     }
 
-currentPlayer :: CantStopPhaseName -> CantStopPlayer
+currentPlayer :: CantStopPhaseName ->Player
 currentPlayer (Winner p) = p
 currentPlayer (Turn p) = p
 
-chooseToRollOrStopNode :: CantStopPlayer -> CantStopGameNode
-chooseToRollOrStopNode p = mkChoiceNode p (chooseToRollOrStop p)
 
--- andThen :: (Applicative f, Semigroup a) => f [a] -> a -> f [a]
--- andThen xs y = liftA2 (<>) xs (pure [y])
-andThen :: GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn x -> GameS l cn r ph pl t tn [x]
-andThen xs y = liftA2 (<>) xs (fmap (: []) y)
+andThen :: (Applicative f) => f [a] -> f a -> f [a]
+andThen xs y = liftA2 (<>) xs (fmap (:[]) y)
 
-andThens :: GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn [x]
-andThens = liftA2 (<>)
+just :: (Applicative f) => a -> f a
+just = pure
 
-also = andThen
+-- andThen :: GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn x -> GameS l cn r ph pl t tn [x]
+-- andThen xs y = liftA2 (<>) xs (fmap (: []) y)
 
-chooseToRollOrStop :: CantStopPlayer -> CantStopChoice
-chooseToRollOrStop p = legalRolls p `also` pure (Stop p)
+-- andThens :: GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn [x] -> GameS l cn r ph pl t tn [x]
+-- andThens = liftA2 (<>)
+
+
+-- TODO: Move to Game
+data MoveLegality = Legal | Illegal Issue  deriving (Eq, Ord, Show, Generic)
+data Issue = ThreeTempMarkersOut | TrackCompleted | AtTop deriving (Eq, Ord, Show, Generic)
+
+instance Semigroup MoveLegality where
+    Legal <> x = x
+    x <> Legal = x
+    Illegal a <> Illegal _ = Illegal a
+
+instance Monoid MoveLegality where
+    mempty = Legal
+
+-- Should return [Choice of move]
+-- Then Choice of move leads to Choice of stop / go
+chooseMove :: Player -> Observe [CantStopGameNode]
+chooseMove p =
+    return [mkChoiceNode p (legalMoves p)]
   where
-    legalRolls :: CantStopPlayer -> CantStopGameS [CantStopPlayName]
-    legalRolls p = fmap (fmap (makeRoll p)) diceVals
-    makeRoll :: CantStopPlayer -> (Cnt Int, Cnt Int) -> CantStopPlayName
-    makeRoll p (x, y) =
-      if x == y
-        then Move p (OneValueMove (diceToTrack x))
-        else Move p (TwoValueMove (diceToTrack x) (diceToTrack y))
+    legalMoves :: Player -> Observe [PlayName]
+    legalMoves p = do
+        availableMoves <- fmap (makeMove p) <$> diceVals
+        actualMoves <- filterM (fmap (== Legal) . checkMove) availableMoves
+        if null actualMoves then return [Stop p] else return actualMoves
+    makeMove :: Player -> (Cnt Int, Cnt Int) -> PlayName
+    makeMove p (x, y) = if x == y
+                        then Move p (OneValueMove (diceToTrack x))
+                        else Move p (TwoValueMove (diceToTrack x) (diceToTrack y))
     diceToTrack :: Cnt Int -> TrackName
     diceToTrack x = toEnum . fromEnum $ (x - 2)
+    -- TODO: shows that OneValue and TwoValue should be consolidated
+    checkMove :: PlayName -> Observe MoveLegality
+    checkMove (Move p (OneValueMove s)) = do
+        hasWinner <- maybe Legal  (const (Illegal TrackCompleted)) . M.lookup s <$> trackWinners
+        numTempLeft <- D.lookup TemporaryMarker . inventory <$> R.asks (view (#objects . #locations . ftAt BoxTop))
+        let noMarkersLeft = maybe Legal (\x -> if x == 0 then Illegal ThreeTempMarkersOut else Legal) numTempLeft
+        atTop' <- flip has' (PlayerMarker p) <$> R.asks (view (#objects . #locations . ftAt (TrackSpot s (maxSlot s))))
+        let atTop = if atTop' then Illegal AtTop else Legal
+        return (hasWinner <> noMarkersLeft <> atTop)
+    checkMove (Move p (TwoValueMove s t)) =
+        checkMove (Move p (OneValueMove s)) <> checkMove (Move p (OneValueMove t))
+    checkMove (Stop _) = pure Legal
+    -- TODO: is this true?
+    checkMove (DontStop _) = pure Legal
 
-diceVals :: CantStopGameS [(Cnt Int, Cnt Int)]
-diceVals = runCondition $ mapM (bitraverse makeSum makeSum) (mkPairs theDiceL)
+
+stopOrGo :: Player -> CantStopChoice
+stopOrGo p = return [Stop p, DontStop p]
+
+stopOrGoNode :: Player -> GameNode
+     CantStopLocation
+     CantStopCounterName
+     CantStopResource
+     CantStopPhaseName
+     PlayName
+stopOrGoNode p = mkChoiceNode p (stopOrGo p)
+
+diceVals :: Observe [(Cnt Int, Cnt Int)]
+diceVals = mapM (bitraverse makeSum makeSum) (mkPairs theDiceL)
   where
     makeSum (c, c') = cCounterVal c + cCounterVal c'
     mkPairs :: (a, a, a, a) -> [((a, a), (a, a))]
     mkPairs (x, y, w, z) =
       let pairs1 = [((x, y), (w, z)), ((x, w), (y, z)), ((x, z), (y, w))]
-          pairs2 = fmap swap pairs1
-       in pairs1 ++ pairs2
+          -- pairs2 = fmap swap pairs1
+       in pairs1 -- ++ pairs2
 
-advancePlayer :: CantStopGameS CantStopPlayer
-advancePlayer = do
-  ps <- use #players
-  pName <- use #currentPhase
-  let cPlayer = currentPlayer pName
-  return (unsafeNextCyclic cPlayer (S.toList ps))
+advancePlayer :: CantStopGameData -> Player
+advancePlayer gd =
+    let ps = gd ^. #players
+        phaseName = gd ^. #currentPhase
+        cPlayer = currentPlayer phaseName
+    in unsafeNextCyclic cPlayer (S.toList ps)
 
 cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (Turn p) = playerTurn p
 cantStopPhases (Winner p) = winnerPhase p
 
-
-
-testChooser :: CantStopChooser
-testChooser = (chooseRandomFromList =<<)
-
-
-initGame :: CantStopPlayers -> CantStopGame
-initGame ps =
-  Game
-    { players = ps,
-      objects = initGameObjects ps,
-      runPlay = csRunPlay,
-      randGen = mkStdGen 100,
-      chooser = testChooser,
-      turnNumber = 1,
-      currentPhase = Turn (head (S.toList ps)),
-      currentStack = view #seedNodes (cantStopPhases (Turn (head (S.toList ps)))), -- TODO: c'mon
-      phases = cantStopPhases
+initGameData :: Int -> CantStopGameData
+initGameData numPlayers =
+    let players = Set.fromList . fmap Player $ take numPlayers inhabitants
+    in
+  GameData
+      { players = players,
+      objects = initGameObjects players,
+      currentPhase = Turn (head (S.toList players))
     }
+
+gameRules :: CantStopGameRules
+gameRules = GameRules {
+    phases = cantStopPhases,
+    runPlay = csRunPlay
+                      }
 
 
 
 
 
 -- Where do we decide legality?
--- in legalMoves / chooser in Game. In other words,
--- pure logic (incl. legality) -> impure choice -> pure logic (resolution)
--- this is in stage 3. So assume move is legal.
--- Could validate the moves instead. Something to consider for giant type cleanup :)
 
 -- Assumes the move is legal. So don't check for:
 --   - track closed
 --   - marker already at top
 -- still need to check for correct distance to move
-csRunPlay :: CantStopPlayName -> CantStopGameS [CantStopGameNode]
-csRunPlay (Move pl (OneValueMove s)) = moveMarkerBy pl s 2
-csRunPlay (Move pl (TwoValueMove s t)) = (++) <$> moveMarkerBy pl s 1 <*> moveMarkerBy pl t 1
+csRunPlay :: PlayName -> ObserveWithRules [CantStopGameNode]
+csRunPlay (Move pl (OneValueMove s)) = inject (moveMarkerBy pl s 2 `andThen` pure (stopOrGoNode pl))
+csRunPlay (Move pl (TwoValueMove s t)) = inject (moveMarkerBy pl s 1 <> moveMarkerBy pl t 1) `andThen` pure (stopOrGoNode pl)
 csRunPlay (Stop pl) = do
-  ps <- use #players
+  gd <- R.ask :: ObserveWithRules CantStopGameData
+  let ps = view #players gd
   let nextp = unsafeNextCyclic pl (S.toList ps)
-  resolveMarkers pl
+  inject $ resolveMarkers pl <> clearWonTracks
     `andThen` checkWinner
     `andThen` pure (mkActionNode (ChangePhase (Turn nextp)))
+csRunPlay (DontStop _) = do
+    gd <- R.ask :: ObserveWithRules CantStopGameData
+    case view #currentPhase gd of
+      Turn p ->  inject $ pure rollNodes <> chooseMove p
+      Winner p -> inject $ pure rollNodes <> chooseMove p
 
-checkWinner :: CantStopGameS CantStopGameNode
+clearWonTracks :: Observe [CantStopGameNode]
+clearWonTracks = do
+    trackWinnerList <- trackWinners
+    concat <$> M.traverseWithKey moveOtherMarkers trackWinnerList
+        where
+            moveOtherMarkers :: TrackName -> Player -> Observe [CantStopGameNode]
+            moveOtherMarkers track p = do
+                locs <- asks (view (#objects . #locations))
+                let getMarkersToMove n = listAllF n locs (/= PlayerMarker p)
+                -- TODO: improve
+                let test = concat . NE.toList $ (\n -> mkTransferBack n <$> getMarkersToMove n) <$> trackSlots track
+                return $ fmap mkActionNode test
+                    where
+                        mkTransferBack n (PlayerMarker p') = MkTransfer n (PlayerStuff p) (PlayerMarker p')
+                        mkTransferBack n TemporaryMarker = MkTransfer n BoxTop TemporaryMarker
+
+
+
+checkWinner :: Observe CantStopGameNode
 checkWinner = do
   trackMap <- trackWinners
-  let playerHistogram = histogramF . fmap snd $ M.toList trackMap
+  let playerHistogram = histogramF trackMap
   let winners = M.keys . M.filter (>= 3) . D.toMap $ playerHistogram
-  return $ if not (null winners) then mkActionNode EndGame else mkActionNode DoNothing
+  if not (null winners) then logInfo (T.pack "We have a winner!") (show winners) >> return (mkActionNode EndGame) else return (mkActionNode DoNothing)
 
-trackWinner :: TrackName -> CantStopGameS (Maybe CantStopPlayer)
+trackWinner :: TrackName -> Observe (Maybe Player)
 trackWinner track = do
-  things <- use (#objects . #locations . ftAt (TrackSpot track (maxSlot track)))
+  things <- asks (view (#objects . #locations . ftAt (TrackSpot track (maxSlot track))))
   let getPlayer res = case res of
         PlayerMarker p -> Just p
         _ -> Nothing
   return $ listToMaybe . mapMaybe getPlayer . M.keys . M.filter (> 0) $ D.toMap (inventory things)
 
-trackWinners :: CantStopGameS (Map TrackName CantStopPlayer)
-trackWinners = do
-  let winners = mconcat $ fmap (\track -> M.singleton track (trackWinner track)) inhabitants
-  fmap unMaybeMap . sequence $ winners
-  where
-    unMaybeMap :: Ord k => Map k (Maybe a) -> Map k a
-    unMaybeMap = M.fromList . mapMaybe sequence . M.toList
+-- TODO: simplify
+trackWinners :: Observe (Map TrackName Player)
+trackWinners = fmap (M.mapMaybe id) . sequence . mconcat $ fmap (\track -> M.singleton track (trackWinner track)) inhabitants
 
-moveMarkerBy :: CantStopPlayer -> TrackName -> Int -> CantStopGameS [CantStopGameNode]
+moveMarkerBy :: Player -> TrackName -> Int -> Observe [CantStopGameNode]
 moveMarkerBy pl s amt = do
   let slots = trackSlots s
-  tempMarkerLocs <- uses (#objects . #locations) (findResourceWithin TemporaryMarker (NE.toList slots))
-  playerMarkerLocs <- uses (#objects . #locations) (findResourceWithin (PlayerMarker pl) (NE.toList slots))
+  tempMarkerLocs <- findResourceWithin TemporaryMarker (NE.toList slots) <$> asks (view (#objects . #locations))
+  playerMarkerLocs <- findResourceWithin (PlayerMarker pl) (NE.toList slots) <$> asks (view (#objects . #locations))
+  -- TODO: rewrite with Alternative
   case (listToMaybe tempMarkerLocs, listToMaybe playerMarkerLocs) of
     -- if the TemporaryMarker is out, move 2 (or 1 if there's not enough space)
     (Just slot@(TrackSpot s height), _) ->
@@ -295,38 +353,37 @@ moveMarkerBy pl s amt = do
        in return [mkMoveNode pl (MkTransfer slot nextSlot TemporaryMarker)]
     -- if you can't find the temporary marker, look for the player marker on that track
     -- if you find it, place the TemporaryMarker
-    (Nothing, Just (TrackSpot s height)) ->
-      let nextSlot = TrackSpot s (height <+ (amt - 1)) -- subtract 1 because you use one move to line up
+    (Nothing, Just slot@(TrackSpot s height)) ->
+      let nextSlot = TrackSpot s (height <+ amt)
        in return [mkMoveNode pl (MkTransfer BoxTop nextSlot TemporaryMarker)]
     -- if you don't find it, just place the TemporaryMarker
-    -- don't subtract here -- moving "from 0."
-    (Nothing, Nothing) -> return [mkMoveNode pl (MkTransfer BoxTop (TrackSpot s (toEnum amt)) TemporaryMarker)]
+    (Nothing, Nothing) -> return [mkMoveNode pl (MkTransfer BoxTop (TrackSpot s (toEnum (amt-1))) TemporaryMarker)]
+    (_,_) -> return [] -- This is an interesting case -- as long as Locations are all one type there will have to be lame patterns like this
+    -- guess you can't stop someone from writing bad rules!
 
-mkMoveNode :: CantStopPlayer -> CantStopAction -> CantStopGameNode
-mkMoveNode p action = GameNode (Right action) (Just p)
+mkMoveNode :: Player -> CantStopAction -> CantStopGameNode
+mkMoveNode p action = GameNode (Left action) (Just p)
 
--- ODO: knock off other markers
--- no, leave them on. Let UI/legality-checking handle them
-resolveMarkers :: CantStopPlayer -> CantStopGameS [CantStopGameNode]
+resolveMarkers :: Player -> Observe [CantStopGameNode]
 resolveMarkers pl = do
-  tempMarkerLocs <- uses (#objects . #locations) (findResourceWithin TemporaryMarker allSpots)
-  playerMarkerLocs <- uses (#objects . #locations) (findResourceWithin (PlayerMarker pl) allSpots)
-  let tempMarkerPairs = fmap locToNameHeight tempMarkerLocs
-  let playerMarkerPairs = fmap locToNameHeight playerMarkerLocs
+  tempMarkerLocs <- findResourceWithin TemporaryMarker allSpots <$> asks (view (#objects . #locations))
+  playerMarkerLocs <- findResourceWithin (PlayerMarker pl) allSpots <$> asks (view (#objects . #locations))
+  let tempMarkerPairs =  fmap locToNameHeight tempMarkerLocs
+  let playerMarkerPairs =  fmap locToNameHeight playerMarkerLocs
   return (concatMap (resolveMarker' pl playerMarkerPairs) tempMarkerPairs)
   where
-    resolveMarker' :: CantStopPlayer -> [(TrackName, TrackHeight)] -> (TrackName, TrackHeight) -> [CantStopGameNode]
+    resolveMarker' :: Player -> [(TrackName, TrackHeight)] -> (TrackName, TrackHeight) -> [CantStopGameNode]
     resolveMarker' player playerMarkers (nm, newHeight) = case lookup nm playerMarkers of
       Just h ->
         [ mkMoveNode player (MkTransfer (TrackSpot nm h) (TrackSpot nm newHeight) (PlayerMarker player)),
           mkMoveNode player (MkTransfer (TrackSpot nm newHeight) BoxTop TemporaryMarker)
         ]
       Nothing ->
-        [ mkMoveNode player (MkTransfer BoxTop (TrackSpot nm newHeight) (PlayerMarker pl)),
+        [ mkMoveNode player (MkTransfer (PlayerStuff pl) (TrackSpot nm newHeight) (PlayerMarker pl)),
           mkMoveNode player (MkTransfer (TrackSpot nm newHeight) BoxTop TemporaryMarker)
         ]
 
     locToNameHeight (TrackSpot nm h) = (nm, h)
     locToNameHeight _ = error "applied to non-track"
 
-
+runCSNodes = runNodesAgainstState (initGameData 3) gameRules

@@ -83,11 +83,19 @@ inventory (Slot Nothing) = Defaultable M.empty (Just 0)
 inventory (Slot (Just r)) = D.singleton (r,1)
 inventory Dummy = Defaultable M.empty (Just 0)
 
+
+
 has' :: Ord r => LocationShape r -> r -> Bool
 has' loc r = case fmap (>0) (D.lookup r (inventory loc)) of
               Just True -> True
               _ -> False
 
+
+histoToList :: Defaultable (Map r) (Cnt Int) -> [r]
+histoToList = concatMap (\(x, count) -> cntReplicate count x) . M.toList . D.toMap
+    where cntReplicate :: Cnt Int -> a -> [a]
+          cntReplicate (Cnt i) = replicate i
+          cntReplicate Infinity = repeat
 
 
 findResourceWithin :: Ord r => r -> [n] -> Locations n r -> [n]
@@ -95,6 +103,12 @@ findResourceWithin res names locs = filter (\n -> (locs !!! n) `has'` res) names
 
 findResource :: (Finitary n, Eq r, Ord r) => r -> Locations n r -> [n]
 findResource res = findResourceWithin res inhabitants
+
+listAll :: Ord r => n -> Locations n r -> [r]
+listAll n locs = listAllF n locs (const True)
+
+listAllF :: Ord r => n -> Locations n r -> (r -> Bool) -> [r]
+listAllF n locs filt = filter filt . histoToList . inventory $ locs !!! n
 
 --
 -- laws!

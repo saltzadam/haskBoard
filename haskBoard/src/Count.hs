@@ -77,7 +77,7 @@ instance Random (Cnt Int)
 histogramF :: (Foldable f, Ord a) => f a -> Defaultable (Map a) (Cnt Int)
 histogramF foldable = Defaultable (foldl' (flip (M.alter plusOrInsertOne)) mempty foldable) (Just 0)
   where
-    plusOrInsertOne = Just . maybe 0 (+ 1)
+    plusOrInsertOne = Just . maybe 1 (+ 1)
 
 countF :: (Foldable f, Eq a) => a -> f a -> Cnt Int
 countF x = foldl (\acc a -> if a == x then acc + 1 else acc) 0

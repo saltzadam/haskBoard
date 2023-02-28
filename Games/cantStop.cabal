@@ -21,12 +21,21 @@ library
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
-                brick,
-                haskBoard
-    exposed-modules: CantStop, Tui, Dice
+                brick, effectful-plugin, haskBoard, log-effectful, log-base
+    exposed-modules: CantStop
+    -- , Tui, Dice
     default-language: Haskell2010
-    ghc-options:  -Wall
+    ghc-options:  -Wall -fplugin=Effectful.Plugin
     -- Modules included in this executable, other than Main.
     -- other-modules:
 
+executable CantStop
+    main-is: Main.hs
+    hs-source-dirs: CantStop
+    build-depends: base, CantStop, haskBoard, containers,lens, generic-lens, array, these,
+                transformers, text, formatting, MonadRandom, random, prettyprinter,
+                effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
+                brick, effectful-plugin, haskBoard, log-effectful, log-base
 
+    default-language: Haskell2010
+    ghc-options: -fplugin=Effectful.Plugin

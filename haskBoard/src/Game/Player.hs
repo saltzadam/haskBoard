@@ -1,13 +1,19 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module Game.Player where
 
 import GHC.Generics (Generic)
 import Data.Finitary
+import GHC.Natural
+import GHC.Word (Word8)
 
-newtype Player = Player {id :: Int} deriving (Eq, Ord, Show, Generic)
+newtype Player = Player {num :: Word8} deriving (Eq, Ord, Show, Generic)
+    deriving anyclass Finitary
 
-instance Finitary Player
+
+
 
 
 somePlayers :: [Player]
