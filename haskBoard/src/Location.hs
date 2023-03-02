@@ -17,7 +17,7 @@ import Count
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (listToMaybe, isJust, mapMaybe)
+import Data.Maybe (listToMaybe, mapMaybe)
 import Data.Sequence (Seq ((:<|), Empty), (<|))
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
@@ -112,12 +112,23 @@ listAllF n locs filt = filter filt . histoToList . inventory $ locs !!! n
 
 --
 -- laws!
+-- this does not work if loc = loc'
 transfer' :: Ord r => r -> LocationShape r -> LocationShape r -> (LocationShape r, LocationShape r, Maybe r)
-transfer' r loc loc' = case moveFromL r loc of
-  (newLoc, Just r) -> case moveToL r loc' of
-    (newLoc', Just r) -> (newLoc, newLoc', Just r)
-    (_, Nothing) -> (loc, loc', Nothing)
-  (_, Nothing) -> (loc, loc', Nothing)
+transfer' r loc loc' = if loc /= loc'
+                       then case moveFromL r loc of
+                              (newLoc, Just r) -> case moveToL r loc' of
+                                (newLoc', Just r) -> (newLoc, newLoc', Just r)
+                                (_, Nothing) -> (loc, loc', Nothing)
+                              (_, Nothing) -> (loc, loc', Nothing)
+                       else 
+                       -- TODO: once confirmed, simplify
+                            let (step1, fakeslot, mayber) = transfer' r loc (Slot Nothing)
+                                (_, step2, mayber') = case mayber of
+                                                                Just r' -> transfer' r' fakeslot step1
+                                                                Nothing -> (loc, loc, Nothing)
+                            in
+                                (step2,step2, mayber')
+                                
 
 
 
