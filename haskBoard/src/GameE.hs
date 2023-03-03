@@ -303,7 +303,7 @@ runFromSeeds = unfoldForestControl treefunc
                       Left End -> return Nothing
                       Left (ChangePhaseTo ph) -> do
                             phases <- R.asks (view #phases :: GameRules l cn r ph pl i -> (ph -> Phase ph l cn r pl i))
-                            newNodes <- observeGame $ view #seedNodes (phases ph)
+                            newNodes <- observeGame $ (view #seedNodes :: Phase ph l cn r pl i -> Eff '[GameDataR l cn r ph, Log] [GameNode l cn r ph pl i] ) (phases ph)
                             return $ Just (nod, [], TRestart newNodes)
                       Right moreNodes -> return $ Just (nod, moreNodes, TContinue)
 

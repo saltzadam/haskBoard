@@ -4,7 +4,11 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFunctor #-}
 
-module Count where
+module Count
+    (Cnt(..),
+    histogramF,
+    countF)
+    where
 
 import Control.Applicative (liftA2)
 import Data.Foldable (foldl')
@@ -12,9 +16,10 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)
 import System.Random.Stateful (UniformRange(uniformRM), Uniform (..))
-import Defaultable.Map (Defaultable(..))
 import Control.Monad.Random
 import Data.Bifunctor (bimap)
+import Defaultable.Map (Defaultable)
+import qualified Defaultable.Map as D
 
 -- This is Maybe a with the opposite order for Nothing
 -- Use it for counting things, think about "unlimited" stuff
@@ -50,8 +55,8 @@ instance Num a => Num (Cnt a) where
 
   fromInteger = Cnt . fromInteger
 
-  (-) Infinity _ = Infinity
-  (-) _ Infinity = error "no negative infinity"
+  (-) Infinity (Cnt _) = Infinity
+  (-) _ Infinity = error "no negative infinity" -- what about (-1) * Infinity?
   (-) (Cnt a) (Cnt b) = Cnt ((-) a b)
 
 infinityToMax :: Bounded a => Cnt a -> a
@@ -74,8 +79,10 @@ instance Enum (Cnt Int) where
 
 instance Random (Cnt Int)
 
+-- TODO: remove defaultable here (and in Location)
+-- TODO: replace with non-default lookup function
 histogramF :: (Foldable f, Ord a) => f a -> Defaultable (Map a) (Cnt Int)
-histogramF foldable = Defaultable (foldl' (flip (M.alter plusOrInsertOne)) mempty foldable) (Just 0)
+histogramF foldable =  D.fromMap (foldl' (flip (M.alter plusOrInsertOne)) mempty foldable) `D.withDefault` 0
   where
     plusOrInsertOne = Just . maybe 1 (+ 1)
 
