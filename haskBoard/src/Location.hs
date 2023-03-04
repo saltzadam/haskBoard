@@ -1,102 +1,152 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE EmptyDataDeriving #-}
-{-# LANGUAGE GADTs #-}
 -- {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeApplications #-}
 
-module Location where
-
-import Control.Lens (makeFields, set, view)
+module Location
+    (LocationShape(..),
+     Locations,
+     transfer,
+     inventory,
+     howMany',
+     has',
+     findResourceWithin,
+     findResource,
+     listAll,
+     listAllF,
+     peek,
+     Counter(..),
+     Counters,
+     makeCounter,
+     d6,
+     setCounter,
+     increment,
+     decrement,
+     GameObjects(..)
+    )
+ where
+import Control.Lens (makeFields, set)
 import Count
--- import Data.Array (Array)
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.Maybe (listToMaybe, fromMaybe)
 import Data.Sequence (Seq ((:<|), Empty), (<|))
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
-import System.Random.Stateful (uniformR)
-import Defaultable.Map (Defaultable(..))
-import qualified Defaultable.Map as D
-import Control.Monad.State
-import Control.Monad.Random (RandomGen)
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
 import Data.Finitary
 
-data LocationShape r = Deck (Seq r) | Pile (D.Defaultable (Map r) (Cnt Int)) | Slot (Maybe r) | Dummy
+
+---- Definitions and instances
+
+data LocationShape r = Deck (Seq r) -- Ordered items. Transfers from the topmost, transfers to the top.
+                     | Pile (Map r (Cnt Int)) -- Unordered items
+                     | Slot (Maybe r) -- Single slot
+                     | Dummy -- No space
  deriving (Eq, Ord, Show, Generic)
 
 type Locations names r = FTMap names (LocationShape r)
 
-defaultToSearchableList :: (Ord r, Finitary r) => D.Defaultable (Map r) (Cnt Int) -> [r]
-defaultToSearchableList dmap = go (finDefaultToList dmap) [] where
-    -- for each step:   look only at keys with positive values
-    --                  add those keys to the result
-    --                  subtract one from all values
-    --                  repeat until there are no keys left
-    go :: [(r,Cnt Int)] -> [r] -> [r]
-    go pairs result = if null pairs then result
-                        else go (fmap (subtract 1) <$> pairs) (result ++ fmap fst pairs)
-    finDefaultToList :: (Ord r, Finitary r) => D.Defaultable (Map r) a -> [(r,a)]
-    finDefaultToList dmap' =  mapMaybe (\r -> sequence (r, D.lookup r dmap')) inhabitants
+-- Transfer should not happen unless sender and recipient allow it.
+-- This enforces the invariant that resources cannot 'disappear.' Either
+-- they will stay with the sender or they get transferred.
+--
+data TransferStatus = Success | Failure deriving (Eq, Ord, Show, Generic)
+
+-- maybeToSuccess :: Maybe r -> TransferStatus
+-- maybeToSuccess (Just _) = Success
+-- maybeToSuccess Nothing = Failure
+
+-- TODO: should be abstractable
 
 
-dadjust :: Ord k => (a -> a) -> k -> Defaultable (Map k) a -> Defaultable (Map k) a
-dadjust f k m = D.singleton (k,f) <*> m
-
-moveFromL :: Ord r => r -> LocationShape r -> (LocationShape r, Maybe r)
-moveFromL r (Deck s) = case Seq.elemIndexL r s of
-                        Nothing -> (Deck s, Nothing)
-                        Just i -> (Deck (Seq.deleteAt i s), Just r)
-moveFromL r (Pile pileMap) = case D.lookup r pileMap of
-                              Nothing -> (Pile pileMap, Nothing)
+moveFromL :: Ord r => r -> LocationShape r -> (LocationShape r, TransferStatus)
+moveFromL r (Deck s) = case Seq.elemIndexL r s of -- search from left (i.e. "top")
+                        Nothing -> (Deck s, Failure)
+                        Just i -> (Deck (Seq.deleteAt i s), Success)
+moveFromL r (Pile pileMap) = case M.lookup r pileMap of
+                              Nothing -> (Pile pileMap, Failure)
                               Just i -> if i > 0
-                                        then (Pile $ dadjust (subtract 1) r pileMap, Just r)
-                                        else (Pile pileMap, Nothing)
-moveFromL _ (Slot Nothing) = (Slot Nothing, Nothing)
+                                        then (Pile $ M.adjust (subtract 1) r pileMap, Success)
+                                        else (Pile pileMap, Failure)
+moveFromL _ (Slot Nothing) = (Slot Nothing, Failure)
 moveFromL r (Slot (Just r')) = if r' == r
-                              then (Slot Nothing, Just r)
-                              else (Slot (Just r'), Nothing)
-moveFromL _ Dummy = (Dummy, Nothing)
+                              then (Slot Nothing, Success)
+                              else (Slot (Just r'), Failure)
+moveFromL _ Dummy = (Dummy, Failure)
 
 
-moveToL :: Ord r => r -> LocationShape r -> (LocationShape r, Maybe r)
-moveToL r (Deck s) = (Deck (r <| s), Just r)
-moveToL r (Pile pileMap) = if r `M.member` D.toMap pileMap
-                           then (Pile (dadjust (+1) r pileMap), Just r)
-                           else (Pile pileMap, Nothing)
-moveToL r (Slot Nothing) = (Slot (Just r), Just r)
-moveToL _ (Slot (Just r')) = (Slot (Just r'), Nothing)
-moveToL _ Dummy = (Dummy, Nothing)
+moveToL :: Ord r => r -> LocationShape r -> (LocationShape r, TransferStatus)
+moveToL r (Deck s) = (Deck (r <| s), Success) -- add to left (i.e. "top")
+moveToL r (Pile pileMap) = if r `M.member` pileMap
+                           then (Pile (M.adjust (+1) r pileMap), Success)
+                           else (Pile pileMap, Failure)
+moveToL r (Slot Nothing) = (Slot (Just r), Success)
+moveToL _ (Slot (Just r')) = (Slot (Just r'), Failure)
+moveToL _ Dummy = (Dummy, Failure)
 
-inventory :: Ord r => LocationShape r -> Defaultable (Map r) (Cnt Int)
+
+-- laws!
+-- The difficulty with source == target comes from thinking imperatively: "Move from here and to here"
+-- OTOH that is the plain meaning of "transfer". Arguable what
+-- "transfer from a deck to itself" means. Probably has to mean "move
+-- topmost r to the top of the deck" to preserve laws.
+--
+-- Actually, can't even meaningfully test shapes for equality! Player A
+-- and Player B might start with the same set of resources! Check has to
+-- happen below.
+transfer' :: Ord r => r -> LocationShape r -> LocationShape r -> (LocationShape r -> LocationShape r, LocationShape r -> LocationShape r, TransferStatus)
+transfer' r source target = 
+    let 
+        (_, sourceStatus) = moveFromL r source
+        (_, targetStatus) = moveToL r target
+    in
+        if sourceStatus == Failure || targetStatus == Failure
+                then (id,id, Failure)
+                else (fst . moveFromL r , fst . moveToL r, Success)
+
+
+-- if name0 == name1 then loc0 == loc1
+-- I think this works if we just swap the order of the two `update`s.
+-- If we've already checked for success, then the order of those doesn't
+-- matter in most situations. It's like -1 to one pile and +1 to
+-- another. But if source == target, then we have to remove the thing
+-- before adding it.
+
+transferSafelyByName :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> (Locations name r, TransferStatus)
+transferSafelyByName r name0 name1 locs = let
+    loc0 = locs !!! name0
+    loc1 = locs !!! name1
+    (sourceF,targetF, mayber) = transfer' r loc0 loc1
+    in
+        case mayber of
+          Failure-> (locs, Failure)
+          Success -> (FT.applyAt name1 targetF . FT.applyAt name0 sourceF $ locs, Success)
+
+transfer :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> Locations name r
+transfer r n0 n1 l = fst (transferSafelyByName r n0 n1 l)
+
+----- Querying
+
+
+-- why not inventory = histogramF :(
+inventory :: Ord r => LocationShape r -> (Map r) (Cnt Int)
 inventory (Pile s) = s
 inventory (Deck s) = histogramF s
-inventory (Slot Nothing) = Defaultable M.empty (Just 0)
-inventory (Slot (Just r)) = D.singleton (r,1)
-inventory Dummy = Defaultable M.empty (Just 0)
+inventory (Slot Nothing) = M.empty
+inventory (Slot (Just r)) = M.singleton r 1
+inventory Dummy = M.empty
 
-
+howMany' :: Ord r => LocationShape r -> r -> Cnt Int
+howMany' loc res = fromMaybe 0 . M.lookup res . inventory $ loc
 
 has' :: Ord r => LocationShape r -> r -> Bool
-has' loc r = case fmap (>0) (D.lookup r (inventory loc)) of
-              Just True -> True
-              _ -> False
-
-
-histoToList :: Defaultable (Map r) (Cnt Int) -> [r]
-histoToList = concatMap (\(x, count) -> cntReplicate count x) . M.toList . D.toMap
-    where cntReplicate :: Cnt Int -> a -> [a]
-          cntReplicate (Cnt i) = replicate i
-          cntReplicate Infinity = repeat
-
+has' loc r = howMany' loc r > 0
 
 findResourceWithin :: Ord r => r -> [n] -> Locations n r -> [n]
 findResourceWithin res names locs = filter (\n -> (locs !!! n) `has'` res) names
@@ -108,52 +158,16 @@ listAll :: Ord r => n -> Locations n r -> [r]
 listAll n locs = listAllF n locs (const True)
 
 listAllF :: Ord r => n -> Locations n r -> (r -> Bool) -> [r]
-listAllF n locs filt = filter filt . histoToList . inventory $ locs !!! n
-
---
--- laws!
--- this does not work if loc = loc'
-transfer' :: Ord r => r -> LocationShape r -> LocationShape r -> (LocationShape r, LocationShape r, Maybe r)
-transfer' r loc loc' = if loc /= loc'
-                       then case moveFromL r loc of
-                              (newLoc, Just r) -> case moveToL r loc' of
-                                (newLoc', Just r) -> (newLoc, newLoc', Just r)
-                                (_, Nothing) -> (loc, loc', Nothing)
-                              (_, Nothing) -> (loc, loc', Nothing)
-                       else 
-                       -- TODO: once confirmed, simplify
-                            let (step1, fakeslot, mayber) = transfer' r loc (Slot Nothing)
-                                (_, step2, mayber') = case mayber of
-                                                                Just r' -> transfer' r' fakeslot step1
-                                                                Nothing -> (loc, loc, Nothing)
-                            in
-                                (step2,step2, mayber')
-                                
-
-
-
-transferSafe :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> (Locations name r, Maybe r)
-transferSafe r name0 name1 locs = let
-    loc0 = locs !!! name0
-    loc1 = locs !!! name1
-    (loc0',loc1',mayber) = transfer' r loc0 loc1
-    in
-        case mayber of
-          Nothing -> (locs, Nothing)
-          Just i -> (FT.update (name0, loc0') . FT.update (name1, loc1') $ locs, Just i)
-
-transfer :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> Locations name r
-transfer r n0 n1 l = fst (transferSafe r n0 n1 l)
+listAllF n locs filt = filter filt . M.keys . inventory $ locs !!! n
 
 peek :: LocationShape r -> Maybe r
-peek (Pile s) = listToMaybe (M.keys . M.filter (>0) $ D.toMap s)
+peek (Pile s) = listToMaybe (M.keys . M.filter (>0) $ s)
 peek (Deck (x :<| _)) = Just x
 peek (Deck Empty) = Nothing
 peek (Slot s) = s
 peek Dummy = Nothing
 
-countPieces :: Ord r => LocationShape r -> Cnt Int
-countPieces = sum . inventory
+---- Counters
 
 data Counter = Counter {val :: Cnt Int,
                         bounds :: (Cnt Int, Cnt Int)} deriving (Eq, Show, Generic)
@@ -188,22 +202,10 @@ decrement' = mapCounter (subtract 1)
 decrement :: Counter -> Counter
 decrement = fst . decrement'
 
--- TODO: this is still not the right type signature. Want something like
--- StateT g m Counter 
--- with more/different constraints
-rollCounter :: (Monad m, RandomGen g, MonadState Counter m) => Counter -> StateT g m Counter
-rollCounter c = do
-    let (bl,bu) = view #bounds c
-    newVal <- state (uniformR (bl,bu))
-    let c' = set #val newVal c
-    return c'
-
-
 data GameObjects n cn r = GameObjects {
     locations :: Locations n r,
     counters :: Counters cn} deriving (Generic, Show)
 
 makeFields ''GameObjects
-
 
 

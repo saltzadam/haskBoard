@@ -19,10 +19,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module GameE where
 
-import Control.Lens ( Getting, makeFields, over, view, (^.), to )
+import Control.Lens
+    ( Getting, makeFields, over, view, (^.), to, Lens' )
 import Control.Lens.Combinators (ASetter)
 import Count
 import Effectful
@@ -33,12 +35,13 @@ import Effectful.Crypto.RNG
     runCryptoRNG,
   )
 import Effectful.Dispatch.Dynamic (interpret, send)
+import Effectful.Dispatch.Static (SideEffects(..), StaticRep, getStaticRep)
 import Effectful.Reader.Static (Reader)
 import qualified Effectful.Reader.Static as R
 import qualified Effectful.State.Static.Local as S
 import FinitaryMap (ftAt)
 import GHC.Generics (Generic)
-import Location (GameObjects (..), decrement, increment, setCounter, transfer, inventory)
+import Location ( decrement, increment, setCounter, transfer, inventory, GameObjects, Counter)
 import Data.Finitary (Finitary)
 import Data.Bitraversable (bitraverse)
 import Data.Tree (Tree (..))
@@ -50,9 +53,15 @@ import Control.Monad (MonadPlus(..))
 import Effectful.Log (Log, logInfo, runLog, defaultLogLevel)
 import qualified Data.Text as T
 import Log.Backend.StandardOutput
-import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
+import Game.Options
+import GHC.Base (Type)
 
+-- TODO: organize effects
+-- TODO: export list
+
+-- TODO: (lower) abstract out log
+-- TODO: (fun) some kind of history besides log
 data GameNode l cn r ph pl i = GameNode
   { node :: Either  (GameAction l cn r ph) (GetOptions l cn r ph pl i),
     owner :: Maybe Player
@@ -83,16 +92,24 @@ data Phase phaseName l cn r playName i = Phase {
     seedNodes :: ObserveGame l cn r phaseName i [GameNode l cn r phaseName playName i]
   } deriving (Generic)
 
+-- thanks /u/typedbyte
+-- https://www.reddit.com/r/haskell/comments/10ql43j/monthly_hask_anything_february_2023/jabrmxk/
+
+data Mode = Get | Modify deriving (Eq, Ord, Show, Generic)
+data Data (mode :: Mode) (a :: Type) :: Effect
+type instance DispatchOf (Data mode a) = Static NoSideEffects
+newtype instance StaticRep (Data mode a) = Data a
+
+testRead :: (Data Get a :> es) => Eff es a
+testRead = do
+    Data a <- getStaticRep 
+    pure a
 
 
 -- TODO: is there a clean way to restrict state to reader?
-
 type GameDataS l cn r ph = S.State (GameData l cn r ph)
-
 type GameDataR l cn r ph = R.Reader (GameData l cn r ph)
-
 type GameRulesR l cn r ph pl i = R.Reader (GameRules l cn r ph pl i)
-
 type ObserveGame l cn r ph i = Eff '[GameDataR l cn r ph, Log]
 type ObserveRulesGame l cn r ph pl i = Eff '[ GameRulesR l cn r ph pl i, GameDataR l cn r ph, Log]
 type ModifyGame l cn r ph = Eff '[GameDataS l cn r ph, Log]
@@ -133,7 +150,6 @@ modifyWithPass f = S.state $ \s -> (s, f s)
 modifyingWithPass :: (S.State t :> es) => ASetter t t a b -> (a -> b) -> Eff es t
 modifyingWithPass o = modifyWithPass . over o
 
--- modifying :: (S.State s :> es) => ASetter s s a b -> (a -> b) -> Eff es ()
 modifying :: (S.State s :> es) => ASetter s s a b -> (a -> b) -> Eff es ()
 modifying o = S.modify . over o
 {-# INLINE modifying #-}
@@ -175,54 +191,39 @@ logAction (ChangePhase ph) val = logInfo (T.pack $ "Changed phase to " ++ show p
 logAction EndGame val = logInfo "Ended game" (show val)
 
 
-act' :: (Ord l, Ord r, RNG :> es, GameDataS l cn r ph :> es,  Eq cn, Log :> es, Show ph, Show cn, Show l, Show r) => GameAction l cn r ph -> Eff es (GameControl ph)
-act' DoNothing = continueGame
-act' a@(MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
+counterByName :: Eq cn => cn -> Lens' (GameData l cn r ph) Counter
+counterByName c = #objects . #counters . ftAt c
+
+
+act :: (Ord l, Ord r, RNG :> es, GameDataS l cn r ph :> es,  Eq cn, Log :> es, Show ph, Show cn, Show l, Show r) => GameAction l cn r ph -> Eff es (GameControl ph)
+act DoNothing = continueGame
+act a@(MkTransfer l l' r) = modifying (#objects . #locations) (transfer r l l')
                             >> observeGame (logAction a ' ')
                             >> continueGame
-act' a@(IncrementCounter c) = modifyingWithPass (#objects . #counters . ftAt c) increment
-                            >> (S.gets (view (#objects . #counters . ftAt c . #val)) >>= observeGame . logAction a)
+act a@(IncrementCounter c) = modifying (counterByName c) increment
+                            >> (S.gets (view (counterByName c . #val)) >>= observeGame . logAction a)
                             >> continueGame
-act' a@(DecrementCounter c) = modifyingWithPass (#objects . #counters . ftAt c) decrement
-                            >> (S.gets (view (#objects . #counters . ftAt c . #val)) >>= observeGame . logAction a)
+act a@(DecrementCounter c) = modifying (counterByName c) decrement
+                            >> (S.gets (view (counterByName c . #val)) >>= observeGame . logAction a)
                             >> continueGame
-act' a@(SetCounter c v) = modifyingWithPass (#objects . #counters . ftAt c) (`setCounter` v)
-                            >> (S.gets (view (#objects . #counters . ftAt c . #val)) >>= observeGame . logAction a)
+act a@(SetCounter c v) = modifying (counterByName c) (`setCounter` v)
+                            >> (S.gets (view (counterByName c . #val)) >>= observeGame . logAction a)
                             >> continueGame
-act' a@(RollCounter c) = do
-  (bl, bu) <- S.gets (view (#objects . #counters . ftAt c . #bounds))
+act a@(RollCounter c) = do
+  (bl, bu) <- S.gets (view (counterByName c . #bounds))
   newVal <- randomR (bl, bu)
-  assign (#objects . #counters . ftAt c . #val) newVal
-  S.gets (view (#objects . #counters . ftAt c . #val)) >>= observeGame . logAction a
+  assign (counterByName c . #val) newVal
+  S.gets (view (counterByName c . #val)) >>= observeGame . logAction a
   continueGame
-act' a@(ChangePhase ph) = assignWithPass #currentPhase ph
+act a@(ChangePhase ph) = assignWithPass #currentPhase ph
                             >> observeGame (logAction a (show ph))
                             >> return (ChangePhaseTo ph)
-act' EndGame = observeGame (logAction EndGame ' ') >> return End
-
-act :: (Ord l, Ord r, GameDataS l cn r ph :> es, RNG :> es, Log :> es, Show r, Show l, Show cn, Show ph, Eq cn) => GameAction l cn r ph -> Eff es (GameControl ph)
-act = act'
+act EndGame = observeGame (logAction EndGame ' ') >> return End
 
 -- The flow of a game looks like this: there is some sequence of `GameActions` (draw a card, advance the turn counter) until a player must make a `GetOptions`. GetOptionss produce sequences of actions and additional choices, and so on.
 
-data Legality illegal = Legal | Illegal illegal deriving (Eq, Ord, Show, Generic)
-
-instance Semigroup (Legality i) where
-    Legal <> x = x
-    x <> Legal = x
-    x <> _ = x
-
-instance Monoid (Legality i) where
-    mempty = Legal
-
-data Options pl i = Options {legal :: NonEmpty pl,
-                             illegal :: [(pl, Legality i)]
-                            } deriving (Eq, Ord, Show, Generic)
-
 type GetOptions l cn r ph pl i = Eff '[GameDataR l cn r ph, Log] (Options pl i)
 
-
-makeFields ''Options
 makeFields ''GameRules
 makeFields ''GameData
 
@@ -233,8 +234,6 @@ mkGetOptionsNode :: Player -> GetOptions l cn r ph pl i -> GameNode l cn r ph pl
 mkGetOptionsNode p choice = GameNode (Right choice) (Just p)
 
 
-
--- TODO: make GetOptions Nonempty -- should never send an empty list!
 chooseNode ::  (Show pl, Show i) =>  GetOptions l cn r ph pl i
         -> Eff '[GameDataR l cn r ph, Choosing, GameRulesR l cn r ph pl i, Log] [GameNode l cn r ph pl i]
 chooseNode cs =
@@ -302,7 +301,7 @@ runFromSeeds = unfoldForestControl treefunc
                       Left Continue ->  return $ Just (nod, [], TContinue)
                       Left End -> return Nothing
                       Left (ChangePhaseTo ph) -> do
-                            phases <- R.asks (view #phases :: GameRules l cn r ph pl i -> (ph -> Phase ph l cn r pl i))
+                            phases <- R.asks (view #phases)
                             newNodes <- observeGame $ (view #seedNodes :: Phase ph l cn r pl i -> Eff '[GameDataR l cn r ph, Log] [GameNode l cn r ph pl i] ) (phases ph)
                             return $ Just (nod, [], TRestart newNodes)
                       Right moreNodes -> return $ Just (nod, moreNodes, TContinue)
@@ -315,7 +314,6 @@ playGame = do
     let currentPhase = view #currentPhase game
     newNodes <- observeGame (phases currentPhase ^. #seedNodes :: Eff '[GameDataR l cn r ph, Log] [GameNode l cn r ph pl i])
     runMaybeT . runFromSeeds $ newNodes
-
 
 action :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameData l cn r ph -> GameRules l cn r ph pl i -> IO (GameData l cn r ph)
 action gdata grules = do

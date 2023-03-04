@@ -28,7 +28,7 @@ library
                 effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
                 finite-typelits, crypto-rng-effectful, effectful-plugin,
                 log-effectful, log-base
-    exposed-modules: Count, Location, GameE, Game.Player,FinitaryMap, Game.Condition, Game.Log
+    exposed-modules: Count, Location, GameE, Game.Player,FinitaryMap, Game.Condition, Game.Log, Game.Options
     default-language: Haskell2010
     default-extensions: 
     ghc-options:  -Wall -fplugin=Effectful.Plugin
@@ -39,7 +39,7 @@ test-suite haskboard-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
   hs-source-dirs: test
-  build-depends: base, containers, lens, QuickCheck, tasty, haskBoard, defaultable-map, tasty-quickcheck
-  other-modules: TestCount, TestUtil
+  build-depends: base, containers, lens, QuickCheck, tasty, haskBoard, defaultable-map, tasty-quickcheck, finitary
+  other-modules: TestCount, TestFinitaryMap
   ghc-options: -Wall
   default-language: Haskell2010

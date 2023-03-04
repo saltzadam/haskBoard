@@ -13,37 +13,20 @@ import GHC.Generics (Generic)
 import GHC.Base (liftA2)
 import Control.Lens ( lens )
 import Control.Lens.Iso
-import GHC.TypeNats
-import Data.Finite.Internal ( Finite(..), getFinite, finite)
-import Control.Monad (replicateM)
-import Data.List (lookup)
-import Data.Maybe (fromJust)
+
+-- FTMap is a "Finitary, total map". That is, it's a total map from a finitary domain. 
+-- It's represented as a newtype wrapper on `a -> b` where a is Finitary.
 
 newtype FTMap a b = FTMap {runFn :: a -> b} deriving (Generic, Functor, Applicative)
 
+-- From function to Map using the finitary-ness of `a`. 
+-- TODO: should this have an Ord constraint?
 reifyFn :: Finitary a => FTMap a b -> Map a b
 reifyFn (FTMap f) = M.fromAscList [(a, f a) | a <- inhabitants]
 
-unsafeUnreify :: Ord a => Map a b -> FTMap a b
+-- unsafe because the map isn't required to be total. 
+unsafeUnreify :: (Ord a, Finitary a) => Map a b -> FTMap a b
 unsafeUnreify m = FTMap (m M.!)
-
--- enumerateFn' :: forall a b . (Finitary a, Finitary b) => [([(a,b)], Integer)]
--- enumerateFn' = let lena = length (inhabitants @a)
---                 in zip
---                     [zip inhabitants values | values <- replicateM lena inhabitants]
---                     [1..]
-
--- unsafeUnEnumerate :: Eq a => [(a,b)] -> FTMap a b
--- unsafeUnEnumerate pairs = FTMap (\x -> fromJust $ lookup x pairs)
-
--- instance (Finitary a, Finitary b, KnownNat (Cardinality b ^ Cardinality a)) => Finitary (FTMap a b) where
---     type Cardinality (FTMap a b) = Cardinality b ^ Cardinality a
---     fromFinite i = unsafeUnEnumerate . fst $ (enumerateFn' !! fromInteger (getFinite i))
---     toFinite f = finite . fromJust $ (lookup (val f) enumerated :: Maybe Integer)
---         where
---             enumerated = enumerateFn' :: [([(a,b)], Integer)]
---             val f = M.toList . reifyFn $ f :: [(a,b)]
-
 
 instance (Eq a, Eq b, Finitary a) => Eq (FTMap a b) where
     (==) f g = reifyFn f == reifyFn g
@@ -71,21 +54,21 @@ instance Num b => Num (FTMap a b) where
 instance (Finitary a, Ord a, Ord b) => Ord (FTMap a b) where
     compare f g = compare (reifyFn f) (reifyFn g)
 
--- lookup :: FTMap a b -> a -> b
--- f `lookup` a = runFn f a
-
+-- TODO: change to !!! and import qualified
 (!!!) :: FTMap a b -> a -> b
 (!!!) = runFn
 
+applyAt :: Eq a => a -> (b -> b) -> FTMap a b -> FTMap a b
+applyAt a fn f = FTMap (\x -> if x == a then fn (runFn f x) else runFn f x)
+
+-- TODO: is this better with some kind of strictness marking?
+-- probably not significant for this use case
+-- update (a,b) = applyAt (a, const b)
 update :: Eq a => (a,b) -> FTMap a b  -> FTMap a b
 update (a,b) f = FTMap (\x -> if x == a then b else runFn f x)
 
 filter :: (Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
 filter filt = M.filter filt .  reifyFn
-
-filterKey :: Finitary a => (a -> Bool) -> FTMap a b -> Map a b
-filterKey filt = M.filterWithKey (\k _ -> filt k) . reifyFn
-
 
 -- Lenses
 

@@ -3,12 +3,12 @@
 {-# HLINT ignore "Evaluate" #-}
 module Main where
 import Test.Tasty
-import Test.Tasty.QuickCheck as QC
 
-import TestCount
+import TestCount ( testsCount )
+import TestFinitaryMap (testsFinitaryMap)
 
 tests :: TestTree
-tests = testGroup "Tests" [testsCount]
+tests = testGroup "Tests" [testsCount, testsFinitaryMap]
 
 
 main :: IO ()

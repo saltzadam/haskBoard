@@ -18,11 +18,8 @@ import GHC.Generics (Generic)
 import System.Random.Stateful (UniformRange(uniformRM), Uniform (..))
 import Control.Monad.Random
 import Data.Bifunctor (bimap)
-import Defaultable.Map (Defaultable)
-import qualified Defaultable.Map as D
 
 -- This is Maybe a with the opposite order for Nothing
--- Use it for counting things, think about "unlimited" stuff
 data Cnt a = Cnt a | Infinity deriving (Eq, Show, Functor, Generic, Finite)
 
 instance Ord a => Ord (Cnt a) where
@@ -43,6 +40,7 @@ instance Semigroup a => Semigroup (Cnt a) where
 instance Monoid a => Monoid (Cnt a) where
   mempty = pure mempty
 
+-- Not a real instance
 instance Num a => Num (Cnt a) where
   (+) = liftA2 (+)
   (*) = liftA2 (*)
@@ -79,10 +77,11 @@ instance Enum (Cnt Int) where
 
 instance Random (Cnt Int)
 
--- TODO: remove defaultable here (and in Location)
--- TODO: replace with non-default lookup function
-histogramF :: (Foldable f, Ord a) => f a -> Defaultable (Map a) (Cnt Int)
-histogramF foldable =  D.fromMap (foldl' (flip (M.alter plusOrInsertOne)) mempty foldable) `D.withDefault` 0
+-- should be indirectly querying this.
+-- Use fromMaybe 0 . lookup key or somesuch
+
+histogramF :: (Foldable f, Ord a) => f a -> (Map a) (Cnt Int)
+histogramF = foldl' (flip (M.alter plusOrInsertOne)) mempty
   where
     plusOrInsertOne = Just . maybe 1 (+ 1)
 
