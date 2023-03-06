@@ -6,9 +6,10 @@ import Test.Tasty
 
 import TestCount ( testsCount )
 import TestFinitaryMap (testsFinitaryMap)
+import TestLocation (testsLocation)
 
 tests :: TestTree
-tests = testGroup "Tests" [testsCount, testsFinitaryMap]
+tests = testGroup "Tests" [testsCount, testsFinitaryMap, testsLocation] 
 
 
 main :: IO ()

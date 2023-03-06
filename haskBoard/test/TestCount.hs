@@ -10,7 +10,7 @@ import qualified Data.Foldable as F
 import qualified Data.Map as M
 import Data.Map (Map)
 
-prop_cnt_plus_num :: TestTree 
+prop_cnt_plus_num :: TestTree
 prop_cnt_plus_num = QC.testProperty "Add Cnt Ints" $ \i j -> Cnt (i :: Int) + Cnt j == Cnt (i+j)
 
 prop_cnt_plus_inf_num :: TestTree
@@ -20,13 +20,13 @@ prop_cnt_plus_num_inf :: TestTree
 prop_cnt_plus_num_inf = QC.testProperty "Infinity + Cnt Int" $ \i -> Infinity + Cnt (i :: Int) == Infinity
 
 prop_cnt_plus_inf_inf :: TestTree
-prop_cnt_plus_inf_inf = QC.testProperty "Infinity + Infinity" $ \b -> const (Infinity + Infinity == Infinity) (b :: Bool) 
+prop_cnt_plus_inf_inf = QC.testProperty "Infinity + Infinity" $ \b -> const (Infinity + Infinity == Infinity) (b :: Bool)
 
 
 -- TODO: when defaultable-map is removed, can't use the applicative instance anymore :(
 histogramFSemigroup :: (Eq a, Ord a, Foldable f) => f a -> f a -> Bool
 histogramFSemigroup f0 f1 = histogramF (F.toList f0 <> F.toList f1)
-    == ((+) <$> histogramF f0 <*> histogramF f1)
+    == M.unionWith (+) (histogramF f0) (histogramF f1)
 
 prop_histogramF_semigroup :: TestTree
 prop_histogramF_semigroup = QC.testProperty "histogramF semigroup" $ \f0 f1 -> histogramFSemigroup f0 (f1 :: (Map Int Int))

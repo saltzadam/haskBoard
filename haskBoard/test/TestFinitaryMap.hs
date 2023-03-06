@@ -20,7 +20,7 @@ deriving instance Finitary SmallType
 deriving instance QC.Function SmallType
 instance QC.CoArbitrary SmallType
 instance QC.Arbitrary SmallType where
-    arbitrary = QC.elements [D0, D1, D2, D3, D4, D5]
+    arbitrary = QC.elements inhabitants
 
 finitarymap_roundtrip :: Fun SmallType SmallType -> Bool
 finitarymap_roundtrip xs = unsafeUnreify (reifyFn (FTMap (applyFun xs))) == FTMap (applyFun xs)

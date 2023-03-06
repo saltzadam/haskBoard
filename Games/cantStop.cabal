@@ -34,7 +34,7 @@ executable CantStop
     hs-source-dirs: CantStop
     build-depends: base, CantStop, haskBoard, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
-                effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
+                effectful, effectful-core, mtl, finitary, mmorph,
                 brick, effectful-plugin, haskBoard, log-effectful, log-base
 
     default-language: Haskell2010

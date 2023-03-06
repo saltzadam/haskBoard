@@ -19,6 +19,7 @@ import Control.Lens.Iso
 
 newtype FTMap a b = FTMap {runFn :: a -> b} deriving (Generic, Functor, Applicative)
 
+
 -- From function to Map using the finitary-ness of `a`. 
 -- TODO: should this have an Ord constraint?
 reifyFn :: Finitary a => FTMap a b -> Map a b

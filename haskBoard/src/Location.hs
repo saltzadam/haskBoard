@@ -25,7 +25,8 @@ module Location
      setCounter,
      increment,
      decrement,
-     GameObjects(..)
+     GameObjects(..),
+     howMany
     )
  where
 import Control.Lens (makeFields, set)
@@ -101,8 +102,8 @@ moveToL _ Dummy = (Dummy, Failure)
 -- and Player B might start with the same set of resources! Check has to
 -- happen below.
 transfer' :: Ord r => r -> LocationShape r -> LocationShape r -> (LocationShape r -> LocationShape r, LocationShape r -> LocationShape r, TransferStatus)
-transfer' r source target = 
-    let 
+transfer' r source target =
+    let
         (_, sourceStatus) = moveFromL r source
         (_, targetStatus) = moveToL r target
     in
@@ -144,6 +145,9 @@ inventory Dummy = M.empty
 
 howMany' :: Ord r => LocationShape r -> r -> Cnt Int
 howMany' loc res = fromMaybe 0 . M.lookup res . inventory $ loc
+
+howMany :: Ord r => Locations l r -> l -> r -> Cnt Int
+howMany locs lname = howMany' (locs !!! lname)
 
 has' :: Ord r => LocationShape r -> r -> Bool
 has' loc r = howMany' loc r > 0

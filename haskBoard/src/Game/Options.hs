@@ -1,4 +1,10 @@
-module Options where
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveGeneric #-}
+module Game.Options where
+import GHC.Generics (Generic)
+import Data.List.NonEmpty (NonEmpty)
+import Control.Lens (makeFields)
+
 
 data Legality illegal = Legal | Illegal illegal deriving (Eq, Ord, Show, Generic)
 
