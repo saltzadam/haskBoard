@@ -368,7 +368,7 @@ action gdata grules = do
   withStdOutLogger $ \stdOutLogger -> runEff .  runGameInteract gdata grules . runCryptoRNG gen . chooseRandom . runLog "main" stdOutLogger defaultLogLevel $ playGame
 
 ----- Condition, perhaps soon to be Observation?
-type Condition l cn r ph i a = ObserveGame l cn r ph i a
+type Condition l cn r ph pl i a = ObserveGame l cn r ph pl i a
 
 runNodesAgainstState :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph -> GameRules l cn r ph pl i -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph)
 runNodesAgainstState gd grules nodes = do

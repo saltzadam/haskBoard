@@ -13,7 +13,7 @@
 
 module CantStop where
 
-import Control.Lens ((^.), view, over, to)
+import Control.Lens (to)
 import Count
 import Data.Bitraversable
 import Data.Finitary (Finitary, inhabitants)
@@ -23,7 +23,6 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (listToMaybe, mapMaybe, fromMaybe)
 import qualified Data.Sequence as Seq
-import qualified Defaultable.Map as D
 import FinitaryMap (FTMap (..), ftAt)
 import GHC.Base (liftA2)
 import GHC.Generics (Generic)
@@ -31,12 +30,9 @@ import GameE
 import Location (Counter (..), Counters, GameObjects (..), LocationShape (..), Locations, counters, d6, findResourceWithin, inventory, listAllF, has')
 import Data.Set (Set)
 import qualified Data.Set as S
-import Game.Condition (cCounterVal)
-import Effectful.Reader.Static (asks)
 import Game.Player
 import qualified Data.Set as Set
 import Effectful (inject)
-import qualified Effectful.Reader.Static as R
 import qualified Data.Text as T
 import Effectful.Log (logInfo)
 import Game.Options (Options (..), Legality (..))
@@ -116,17 +112,14 @@ type CantStopAction = GameAction CantStopLocation CantStopCounterName CantStopRe
 
 -- type CantStopGame = Game CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName CantStopTurns Player
 
-type CantStopGameData = GameData CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
+type CantStopGameState = GameState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 type CantStopGameRules = GameRules CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 
 type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 type CantStopGetOptions = GetOptions CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 
-type Observe = ObserveGame CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName Issue
-
-type ObserveWithRules = ObserveRulesGame  CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
-
-type Modify = ModifyGame CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
+type Observe = ObserveGame CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
+type Modify = ModifyGame CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 
 
 
@@ -181,9 +174,9 @@ chooseMove p =
     checkMove :: PlayName -> Observe (Legality Issue)
     checkMove (Move p (OneValueMove s)) = do
         hasWinner <- maybe Legal  (const (Illegal TrackCompleted)) . M.lookup s <$> trackWinners
-        numTempLeft <- fromMaybe 0 . M.lookup TemporaryMarker . inventory <$> R.asks (view (#objects . #locations . ftAt BoxTop))
+        numTempLeft <- fromMaybe 0 . M.lookup TemporaryMarker . inventory <$> useGameState (#objects . #locations . ftAt BoxTop)
         let noMarkersLeft = if numTempLeft == 0 then Illegal ThreeTempMarkersOut else Legal
-        atTop' <- flip has' (PlayerMarker p) <$> R.asks (view (#objects . #locations . ftAt (TrackSpot s (maxSlot s))))
+        atTop' <- flip has' (PlayerMarker p) <$> useGameState (#objects . #locations . ftAt (TrackSpot s (maxSlot s)))
         let atTop = if atTop' then Illegal AtTop else Legal
         return (hasWinner <> noMarkersLeft <> atTop)
     checkMove (Move p (TwoValueMove s t)) =
@@ -202,7 +195,8 @@ stopOrGoNode p = mkGetOptionsNode p (stopOrGo p)
 diceVals :: Observe [(Cnt Int, Cnt Int)]
 diceVals = mapM (bitraverse makeSum makeSum) (mkPairs theDiceL)
   where
-    makeSum (c, c') = cCounterVal c + cCounterVal c'
+    makeSum :: (CantStopCounterName, CantStopCounterName) -> Observe (Cnt Int)
+    makeSum (c, c') = useGameState (counterByName c . #val)  + useGameState (counterByName c' . #val)
     mkPairs :: (a, a, a, a) -> [((a, a), (a, a))]
     mkPairs (x, y, w, z) =
       let pairs1 = [((x, y), (w, z)), ((x, w), (y, z)), ((x, z), (y, w))]
@@ -211,10 +205,10 @@ diceVals = mapM (bitraverse makeSum makeSum) (mkPairs theDiceL)
 
 
 
-advancePlayer :: ObserveWithRules CantStopGameNode
+advancePlayer :: Observe CantStopGameNode
 advancePlayer = do
-    players <- observe #players
-    currentPlayer <- observe (#currentPhase . to currentPlayer)
+    players <- useGameState #players
+    currentPlayer <- useGameState (#currentPhase . to currentPlayer)
     let nextp = unsafeNextCyclic currentPlayer players
     return (mkActionNode (ChangePhase (Turn nextp)))
     where
@@ -226,11 +220,11 @@ advancePlayer = do
 cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (Turn p) = playerTurn p
 
-initGameData :: Int -> CantStopGameData
-initGameData numPlayers =
+initGameState :: Int -> CantStopGameState
+initGameState numPlayers =
     let players = Set.fromList . fmap Player $ take numPlayers inhabitants
     in
-  GameData
+  GameState
       { players = players,
       objects = initGameObjects players,
       currentPhase = Turn (head (S.toList players))
@@ -252,7 +246,7 @@ gameRules = GameRules {
 --   - track closed
 --   - marker already at top
 -- still need to compute correct distance to move
-csRunPlay :: PlayName -> ObserveWithRules [CantStopGameNode]
+csRunPlay :: PlayName -> Observe [CantStopGameNode]
 csRunPlay (Move pl (OneValueMove s)) = inject (moveMarkerBy pl s 2 `andThen` pure (stopOrGoNode pl))
 csRunPlay (Move pl (TwoValueMove s t)) = inject (moveMarkerBy pl s 1 <> moveMarkerBy pl t 1) `andThen` pure (stopOrGoNode pl)
 csRunPlay (Stop pl) = do
@@ -260,9 +254,8 @@ csRunPlay (Stop pl) = do
     `andThen` checkWinner)
     `andThen` advancePlayer -- TODO: awkward -- why not just all Observe?
 csRunPlay (DontStop _) = do
-    gd <- R.ask :: ObserveWithRules CantStopGameData
-    case view #currentPhase gd of
-      Turn p ->  inject $ pure rollNodes <> chooseMove p
+    Turn p <- useGameState #currentPhase
+    inject $ pure rollNodes <> chooseMove p
 
 clearWonTracks :: Observe [CantStopGameNode]
 clearWonTracks = do
@@ -271,7 +264,7 @@ clearWonTracks = do
         where
             moveOtherMarkers :: TrackName -> Player -> Observe [CantStopGameNode]
             moveOtherMarkers track winningP = do
-                locs <- asks (view (#objects . #locations))
+                locs <- useGameState (#objects . #locations)
                 let getMarkersToMove n = listAllF n locs (/= PlayerMarker winningP)
                 -- TODO: improve
                 let test = concat . NE.toList $ (\n -> mkTransferBack n <$> getMarkersToMove n) <$> trackSlots track
@@ -287,15 +280,18 @@ checkWinner = do
   trackMap <- trackWinners
   let playerHistogram = histogramF trackMap
   let winners = M.keys . M.filter (>= 3) $ playerHistogram
-  if not (null winners) then logInfo (T.pack "We have a winner!") (show winners ++ show playerHistogram) >> return (mkActionNode EndGame) else return (mkActionNode DoNothing)
+  if not (null winners) 
+  then logInfo (T.pack "We have a winner!") (show winners ++ show playerHistogram) 
+       >> return (mkActionNode EndGame) 
+  else return (mkActionNode DoNothing)
 
 trackWinner :: TrackName -> Observe (Maybe Player)
 trackWinner track = do
-  things <- asks (view (#objects . #locations . ftAt (TrackSpot track (maxSlot track))))
+  things <- useGameState (locationByName (TrackSpot track (maxSlot track)))
   let getPlayer res = case res of
         PlayerMarker p -> Just p
         _ -> Nothing
-  return $ listToMaybe . mapMaybe getPlayer . M.keys . M.filter (> 0) $ D.toMap (inventory things)
+  return $ listToMaybe . mapMaybe getPlayer . M.keys . M.filter (> 0) $ inventory things
 
 -- TODO: simplify
 trackWinners :: Observe (Map TrackName Player)
@@ -304,8 +300,8 @@ trackWinners = fmap (M.mapMaybe id) . sequence . mconcat $ fmap (\track -> M.sin
 moveMarkerBy :: Player -> TrackName -> Int -> Observe [CantStopGameNode]
 moveMarkerBy pl s amt = do
   let slots = trackSlots s
-  tempMarkerLocs <- findResourceWithin TemporaryMarker (NE.toList slots) <$> asks (view (#objects . #locations))
-  playerMarkerLocs <- findResourceWithin (PlayerMarker pl) (NE.toList slots) <$> asks (view (#objects . #locations))
+  tempMarkerLocs <- findResourceWithin TemporaryMarker (NE.toList slots) <$> useGameState (#objects . #locations)
+  playerMarkerLocs <- findResourceWithin (PlayerMarker pl) (NE.toList slots) <$> useGameState (#objects . #locations)
   -- TODO: rewrite with Alternative
   case (listToMaybe tempMarkerLocs, listToMaybe playerMarkerLocs) of
     -- if the TemporaryMarker is out, move 2 (or 1 if there's not enough space)
@@ -328,8 +324,8 @@ mkMoveNode p action = GameNode (Left action) (Just p)
 
 resolveMarkers :: Player -> Observe [CantStopGameNode]
 resolveMarkers pl = do
-  tempMarkerLocs <- findResourceWithin TemporaryMarker allSpots <$> asks (view (#objects . #locations))
-  playerMarkerLocs <- findResourceWithin (PlayerMarker pl) allSpots <$> asks (view (#objects . #locations))
+  tempMarkerLocs <- findResourceWithin TemporaryMarker allSpots <$> useGameState (#objects . #locations)
+  playerMarkerLocs <- findResourceWithin (PlayerMarker pl) allSpots <$> useGameState (#objects . #locations)
   let tempMarkerPairs =  fmap locToNameHeight tempMarkerLocs
   let playerMarkerPairs =  fmap locToNameHeight playerMarkerLocs
   return (concatMap (resolveMarker' pl playerMarkerPairs) tempMarkerPairs)
@@ -348,7 +344,9 @@ resolveMarkers pl = do
     locToNameHeight (TrackSpot nm h) = (nm, h)
     locToNameHeight _ = error "applied to non-track"
 
-runCSNodes = runNodesAgainstState (initGameData 3) gameRules
+runCSNodes = runNodesAgainstState (initGameState 3) gameRules
 
 
 --- Helpers ---
+(<+) :: Enum a => a -> Int -> a
+a <+ i = toEnum (fromEnum a + i)

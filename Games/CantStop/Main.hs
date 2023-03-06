@@ -1,8 +1,8 @@
 module Main where
 import GameE (action)
-import CantStop (initGameData, gameRules)
+import CantStop (initGameState, gameRules)
 
-a = action (initGameData 3) gameRules
+a = action (initGameState 3) gameRules
 
 main :: IO ()
 main = do
