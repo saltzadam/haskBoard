@@ -311,7 +311,7 @@ chooseNode cs =
         options <- cs'
         logInfo (T.pack ("Choosing from " ++ show options)) ' '
         playRunner <- useGameRules #runPlay
-        c <- chooseS options
+        c <- choose options
         logInfo (T.pack ("Chose " ++ show c)) ' '
         inject (playRunner c)
 
@@ -320,11 +320,8 @@ data Choosing :: Effect where
 
 type instance DispatchOf Choosing = 'Dynamic
 
-choose :: (Choosing :> es) => GameState l cn r ph -> Options pl i  -> Eff es pl
-choose g cs = send (Choose g cs)
-
-chooseS :: forall l cn r ph pl es i. (Choosing :> es, GameInteract Observe l cn r ph pl i :> es) => Options pl i -> Eff es pl
-chooseS cs = askGame >>= \g -> send (Choose g cs)
+choose :: forall l cn r ph pl es i. (Choosing :> es, GameInteract Observe l cn r ph pl i :> es) => Options pl i -> Eff es pl
+choose cs = askGame >>= \g -> send (Choose g cs)
 
 chooseFirst :: forall es pl . Eff (Choosing : es) pl -> Eff es pl
 chooseFirst = interpret $ \_ -> \case
