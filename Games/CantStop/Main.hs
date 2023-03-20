@@ -1,10 +1,25 @@
 module Main where
-import GameE (action)
-import CantStop (initGameState, gameRules)
+import CantStop (initGameState, moreInterestingGameState, csRunPlay)
+import Brick (defaultMain)
+import Tui (app, drawBoard)
+import Brick.Main (simpleMain)
+import GameE (Game(Game))
+import Brick.BChan (newBChan)
 
-a = action (initGameState 3) gameRules
 
 main :: IO ()
 main = do
-    gd <- a
-    putStrLn "ok"
+    putStrLn "go"
+    s <- moreInterestingGameState
+    putStrLn "go"
+    _ <- defaultMain  app (Game s csRunPlay)
+    pure ()
+
+
+-- streamMain :: IO ()
+-- streamMain = do
+--     chan <- newBChan 100
+--     forkIO $ forever $ do
+--         writeBChan 
+
+--     undefined

@@ -68,9 +68,7 @@ transfer_finite_histogram_successful r l0 l1 locs = let
       ))
 
 prop_transfer_finite_histogram_succesful :: TestTree
-prop_transfer_finite_histogram_succesful = QC.testProperty "transfer works right on histograms" $ \r l0 l1 locs -> transfer_finite_histogram_successful r l0 l1 locs
-
-
+prop_transfer_finite_histogram_succesful = QC.testProperty "transfer works right on finite histograms" $ \r l0 l1 locs -> transfer_finite_histogram_successful r l0 l1 locs
 
 testsLocation :: TestTree
 testsLocation = testGroup "Test: Location" [prop_transfer_finite_histogram_succesful]

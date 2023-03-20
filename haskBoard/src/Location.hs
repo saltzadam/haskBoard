@@ -162,7 +162,7 @@ listAll :: Ord r => n -> Locations n r -> [r]
 listAll n locs = listAllF n locs (const True)
 
 listAllF :: Ord r => n -> Locations n r -> (r -> Bool) -> [r]
-listAllF n locs filt = filter filt . M.keys . inventory $ locs !!! n
+listAllF n locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs !!! n
 
 peek :: LocationShape r -> Maybe r
 peek (Pile s) = listToMaybe (M.keys . M.filter (>0) $ s)

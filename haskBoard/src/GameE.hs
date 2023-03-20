@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -23,6 +24,9 @@
 {-# HLINT ignore "Redundant bracket" #-}
 {-# HLINT ignore "Redundant lambda" #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# HLINT ignore "Use <$>" #-}
+{-# HLINT ignore "Use newtype instead of data" #-}
+{-# HLINT ignore "Use forM_" #-}
 
 module GameE where
 
@@ -38,32 +42,35 @@ import Effectful.Crypto.RNG
     runCryptoRNG,
   )
 import Effectful.Dispatch.Dynamic (interpret, send)
-import qualified Effectful.Reader.Static as R
-import qualified Effectful.State.Static.Local as S
 import FinitaryMap (ftAt)
 import GHC.Generics (Generic)
 import Location ( decrement, increment, setCounter, transfer, inventory, GameObjects, Counter, LocationShape)
 import Data.Finitary (Finitary)
 import Data.Bitraversable (bitraverse)
-import Data.Tree (Tree (..))
+import Data.Tree (Tree (..), unfoldTreeM)
 import Data.Set (Set)
 import Game.Player (Player)
-import Control.Applicative
-import Control.Monad.Trans.Maybe (MaybeT(..))
 import Effectful.Log (Log, logInfo, runLog, defaultLogLevel)
 import qualified Data.Text as T
 import Log.Backend.StandardOutput
 import qualified Data.List.NonEmpty as NE
 import Game.Options
 import TreeControl
-import Effectful.Dispatch.Static (StaticRep, SideEffects(..), getStaticRep, evalStaticRep, putStaticRep, runStaticRep, stateStaticRepM)
+import Effectful.Dispatch.Static (StaticRep, SideEffects(..), getStaticRep, evalStaticRep, putStaticRep)
+import GHC.Base (Type, Applicative (..))
+import Text.Read (readMaybe)
+import Data.Maybe (listToMaybe)
+import Data.Foldable (traverse_)
+import Control.Monad (foldM)
+import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Control.Monad.Except (ExceptT(..))
 
 -- TODO: export list
 
 -- TODO: (lower) abstract out log
 -- TODO: (fun) some kind of history besides log
 data GameNode l cn r ph pl i = GameNode
-  { node :: Either  (GameAction l cn r ph) (GetOptions l cn r ph pl i),
+  { node :: Either  (GameAction l cn r ph) (Options pl i),
     owner :: Maybe Player
   }
   deriving (Generic)
@@ -89,29 +96,25 @@ data GameNode l cn r ph pl i = GameNode
 data Phase phaseName l cn r playName i = Phase {
     name :: phaseName,
     -- seedNodes :: ObserveGame l cn r ph iaseName [GameNode l cn r phaseName playName ]
-    seedNodes :: ObserveGame l cn r phaseName playName i [GameNode l cn r phaseName playName i]
+    seedNodes :: Eff '[GameInteract Observe l cn r phaseName playName i] [GameNode l cn r phaseName playName i]
   } deriving (Generic)
 
-getPhaseNodes :: Phase phaseName l cn r playName i -> ObserveGame
-     l cn r phaseName playName i [GameNode l cn r phaseName playName i]
+getPhaseNodes :: Phase phaseName l cn r playName i -> Eff '[GameInteract Observe l cn r phaseName playName i] [GameNode l cn r phaseName playName i]
 getPhaseNodes (Phase _ seedNodes) = seedNodes
 
 -- thanks /u/typedbyte
 -- https://www.reddit.com/r/haskell/comments/10ql43j/monthly_hask_anything_february_2023/jabrmxk/
 
 data Mode = Observe | Modify deriving (Eq, Ord, Show, Generic)
--- data Data (mode :: Mode) (a :: Type) :: Effect
--- type instance DispatchOf (Data mode a) = Static NoSideEffects
--- newtype instance StaticRep (Data mode a) = Data a
 
--- testRead :: (Data Get a :> es) => Eff es a
--- testRead = do
---     Data a <- getStaticRep 
---     pure a
+type PlayRunner l cn r ph pl i = pl -> Eff '[GameInteract Observe l cn r ph pl i] [GameNode l cn r ph pl i]
 
-data Game l cn r ph pl i = Game { gameState :: GameState l cn r ph,
-                                  gamerules :: GameRules l cn r ph pl i}
-                                                deriving (Generic)
+
+data Game l cn r ph pl i = Game { gameState :: GameState l cn r ph pl i,
+                                  playRunner :: pl -> Eff '[GameInteract Observe l cn r ph pl i] [GameNode l cn r ph pl i]
+                                } deriving (Generic)
+
+-- | GameInteract effects 
 
 data GameInteract (mode :: Mode) l cn r ph pl i :: Effect
 type instance DispatchOf (GameInteract mode l cn r ph pl i) = Static NoSideEffects
@@ -124,58 +127,51 @@ liftStaticRepMode (GameInteract g) = GameInteract g
 maybeUnsafeUnliftStaticRepMode :: StaticRep (GameInteract Modify l cn r ph pl i) -> StaticRep (GameInteract Observe l cn r ph pl i)
 maybeUnsafeUnliftStaticRepMode (GameInteract g) = GameInteract g
 
-runGameInteract :: GameState l cn r ph -> GameRules l cn r ph pl i -> Eff (GameInteract mode l cn r ph pl i : es) a -> Eff es a
-runGameInteract gd gr = evalStaticRep (GameInteract (Game gd gr))
+runGameInteract :: GameState l cn r ph pl i-> PlayRunner l cn r ph pl i -> Eff (GameInteract mode l cn r ph pl i : es) a -> Eff es a
+runGameInteract gd pr = evalStaticRep (GameInteract (Game gd pr))
 
-askGame :: GameInteract mode l cn r ph pl i :> es => Eff es (GameState l cn r ph)
+observe :: Game l cn r ph pl i -> Eff '[GameInteract mode l cn r ph pl i] a -> a
+observe (Game gd pr)  = runPureEff . runGameInteract gd pr
+
+askGame :: GameInteract mode l cn r ph pl i :> es => Eff es (GameState l cn r ph pl i)
 askGame = do
     GameInteract (Game gd _) <- getStaticRep
     return gd
 
-askRules :: GameInteract mode l cn r ph pl i :> es => Eff es (GameRules l cn r ph pl i)
-askRules = do
-    GameInteract (Game _ gr) <- getStaticRep
-    return gr
-
-runObserve ::  Eff (GameInteract Observe l cn r ph pl i : es) a -> (StaticRep (GameInteract 'Observe l cn r ph pl i)) -> Eff es (a,
-                   (StaticRep (GameInteract 'Observe l cn r ph pl i)))
-runObserve eff gi = runStaticRep (gi) eff
-
-liftObserve :: (GameInteract 'Modify l cn r ph pl i :> es) => Eff (GameInteract 'Observe l cn r ph pl i : es) a -> Eff es a
-liftObserve eff = stateStaticRepM (fmap (fmap liftStaticRepMode) . runObserve eff . maybeUnsafeUnliftStaticRepMode)
+-- liftObserve :: (GameInteract 'Modify l cn r ph pl i :> es) => Eff (GameInteract 'Observe l cn r ph pl i : es) a -> Eff es a
+liftObserve :: Eff (GameInteract 'Observe l cn r ph pl i : es) a -> Eff (GameInteract 'Modify l cn r ph pl i : es) a
+liftObserve eff = do
+    GameInteract g <- getStaticRep
+    raise $ evalStaticRep (GameInteract g) eff
 
 
--- TODO: is there a clean way to restrict state to reader?
-type GameStateS l cn r ph pl i es = (GameInteract Modify l cn r ph pl i :> es)
-type GameStateR l cn r ph = R.Reader (GameState l cn r ph)
-type GameRulesR l cn r ph pl i = R.Reader (GameRules l cn r ph pl i)
-type ObserveGame l cn r ph pl i = Eff '[ GameInteract Observe l cn r ph pl i, Log]
-type ModifyGame l cn r ph pl i = Eff '[ GameInteract Modify l cn r ph pl i, Log]
+runPlay :: forall l cn r ph pl i es . GameInteract Observe l cn r ph pl i :> es => pl -> Eff es [GameNode l cn r ph pl i]
+runPlay play = do
+    GameInteract (Game _ pr) <- getStaticRep @(GameInteract Observe l cn r ph pl i)
+    inject $ pr play
 
--- observeGame ::  (Subset es' es, GameStateS l cn r ph pl i es) =>  Eff (GameStateR l cn r ph:es') a -> Eff es a
--- observeGame eff = S.stateM (\r -> inject $ fmap (,r) (R.runReader r eff))
 
--- observeToModify :: (Subset es' es, GameStateS l cn r ph pl i es) => Eff (ObserveGame l cn r ph pl i:es') a -> Eff es a
--- observeToModify eff = go eff where
---     go eff = \gameRules -> S.stateM (\gameData -> (fmap ((, gameData) . getData) . evalStaticRep (Game Observe (Observation gameData gameRules))) eff)
---     getData (Game gd _) = gd
---     getRules (Game _ gr) = gr
---     test eff gd gr = evalStaticRep (Game Observe (Observation gd gr)) eff
+type ObserveGame l cn r ph pl i es = GameInteract Observe l cn r ph pl i :> es
+type ModifyGame l cn r ph pl i es =  GameInteract Modify l cn r ph pl i :> es
 
--- observeGame ::  (Subset es' es, GameStateS l cn r ph :> es) =>  Eff (Game Observe l cn r ph pl i:es') a -> Eff es a
--- observeGame eff = S.stateM (\r -> 
---     where
 
-data GameState l cn r ph = GameState
+-- observe :: ObserveGame l cn r ph pl i a -> (Game l cn r ph pl i  -> a)
+-- observe observation = \game -> runPureEff (runGameInteract (game ^. #gameState) (game ^. #gameRules) observation)
+
+-- | Streaming progress effect
+data Stream (m :: Type -> Type) (a :: Type) :: Effect
+type instance DispatchOf (Stream m a)   = Static NoSideEffects
+newtype instance StaticRep (Stream m a) = Stream (m a)
+
+
+
+
+
+data GameState l cn r ph pl i = GameState
   { players :: Set Player,
     objects :: GameObjects l cn r,
-    currentPhase :: ph
-  }
-  deriving (Generic)
-
-data GameRules l cn r ph pl i = GameRules
-  { phases :: ph -> Phase ph l cn r pl i,
-    runPlay :: pl -> ObserveGame l cn r ph pl i [GameNode l cn r ph pl i]
+    currentPhase :: ph,
+    phases :: ph -> Phase ph l cn r pl i
   }
   deriving (Generic)
 
@@ -191,49 +187,37 @@ data GameAction l cn r ph
   | EndGame
   deriving (Eq, Ord, Show, Generic)
 
-modifyGameState :: forall l cn r ph pl i es . (GameInteract Modify l cn r ph pl i :> es) => (GameState l cn r ph  -> GameState l cn r ph) -> Eff es ()
+modifyGameState :: forall l cn r ph pl i es . (GameInteract Modify l cn r ph pl i :> es) => (GameState l cn r ph pl i -> GameState l cn r ph pl i) -> Eff es ()
 modifyGameState f = do
     GameInteract (Game gs gr) <- getStaticRep @(GameInteract Modify l cn r ph pl i)
     putStaticRep (GameInteract (Game (f gs) gr))
 
-modifyingGameState :: (GameInteract Modify l cn r ph pl i :> es) => ASetter (GameState l cn r ph) (GameState l cn r ph) a b -> (a -> b) -> Eff es ()
+modifyingGameState :: (GameInteract Modify l cn r ph pl i :> es) => ASetter (GameState l cn r ph pl i) (GameState l cn r ph pl i) a b -> (a -> b) -> Eff es ()
 modifyingGameState o = modifyGameState . over o
 
 
-assignGameState :: (GameInteract Modify l cn r ph pl i :> es) => ASetter (GameState l cn r ph) (GameState l cn r ph) a b -> b -> Eff es ()
+assignGameState :: (GameInteract Modify l cn r ph pl i :> es) => ASetter (GameState l cn r ph pl i) (GameState l cn r ph pl i) a b -> b -> Eff es ()
 assignGameState l b = modifyGameState (set l b)
 
-getsGameState :: forall mode l cn r ph pl i es b . (GameInteract mode l cn r ph pl i :> es) => (GameState l cn r ph -> b) -> Eff es b
+getsGameState :: forall mode l cn r ph pl i es b . (GameInteract mode l cn r ph pl i :> es) => (GameState l cn r ph pl i -> b) -> Eff es b
 getsGameState f = do
     GameInteract (Game gs _) <- getStaticRep @(GameInteract mode l cn r ph pl i)
     return (f gs)
 
-getsGameRules :: forall mode l cn r ph pl i es b . (GameInteract mode l cn r ph pl i :> es) => (GameRules l cn r ph pl i -> b) -> Eff es b
-getsGameRules f = do
-    GameInteract (Game _ gr) <- getStaticRep @(GameInteract mode l cn r ph pl i)
-    return (f gr)
-
-getGameState ::  forall mode l cn r ph pl i es . (GameInteract mode l cn r ph pl i :> es) => Eff es (GameState l cn r ph)
+getGameState ::  forall mode l cn r ph pl i es . (GameInteract mode l cn r ph pl i :> es) => Eff es (GameState l cn r ph pl i)
 getGameState = getsGameState id
 
-getGameRules :: forall mode l cn r ph pl i es . (GameInteract mode l cn r ph pl i :> es) => Eff es (GameRules l cn r ph pl i)
-getGameRules = getsGameRules id
-
-useGameState :: (GameInteract mode l cn r ph pl i :> es) => (Getting b (GameState l cn r ph) b) -> Eff es b
+useGameState :: (GameInteract mode l cn r ph pl i :> es) => (Getting b (GameState l cn r ph pl i) b) -> Eff es b
 useGameState o = getsGameState (view o)
 
-useGameRules :: (GameInteract mode l cn r ph pl i :> es) => (Getting b (GameRules l cn r ph pl i) b) -> Eff es b
-useGameRules o = getsGameRules (view o)
 
-
-
-data (GameControl ph) = Continue | ChangePhaseTo ph | End deriving (Eq, Ord, Show, Generic)
+data GameControl ph = Continue | ChangePhaseTo ph | End deriving (Eq, Ord, Show, Generic)
 
 continueGame :: Eff es (GameControl ph)
 continueGame = return Continue
 
 showInventory :: (GameInteract Observe l cn r ph pl i :> es, Eq l, Show r, Ord r) => l -> Eff es String
-showInventory l = show . inventory <$> useGameState (locationByName l)
+showInventory l = show . inventory <$> useGameState (location l)
 
 
 logAction :: (Show r, Show l, Show cn, Show ph, Show val, Ord r, Eq l) => GameAction l cn r ph -> val -> Eff '[GameInteract Observe l cn r ph pl i, Log] ()
@@ -251,47 +235,50 @@ logAction (RollCounter cn) val = logInfo (T.pack $ "Rolled " ++ show cn) (show v
 logAction (ChangePhase ph) val = logInfo (T.pack $ "Changed phase to " ++ show ph) (show val)
 logAction EndGame val = logInfo "Ended game" (show val)
 
-logAction' :: t1 -> t2 -> Eff xs a
-logAction' action val = inject (logAction' action val)
+logAction' :: (Show r,
+ Show l, Show cn, Show ph, Show val, Ord r, Eq l) =>
+  GameAction l cn r ph -> val -> Eff '[GameInteract Modify l cn r ph pl i, Log] ()
+logAction' action val =  liftObserve  (logAction action val)
+-- logAction' action val = pure ()
 
 
-act :: (Ord l, Ord r, RNG :> es, GameStateS l cn r ph pl i es,  Eq cn, Log :> es, Show ph, Show cn, Show l, Show r) => GameAction l cn r ph -> Eff es (GameControl ph)
+act :: forall l r cn ph pl i es . (Ord l, Ord r, RNG :> es, ModifyGame l cn r ph pl i es,  Eq cn, Log :> es, Show ph, Show cn, Show l, Show r) => GameAction l cn r ph -> Eff es (GameControl ph)
 act DoNothing = continueGame
-act a@(MkTransfer l l' r) = modifyingGameState (#objects . #locations) (transfer r l l')
-                            >> (logAction' a ' ')
+act a@(MkTransfer l l' r) = (modifyingGameState (#objects . #locations) (transfer r l l'))
+                            >> inject (logAction' a ' ')
                             >> continueGame
-act a@(IncrementCounter c) = modifyingGameState (counterByName c) increment
-                            >> useGameState (counterByName c . #val) >>= logAction' a
+act a@(IncrementCounter c) = modifyingGameState (counter c) increment
+                            >> useGameState (counter c . #val) >>= inject . logAction' a
                             >> continueGame
-act a@(DecrementCounter c) = modifyingGameState (counterByName c) decrement
-                            >> useGameState (counterByName c . #val) >>= logAction' a
+act a@(DecrementCounter c) = modifyingGameState (counter c) decrement
+                            >> useGameState (counter c . #val) >>= inject . logAction' a
                             >> continueGame
-act a@(SetCounter c v) = modifyingGameState (counterByName c) (`setCounter` v)
-                            >> useGameState (counterByName c . #val) >>= logAction' a
+act a@(SetCounter c v) = modifyingGameState (counter c) (`setCounter` v)
+                            >> useGameState (counter c . #val) >>= inject . logAction' a
                             >> continueGame
 act a@(RollCounter c) = do
-  (bl, bu) <- useGameState (counterByName c . #bounds)
+  (bl, bu) <- useGameState (counter c . #bounds)
   newVal <- randomR (bl, bu)
-  assignGameState (counterByName c . #val) newVal
-  _ <- useGameState (counterByName c . #val) >>= logAction' a
+  assignGameState (counter c . #val) newVal
+  _ <- useGameState (counter c . #val) >>= inject . logAction' a
   continueGame
 act a@(ChangePhase ph) = assignGameState #currentPhase ph
-                            >> (logAction' a (show ph))
+                            >> (inject (logAction' a (show ph)))
                             >> return (ChangePhaseTo ph)
-act EndGame = (logAction' EndGame ' ') >> return End
+act EndGame = inject (logAction' EndGame ' ') >> return End
 
 -- The flow of a game looks like this: there is some sequence of `GameActions` (draw a card, advance the turn counter) until a player must make a `GetOptions`. GetOptionss produce sequences of actions and additional choices, and so on.
 
-type GetOptions l cn r ph pl i = ObserveGame l cn r ph pl i (Options pl i)
+counter :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Counter
+counter c = #objects . #counters . ftAt c
 
-counterByName :: Eq cn => cn -> Lens' (GameState l cn r ph) Counter
-counterByName c = #objects . #counters . ftAt c
+counterVal :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) (Cnt Int)
+counterVal c = counter c . #val
 
-locationByName :: Eq l => l -> Lens' (GameState l cn r ph) (LocationShape r)
-locationByName l = #objects . #locations . ftAt l
+location :: Eq l => l -> Lens' (GameState l cn r ph pl i) (LocationShape r)
+location l = #objects . #locations . ftAt l
 
 
-makeFields ''GameRules
 makeFields ''GameState
 makeFields ''Game
 makeFields ''Phase
@@ -299,28 +286,26 @@ makeFields ''Phase
 mkActionNode :: GameAction l cn r ph -> GameNode l cn r ph pl i
 mkActionNode action = GameNode (Left action) Nothing
 
-mkGetOptionsNode :: Player -> GetOptions l cn r ph pl i -> GameNode l cn r ph pl i
+mkGetOptionsNode :: Player -> Options pl i -> GameNode l cn r ph pl i
 mkGetOptionsNode p choice = GameNode (Right choice) (Just p)
 
 
-chooseNode :: forall l cn r ph pl i es. (Choosing :> es, GameInteract Observe l cn r ph pl i :> es, Log :> es, Show pl, Show i) =>  GetOptions l cn r ph pl i
-        -> Eff es [GameNode l cn r ph pl i]
+chooseNode :: forall l cn r ph pl i es. (Choosing :> es, ObserveGame l cn r ph pl i es, Log :> es, Show pl, Show i) =>  Eff es (Options pl i) -> Eff es [GameNode l cn r ph pl i]
 chooseNode cs =
-  let cs' = inject cs
+  let cs' = cs
    in do
         options <- cs'
         logInfo (T.pack ("Choosing from " ++ show options)) ' '
-        playRunner <- useGameRules #runPlay
         c <- choose options
         logInfo (T.pack ("Chose " ++ show c)) ' '
-        inject (playRunner c)
+        runPlay c
 
 data Choosing :: Effect where
-  Choose :: GameState l cn r ph -> Options pl i -> Choosing m pl
+  Choose :: GameState l cn r ph pl i -> Options pl i -> Choosing m pl
 
 type instance DispatchOf Choosing = 'Dynamic
 
-choose :: forall l cn r ph pl es i. (Choosing :> es, GameInteract Observe l cn r ph pl i :> es) => Options pl i -> Eff es pl
+choose :: forall l cn r ph pl es i. (Choosing :> es, ObserveGame l cn r ph pl i es) => Options pl i -> Eff es pl
 choose cs = askGame >>= \g -> send (Choose g cs)
 
 chooseFirst :: forall es pl . Eff (Choosing : es) pl -> Eff es pl
@@ -335,47 +320,109 @@ chooseRandom = interpret $ \_ -> \case
      in fmap (cs NE.!!) choice
 
 
-runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Choosing :> es, GameStateS l cn r ph pl i es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameNode l cn r ph pl i -> Eff es (Either  (GameControl ph) [GameNode l cn r ph pl i])
-runNode aNode = bitraverse act (liftObserve . chooseNode) $ view #node aNode
+
+chooseBasicInput :: forall pl es . (IOE :> es) => Eff (Choosing : es) pl -> Eff es pl
+chooseBasicInput = interpret $ \_ -> \case
+    Choose _ cs' -> do
+        let cs = cs' ^. #legal . to NE.toList
+        liftIO $ loopChoice cs
+   where
+        loopChoice cs = do
+            c <- liftIO getChar
+            case readMaybe [c] :: Maybe Int of
+                Nothing -> putStrLn "couldn't parse" >> loopChoice cs
+                Just i -> case listToMaybe (drop (i-1) cs) of
+                            Just pl -> return pl
+                            Nothing -> putStrLn "couldn't find" >> loopChoice cs
 
 
-runFromSeeds :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, GameStateS l cn r ph pl i es, Choosing :> es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => [GameNode l cn r ph pl i] -> MaybeT (Eff es) [Tree (GameNode l cn r ph pl i)]
+runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Choosing :> es, ModifyGame l cn r ph pl i es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameNode l cn r ph pl i -> Eff es (Either  (GameControl ph) [GameNode l cn r ph pl i])
+runNode aNode =  bitraverse act (inject . liftObserve . chooseNode . pure) (view #node aNode)
+
+runFromSeeds :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, ModifyGame l cn r ph pl i es, Choosing :> es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => [GameNode l cn r ph pl i] -> (Eff es) [Tree (GameNode l cn r ph pl i)]
 runFromSeeds = unfoldForestControl treefunc
     where
-        treefunc :: GameNode l cn r ph pl i -> MaybeT (Eff es) (GameNode l cn r ph pl i, [GameNode l cn r ph pl i], TreeControl (GameNode l cn r ph pl i))
-        treefunc nod = MaybeT $ do
+        treefunc :: GameNode l cn r ph pl i -> (Eff es) (GameNode l cn r ph pl i, [GameNode l cn r ph pl i], TreeControl  (GameNode l cn r ph pl i))
+        treefunc nod =  do
                     result <- runNode nod
                     case result of
-                      Left Continue ->  return $ Just (nod, [], TContinue)
-                      Left End -> return Nothing
+                      Left Continue ->  return (nod, [], TContinue)
+                      Left End -> return  (nod, [], TStop)
                       Left (ChangePhaseTo ph) -> do
-                            phases <- inject . liftObserve . useGameRules $ #phases
-                            newNodes <-  liftObserve . inject . getPhaseNodes $ (phases ph)
-                            return $ Just (nod, [], TRestart newNodes)
-                      Right moreNodes -> return $ Just (nod, moreNodes, TContinue)
+                            gs <- getGameState
+                            let phases = view #phases gs
+                            newNodes <- (inject . liftObserve) $ getPhaseNodes (phases ph)
+                            return  (nod, [], TRestart newNodes)
+                      Right moreNodes -> return (nod, moreNodes, TContinue)
 
-playGame ::  forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, GameStateS l cn r ph pl i es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => Eff es (GameState l cn r ph)
+unfoldFunc :: (Ord l, Ord r, Ord cn, Finitary cn, GameInteract 'Modify l cn r ph pl i :> es, Choosing :> es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameNode l cn r ph pl i -> (Eff es) (Either (GameControl ph) (GameState l cn r ph pl i, [GameNode l cn r ph pl i]))
+unfoldFunc node = do 
+    result <- runNode node
+    gs <- getGameState
+    return ((gs,) <$> result)
+
+t :: (Choosing :> es0, Ord l0, Ord r0, Ord cn0, Finitary cn0, GameInteract 'Modify l0 cn0 r0 ph0 pl0 i0 :> es0, RNG :> es0, Log :> es0, Show ph0, Show cn0, Show l0, Show r0, Show pl0, Show i0) => GameNode l0 cn0 r0 ph0 pl0 i0
+  -> (Eff
+                    es0
+                    (Either (GameControl ph0) (Tree (GameState l0 cn0 r0 ph0 pl0 i0))))
+t = runExceptT . unfoldTreeM (ExceptT . unfoldFunc)
+
+runFromSeedsF :: forall l cn r ph pl i es . (Ord l, Ord r, Ord cn, Finitary cn, GameInteract 'Modify l cn r ph pl i :> es, Choosing :> es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph pl i -> Eff es (GameNode l cn r ph pl i) -> Eff es (GameState l cn r ph pl i)
+runFromSeedsF gs effNode = do
+    node <- effNode
+    result <- runNode node
+    case result of
+      Right moreNodes -> getGameState >>= \gs -> foldM (runFromSeedsF) gs (fmap pure moreNodes)
+      Left Continue -> getGameState
+
+    where
+        runFromResult :: GameState l cn r ph pl i -> [GameNode l cn r ph pl i] -> Eff es (GameControl ph, GameState l cn r ph pl i)
+        runFromResult _ (node':nodes) = do
+            result <- runNode node'
+            handleResult result nodes
+
+        handleResult result nodes = case result of
+              Right moreNodes -> getGameState >>= \gs -> runFromResult gs moreNodes >>= \(_, gs) -> runFromResult gs nodes
+              Left Continue -> (Continue,) <$> getGameState
+              Left End -> (End,) <$> getGameState
+              Left (ChangePhaseTo newPhase) -> do
+                  gs <- getGameState
+                  phaser  <- useGameState #phases
+                  let newPhase' = phaser newPhase :: Phase ph l cn r pl i
+                  newNodes <- inject $ liftObserve $ getPhaseNodes newPhase'
+                  runFromResult gs newNodes
+
+
+
+playGame ::  forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => Eff es (GameState l cn r ph pl i)
 playGame = do
-    phases <- useGameRules #phases
+    gs <- getGameState
+    let phases =  gs ^. #phases
     currentPhase <- useGameState #currentPhase
-    newNodes <- liftObserve . inject . getPhaseNodes $ (phases currentPhase)
-    _ <- runMaybeT . runFromSeeds $ newNodes
+    let newNodes = sequence . (inject . liftObserve) $ getPhaseNodes (phases currentPhase)
+    foldM runFromSeedsF gs newNodes
+    -- getGameState
+
+playGivenNodes ::  forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => [GameNode l cn r ph pl i] -> Eff es (GameState l cn r ph pl i)
+playGivenNodes nodes = do
+    _ <- runFromSeeds (nodes)
     getGameState
 
-action :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph -> GameRules l cn r ph pl i -> IO (GameState l cn r ph)
-action gdata grules = do
+
+action :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> IO (GameState l cn r ph pl i)
+action gdata playRunner = do
   gen <- newCryptoRNGState
-  withStdOutLogger $ \stdOutLogger -> runEff .  runGameInteract gdata grules . runCryptoRNG gen . chooseRandom . runLog "main" stdOutLogger defaultLogLevel $ playGame
+  withStdOutLogger $ \stdOutLogger -> runEff .  runGameInteract gdata playRunner . runCryptoRNG gen . chooseBasicInput . runLog "main" stdOutLogger defaultLogLevel $ playGame
 
 ----- Condition, perhaps soon to be Observation?
-type Condition l cn r ph pl i a = ObserveGame l cn r ph pl i a
+-- type Condition l cn r ph pl i es a = Eff es a
 
-runNodesAgainstState :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph -> GameRules l cn r ph pl i -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph)
-runNodesAgainstState gd grules nodes = do
+runNodesAgainstState :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph pl i)
+runNodesAgainstState game playRunner nodes = do
     gen <- newCryptoRNGState
-    withStdOutLogger $ \stdOutLogger -> runEff . runGameInteract gd grules . runCryptoRNG gen . chooseRandom . runLog "main" stdOutLogger defaultLogLevel . S.execState gd $ (runMaybeT . runFromSeeds $ nodes)
+    withStdOutLogger $ \stdOutLogger -> runEff . runGameInteract game playRunner . runCryptoRNG gen . chooseRandom . runLog "main" stdOutLogger defaultLogLevel $ (playGivenNodes nodes)
 
-instance Num a => Num (ObserveGame l cn r ph pl i a) where
+instance Num a => Num (Eff es a) where
   (+) = liftA2 (+)
   (*) = liftA2 (*)
   abs = fmap abs
