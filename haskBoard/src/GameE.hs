@@ -47,7 +47,7 @@ import GHC.Generics (Generic)
 import Location ( decrement, increment, setCounter, transfer, inventory, GameObjects, Counter, LocationShape)
 import Data.Finitary (Finitary)
 import Data.Bitraversable (bitraverse)
-import Data.Tree (Tree (..), unfoldTreeM)
+import Data.Tree (Tree (..), unfoldTreeM, unfoldForestM)
 import Data.Set (Set)
 import Game.Player (Player)
 import Effectful.Log (Log, logInfo, runLog, defaultLogLevel)
@@ -60,9 +60,7 @@ import Effectful.Dispatch.Static (StaticRep, SideEffects(..), getStaticRep, eval
 import GHC.Base (Type, Applicative (..))
 import Text.Read (readMaybe)
 import Data.Maybe (listToMaybe)
-import Data.Foldable (traverse_)
-import Control.Monad (foldM)
-import Control.Monad.Trans.Except (ExceptT, runExceptT)
+import Control.Monad.Trans.Except (runExceptT)
 import Control.Monad.Except (ExceptT(..))
 
 -- TODO: export list
@@ -320,7 +318,6 @@ chooseRandom = interpret $ \_ -> \case
      in fmap (cs NE.!!) choice
 
 
-
 chooseBasicInput :: forall pl es . (IOE :> es) => Eff (Choosing : es) pl -> Eff es pl
 chooseBasicInput = interpret $ \_ -> \case
     Choose _ cs' -> do
@@ -339,73 +336,26 @@ chooseBasicInput = interpret $ \_ -> \case
 runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Choosing :> es, ModifyGame l cn r ph pl i es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameNode l cn r ph pl i -> Eff es (Either  (GameControl ph) [GameNode l cn r ph pl i])
 runNode aNode =  bitraverse act (inject . liftObserve . chooseNode . pure) (view #node aNode)
 
-runFromSeeds :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, ModifyGame l cn r ph pl i es, Choosing :> es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => [GameNode l cn r ph pl i] -> (Eff es) [Tree (GameNode l cn r ph pl i)]
-runFromSeeds = unfoldForestControl treefunc
-    where
-        treefunc :: GameNode l cn r ph pl i -> (Eff es) (GameNode l cn r ph pl i, [GameNode l cn r ph pl i], TreeControl  (GameNode l cn r ph pl i))
-        treefunc nod =  do
-                    result <- runNode nod
-                    case result of
-                      Left Continue ->  return (nod, [], TContinue)
-                      Left End -> return  (nod, [], TStop)
-                      Left (ChangePhaseTo ph) -> do
-                            gs <- getGameState
-                            let phases = view #phases gs
-                            newNodes <- (inject . liftObserve) $ getPhaseNodes (phases ph)
-                            return  (nod, [], TRestart newNodes)
-                      Right moreNodes -> return (nod, moreNodes, TContinue)
-
-unfoldFunc :: (Ord l, Ord r, Ord cn, Finitary cn, GameInteract 'Modify l cn r ph pl i :> es, Choosing :> es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameNode l cn r ph pl i -> (Eff es) (Either (GameControl ph) (GameState l cn r ph pl i, [GameNode l cn r ph pl i]))
-unfoldFunc node = do 
-    result <- runNode node
-    gs <- getGameState
-    return ((gs,) <$> result)
-
-t :: (Choosing :> es0, Ord l0, Ord r0, Ord cn0, Finitary cn0, GameInteract 'Modify l0 cn0 r0 ph0 pl0 i0 :> es0, RNG :> es0, Log :> es0, Show ph0, Show cn0, Show l0, Show r0, Show pl0, Show i0) => GameNode l0 cn0 r0 ph0 pl0 i0
-  -> (Eff
-                    es0
-                    (Either (GameControl ph0) (Tree (GameState l0 cn0 r0 ph0 pl0 i0))))
-t = runExceptT . unfoldTreeM (ExceptT . unfoldFunc)
-
-runFromSeedsF :: forall l cn r ph pl i es . (Ord l, Ord r, Ord cn, Finitary cn, GameInteract 'Modify l cn r ph pl i :> es, Choosing :> es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph pl i -> Eff es (GameNode l cn r ph pl i) -> Eff es (GameState l cn r ph pl i)
-runFromSeedsF gs effNode = do
-    node <- effNode
-    result <- runNode node
-    case result of
-      Right moreNodes -> getGameState >>= \gs -> foldM (runFromSeedsF) gs (fmap pure moreNodes)
-      Left Continue -> getGameState
-
-    where
-        runFromResult :: GameState l cn r ph pl i -> [GameNode l cn r ph pl i] -> Eff es (GameControl ph, GameState l cn r ph pl i)
-        runFromResult _ (node':nodes) = do
-            result <- runNode node'
-            handleResult result nodes
-
-        handleResult result nodes = case result of
-              Right moreNodes -> getGameState >>= \gs -> runFromResult gs moreNodes >>= \(_, gs) -> runFromResult gs nodes
-              Left Continue -> (Continue,) <$> getGameState
-              Left End -> (End,) <$> getGameState
-              Left (ChangePhaseTo newPhase) -> do
-                  gs <- getGameState
-                  phaser  <- useGameState #phases
-                  let newPhase' = phaser newPhase :: Phase ph l cn r pl i
-                  newNodes <- inject $ liftObserve $ getPhaseNodes newPhase'
-                  runFromResult gs newNodes
-
-
+runFromSeeds2 :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, ModifyGame l cn r ph pl i es, Choosing :> es, RNG :> es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => [GameNode l cn r ph pl i] ->  Eff es (Either (GameControl ph) [Tree (GameState l cn r ph pl i)])
+runFromSeeds2 = runExceptT . unfoldForestM (ExceptT . unfoldFunc)
+    where 
+    unfoldFunc node = do
+        result <- runNode node
+        gs <- getGameState
+        return ((gs,) <$> result)
 
 playGame ::  forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => Eff es (GameState l cn r ph pl i)
 playGame = do
     gs <- getGameState
     let phases =  gs ^. #phases
     currentPhase <- useGameState #currentPhase
-    let newNodes = sequence . (inject . liftObserve) $ getPhaseNodes (phases currentPhase)
-    foldM runFromSeedsF gs newNodes
-    -- getGameState
+    newNodes <- (inject . liftObserve) $ getPhaseNodes (phases currentPhase)
+    _ <- runFromSeeds2 newNodes
+    getGameState
 
 playGivenNodes ::  forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Log :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i) => [GameNode l cn r ph pl i] -> Eff es (GameState l cn r ph pl i)
 playGivenNodes nodes = do
-    _ <- runFromSeeds (nodes)
+    _ <- runFromSeeds2 nodes
     getGameState
 
 
