@@ -10,18 +10,19 @@ import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap
 import Brick.Types (Widget)
 import Control.Lens ((^.), view)
 import Game.Player (Player (..))
-import CantStop (CantStopLocation (..), CantStopResource (..), CantStopGameState, maxSlot, TrackName (..), TrackHeight(..), trackWinners, CantStopGame)
+import CantStop (CantStopLocation (..), CantStopResource (..), maxSlot, TrackName (..), TrackHeight(..), trackWinners, CantStopGame, CantStopCounterName)
 import qualified Graphics.Vty as V
 import Location (listAll)
 import Brick.Widgets.Table (table, Table, rowBorders, columnBorders, surroundingBorder, renderTable, ColumnAlignment (..), setDefaultColAlignment, RowAlignment (..), setDefaultRowAlignment)
 import Brick.Widgets.Core (padTop)
 import Brick.Widgets.Border
-import FinitaryMap ((!!!))
+import FinitaryMap ((!!!), FTMap)
 import Data.Finitary
 import Dice (renderDice)
 import Brick.Widgets.Center
 import qualified Data.Map as M
 import GameE (observe)
+import Count
 
 
 type Name = ()
@@ -43,8 +44,8 @@ drawBoard g = border $ padTop Max . renderTable . boxTable $ [drawVerticalTrack 
 
 drawDice :: CantStopGame -> Widget Name
 drawDice g = let
-    dice = g ^. #gameState . #objects . #counters
-    diceVals = fmap (view #val . (dice !!!)) inhabitants
+    dice = g ^. #gameState . #objects . #counters 
+    diceVals = fmap (view #val . (dice !!!)) (inhabitants :: [CantStopCounterName])
               in vLimitPercent 40 . border .  center . renderTable . boxTable $ fmap (fmap (padLeftRight 1 . str . renderDice)) [[diceVals !! 0, diceVals !! 1], [diceVals !! 2, diceVals !! 3]]
 
 drawMenu :: CantStopGame -> Widget Name

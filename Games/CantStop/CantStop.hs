@@ -200,7 +200,7 @@ advancePlayer = do
 cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (Turn p) =  Phase
     { name = Turn p,
-      seedNodes = rollNodes `andThen` chooseMove p
+      seedNodes = [rollNodes, chooseMove p]
     }
 
 
@@ -226,18 +226,18 @@ initGameState numPlayers =
 --   - marker already at top
 -- still need to compute correct distance to move
 
-csRunPlay :: Observe es => PlayName -> Eff es [CantStopGameNode]
-csRunPlay (Move pl s t) = (moveMarkerBy pl s 1)
-                `andThen` (moveMarkerBy pl t 1)
-                `andThen` (stopOrGoNode pl)
-csRunPlay (Stop pl) = do
+csRunPlay :: Observe es => PlayName -> [Eff es [CantStopGameNode]]
+csRunPlay (Move pl s t) = [moveMarkerBy pl s 1
+                          , moveMarkerBy pl t 1
+                          , stopOrGoNode pl]
+csRunPlay (Stop pl) = [
     resolveMarkers pl
-    `andThen` clearWonTracks
-    `andThen` checkWinner
-    `andThen` advancePlayer
-csRunPlay (DontStop _) = do
-    Turn p <- useGameState #currentPhase
-    rollNodes `andThen` chooseMove p
+                      , clearWonTracks
+                      , checkWinner
+                      , advancePlayer
+                      ]
+csRunPlay (DontStop p) =
+    [rollNodes, chooseMove p]
 
 returnMarker :: CantStopLocation -> CantStopResource -> GameAction CantStopLocation cn CantStopResource ph
 returnMarker n (PlayerMarker p') = MkTransfer n (PlayerStuff p') (PlayerMarker p')
@@ -318,11 +318,17 @@ moveMarkerBy pl s amt = do
     (_,_) -> [] -- This is an interesting case -- as long as Locations are all one type there will have to be lame patterns like this
     -- guess you can't stop someone from writing bad rules!
 
+runEffCSNodes effNodes = do
+    let gs = initGameState 3
+    runEffNodesAgainstState gs csRunPlay effNodes
+
 runCSNodes = runNodesAgainstState (initGameState 3) csRunPlay
 
 moreInterestingGameState = runCSNodes [mkActionNode (MkTransfer (PlayerStuff (Player 2)) (TrackSpot Six HThree) (PlayerMarker (Player 2))),
                                       mkActionNode (MkTransfer (PlayerStuff (Player 1)) (TrackSpot Two HOne) (PlayerMarker (Player 1))),
                                       mkActionNode (MkTransfer (PlayerStuff (Player 3)) (TrackSpot Ten HTwo) (PlayerMarker (Player 3)))]
+
+
 
 --- Helpers ---
 (<+) :: Enum a => a -> Int -> a
@@ -339,8 +345,8 @@ findResourceWithin' r locationNames = do
 mkMoveNode :: Player -> GameAction l cn r ph -> GameNode l cn r ph pl i
 mkMoveNode p act = GameNode (Left act) (Just p)
 
-andThen :: (Monoid a) => a -> a -> a
-andThen = (<>)
+andThen :: Monad m => m a -> m a -> m a
+andThen = (>>)
 
 graphM :: Functor m => (a -> m b) -> (a -> m (a,b))
 graphM f a = fmap (a,) (f a)
