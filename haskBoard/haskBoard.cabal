@@ -27,10 +27,10 @@ library
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
                 finite-typelits, crypto-rng-effectful, effectful-plugin,
-                log-effectful, log-base, list-transformer
-    exposed-modules: Count, Location, GameE, Game.Player,FinitaryMap, Game.Condition, Game.Log, Game.Options
+                list-transformer
+    exposed-modules: Count, Location, GameE, Game.Player,FinitaryMap, Game.Condition, Game.Log, Game.Options, GameNode, TreeMonad
     default-language: Haskell2010
-    default-extensions: 
+    default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances
     ghc-options:  -Wall -fplugin=Effectful.Plugin
     -- Modules included in this executable, other than Main.
     -- other-modules:
