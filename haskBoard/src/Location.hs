@@ -26,7 +26,8 @@ module Location
      increment,
      decrement,
      GameObjects(..),
-     howMany
+     howMany,
+     look
     )
  where
 import Control.Lens (makeFields, set)
@@ -41,6 +42,7 @@ import GHC.Generics (Generic)
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
 import Data.Finitary
+import Visibility (VisibilityType (..))
 
 
 ---- Definitions and instances
@@ -205,6 +207,13 @@ decrement' = mapCounter (subtract 1)
 
 decrement :: Counter -> Counter
 decrement = fst . decrement'
+
+--- visibility
+-- This is kind of silly but adds flexibility for "top card of the deck is always visible"
+look :: LocationShape r -> VisibilityType -> LocationShape r
+look l Visible = l
+look _ Invisible = Dummy
+
 
 data GameObjects n cn r = GameObjects {
     locations :: Locations n r,

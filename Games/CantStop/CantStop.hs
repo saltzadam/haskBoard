@@ -6,7 +6,6 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ConstraintKinds #-}
 
 module CantStop
@@ -24,15 +23,18 @@ import Data.Maybe (listToMaybe, mapMaybe, isJust, fromMaybe)
 import qualified Data.Sequence as Seq
 import FinitaryMap (FTMap (..))
 import GHC.Generics (Generic)
-import GameE hiding (owner)
+import GameE
 import Location (Counter (..), Counters, GameObjects (..), LocationShape (..), Locations, counters, d6, findResourceWithin, inventory, listAllF, howMany')
 import Data.Set (Set)
 import qualified Data.Set as S
 import Game.Player
 import qualified Data.Set as Set
-import Game.Options (Options (..), Legality (..))
+import Game.Options (Options (..), Legality (..), mustNotElse, buildOptions)
 import Data.List (find)
 import Effectful (Eff)
+import GameNode
+import Util (graphMapM)
+import Visibility (VisibilityMap (..), allVisible)
 
 
 -- Does it make more sense to have an enum or just a newtype int?
@@ -62,9 +64,9 @@ getHeight h = fromEnum h + 1
 
 data CantStopResource = PlayerMarker Player | TemporaryMarker deriving (Eq, Ord, Show, Generic)
 
-owner :: CantStopResource -> Maybe Player
-owner (PlayerMarker p) = Just p
-owner _ = Nothing
+markerOwner :: CantStopResource -> Maybe Player
+markerOwner (PlayerMarker p) = Just p
+markerOwner _ = Nothing
 
 data CantStopLocation
   = TrackSpot TrackName TrackHeight
@@ -133,22 +135,12 @@ rollNodes = pure $ mkActionNode . RollCounter <$> inhabitants
 
 currentPlayer :: CantStopPhaseName ->Player
 currentPlayer (Turn p) = p
--- Should return [GetOptions of move]
--- Then GetOptions of move leads to GetOptions of stop / go
--- TODO: double-check that AtTop functions correctly!
 
--- start here!! --
--- still not looking at t!
 chooseMove :: Observe es => Player -> Eff es [CantStopGameNode]
 chooseMove p = (: []) . mkGetOptionsNode p <$> legalMoves p
   where
     legalMoves ::Observe  es =>  Player -> Eff es (Options PlayName Issue)
-    legalMoves p = do
-        plays <- fmap (makeMove p) <$> diceVals
-        legalities <- traverse (graphM checkMove) plays
-        let (legalMoves, illegalMoves) = M.partition (== Legal) . M.fromList $ legalities
-        let legalMovesWithStop = Stop p :| M.keys legalMoves
-        return (Options legalMovesWithStop illegalMoves)
+    legalMoves p = buildOptions checkMove (Stop p) (fmap (makeMove p) <$> diceVals)
     makeMove :: Player -> (Cnt Int, Cnt Int) -> PlayName
     makeMove p (x, y) = Move p (diceToTrack x) (diceToTrack y)
     checkMove' :: Observe es => Player -> TrackName -> Eff es (Legality Issue)
@@ -215,16 +207,8 @@ initGameState numPlayers =
       phases = cantStopPhases
     }
 
--- cantStopGameRules :: CantStopGameRules
--- cantStopGameRules = GameRules {
---     phases = cantStopPhases,
---     runPlay = \gs -> runGameInteract gs cantStopGameRules csRunPlay
---                       }
-
--- Assumes the move is legal. So don't check for:
---   - track closed
---   - marker already at top
--- still need to compute correct distance to move
+csVisibility :: VisibilityMap CantStopLocation CantStopCounterName
+csVisibility = allVisible
 
 csRunPlay :: Observe es => PlayName -> [Eff es [CantStopGameNode]]
 csRunPlay (Move pl s t) = [moveMarkerBy pl s 1
@@ -287,13 +271,10 @@ checkWinner = do
 trackWinner :: Observe es => TrackName -> Eff es (Maybe Player)
 trackWinner track = do
   things <- useGameState (location (maxSpot track))
-  return $ listToMaybe . mapMaybe owner . M.keys . M.filter (> 0) $ inventory things
+  return $ listToMaybe . mapMaybe markerOwner . M.keys . M.filter (> 0) $ inventory things
 
 trackWinners :: Observe es => Eff es (Map TrackName Player)
-trackWinners = do
-               trackWinnerMaybePairs <- traverse (graphM trackWinner) inhabitants
-               let trackWinnerPairs = mapMaybe sequence trackWinnerMaybePairs
-               return $ M.fromList trackWinnerPairs
+trackWinners = graphMapM trackWinner inhabitants
 
 moveMarkerBy :: Observe es => Player -> TrackName -> Int -> Eff es [CantStopGameNode]
 moveMarkerBy pl s amt = do
@@ -318,11 +299,12 @@ moveMarkerBy pl s amt = do
     (_,_) -> [] -- This is an interesting case -- as long as Locations are all one type there will have to be lame patterns like this
     -- guess you can't stop someone from writing bad rules!
 
+
 runEffCSNodes effNodes = do
     let gs = initGameState 3
     runEffNodesAgainstState gs csRunPlay effNodes
 
-runCSNodes = runNodesAgainstState (initGameState 3) csRunPlay
+runCSNodes = runNodesAgainstState (initGameState 3) csRunPlay allVisible
 
 moreInterestingGameState = runCSNodes [mkActionNode (MkTransfer (PlayerStuff (Player 2)) (TrackSpot Six HThree) (PlayerMarker (Player 2))),
                                       mkActionNode (MkTransfer (PlayerStuff (Player 1)) (TrackSpot Two HOne) (PlayerMarker (Player 1))),
@@ -345,12 +327,6 @@ findResourceWithin' r locationNames = do
 mkMoveNode :: Player -> GameAction l cn r ph -> GameNode l cn r ph pl i
 mkMoveNode p act = GameNode (Left act) (Just p)
 
-andThen :: Monad m => m a -> m a -> m a
-andThen = (>>)
-
-graphM :: Functor m => (a -> m b) -> (a -> m (a,b))
-graphM f a = fmap (a,) (f a)
-
 howManyAt :: Observe es => CantStopLocation -> CantStopResource -> Eff es (Cnt Int)
 howManyAt l r = flip howMany' r <$> useGameState (location l)
 
@@ -358,13 +334,5 @@ has :: Observe es => CantStopLocation -> CantStopResource -> Eff es Bool
 has l r = (> 0) <$> howManyAt l r
 doesNotHave :: Observe es => CantStopLocation -> CantStopResource -> Eff es Bool
 doesNotHave l r = not <$> has l r
-
-mustElse :: Bool -> Issue -> Legality Issue
-mustElse True _ = Legal
-mustElse False i = Illegal [i]
-
-mustNotElse :: Bool -> Issue -> Legality Issue
-mustNotElse True i = Illegal [i]
-mustNotElse False _ = Legal
 
 

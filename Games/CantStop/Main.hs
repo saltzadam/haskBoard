@@ -1,5 +1,5 @@
 module Main where
-import CantStop (initGameState, moreInterestingGameState, csRunPlay)
+import CantStop (initGameState, moreInterestingGameState, csRunPlay, csVisibility)
 import Brick (defaultMain)
 import Tui (app, drawBoard)
 import Brick.Main (simpleMain)
@@ -12,7 +12,7 @@ main = do
     putStrLn "go"
     s <- moreInterestingGameState
     putStrLn "go"
-    _ <- defaultMain  app (Game s csRunPlay)
+    _ <- defaultMain  app (Game s csRunPlay csVisibility)
     pure ()
 
 

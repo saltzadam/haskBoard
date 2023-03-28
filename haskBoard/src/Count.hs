@@ -1,3 +1,14 @@
+{- |
+Module      :  Count.hs
+Description :  Integers with positive infinity
+Copyright   :  (c) Adam Saltz
+License     :  <license>
+
+Maintainer  :  saltz.adam@gmail.com
+Stability   :  unstable 
+
+Integers with positive infinity to represent containers with finite or infinite contents.
+-}
 {-# LANGUAGE FlexibleInstances #-}
 -- {-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE DeriveGeneric #-}

@@ -21,7 +21,7 @@ library
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
-                brick, effectful-plugin, haskBoard, log-effectful, log-base, vty
+                brick, effectful-plugin, haskBoard, vty
     exposed-modules: CantStop, Tui, GridSelector, Panel, Dice
     -- , Tui, Dice
     default-language: Haskell2010
@@ -35,7 +35,7 @@ executable CantStop
     build-depends: base, CantStop, haskBoard, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl, finitary, mmorph,
-                brick, effectful-plugin, haskBoard, log-effectful, log-base, vty
+                brick, effectful-plugin, haskBoard, vty
 
     default-language: Haskell2010
     ghc-options: -fplugin=Effectful.Plugin -threaded

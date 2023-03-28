@@ -15,6 +15,8 @@ data GameAction l cn r ph
   | SetCounter cn (Cnt Int)
   | RollCounter cn
   | ChangePhase ph
+  | MakeVisibleTo Player (Either l cn)
+  | MakeInvisibleTo  Player (Either l cn)
   | EndGame
   deriving (Eq, Ord, Show, Generic)
 
