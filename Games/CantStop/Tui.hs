@@ -10,19 +10,19 @@ import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap
 import Brick.Types (Widget)
 import Control.Lens ((^.), view)
 import Game.Player (Player (..))
-import CantStop (CantStopLocation (..), CantStopResource (..), maxSlot, TrackName (..), TrackHeight(..), trackWinners, CantStopGame, CantStopCounterName)
+import CantStop ( trackWinners)
 import qualified Graphics.Vty as V
 import Location (listAll)
 import Brick.Widgets.Table (table, Table, rowBorders, columnBorders, surroundingBorder, renderTable, ColumnAlignment (..), setDefaultColAlignment, RowAlignment (..), setDefaultRowAlignment)
 import Brick.Widgets.Core (padTop)
 import Brick.Widgets.Border
-import FinitaryMap ((!!!), FTMap)
+import FinitaryMap ((!!!))
 import Data.Finitary
 import Dice (renderDice)
 import Brick.Widgets.Center
 import qualified Data.Map as M
 import GameE (observe)
-import Count
+import Objects
 
 
 type Name = ()

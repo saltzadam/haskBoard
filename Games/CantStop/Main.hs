@@ -3,16 +3,16 @@ import CantStop (initGameState, moreInterestingGameState, csRunPlay, csVisibilit
 import Brick (defaultMain)
 import Tui (app, drawBoard)
 import Brick.Main (simpleMain)
-import GameE (Game(Game))
+import GameE (Game(Game), action)
 import Brick.BChan (newBChan)
 
 
 main :: IO ()
 main = do
     putStrLn "go"
-    s <- moreInterestingGameState
-    putStrLn "go"
-    _ <- defaultMain  app (Game s csRunPlay csVisibility)
+    s <- action (initGameState 3) csRunPlay csVisibility
+    -- putStrLn "go"
+    -- _ <- defaultMain  app (Game s csRunPlay csVisibility)
     pure ()
 
 
