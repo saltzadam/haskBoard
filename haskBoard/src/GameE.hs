@@ -64,13 +64,18 @@ import Location (Counter, GameObjects, LocationShape, decrement, increment, inve
 import Text.Read (readMaybe)
 import TreeMonad
 import Visibility (VisibilityMap, makeVisible, makeInvisible)
+import Util (getNext)
+import Control.Monad (forM)
 
 -- TODO: export list
 
 -- TODO: (lower) abstract out log
 -- TODO: (fun) some kind of history besides log
 
--- | 
+
+data Turn phaseName = Turn {owner :: Player,
+    turnPhases :: NE.NonEmpty phaseName} deriving (Eq, Ord, Show, Generic)
+
 data Phase phaseName l cn r playName i = Phase
   { name :: phaseName,
     seedNodes :: [Eff '[GameInteract 'Observe l cn r phaseName playName i] [GameNode l cn r phaseName playName i]]
@@ -140,7 +145,10 @@ data GameState l cn r ph pl i = GameState
   { players :: Set Player,
     objects :: GameObjects l cn r,
     currentPhase :: ph,
-    phases :: ph -> Phase ph l cn r pl i
+    phases :: ph -> Phase ph l cn r pl i,
+    turns :: [Turn ph],
+    currentTurn :: Turn ph,
+    nextTurn :: Turn ph -> [Turn ph] -> Turn ph
   }
   deriving (Generic)
 
@@ -208,7 +216,9 @@ logAction2 (RollCounter cn) val = logComponent (T.pack $ "Rolled " ++ show cn ++
 logAction2 (ChangePhase ph) _ = logComponent (T.pack $ "Changed phase to " ++ show ph)
 logAction2 (MakeVisibleTo l p) _ = logComponent (T.pack $ "Made " ++ show l ++ "visible to " ++ show p)
 logAction2 (MakeInvisibleTo l p) _ = logComponent (T.pack $ "Made " ++ show l ++ "invisible to " ++ show p)
+logAction2 EndPhase _ = logComponent (T.pack "Ended phase")
 logAction2 DoNothing _ = pure ()
+logAction2 AdvanceTurn _ = logComponent "Advanced turn"
 logAction2 EndGame _ = logComponent "Ended game"
 logAction2 (MkTransfer l l' r) _ = do
   invl <- showInventory l
@@ -246,7 +256,7 @@ logAction2' ::
   Eff (GameInteract 'Modify l cn r ph pl i : es) ()
 logAction2' action val = liftObserve (logAction2 action val)
 
-act :: forall l r cn ph pl i es. (Ord l, Ord r, RNG :> es, ModifyGame l cn r ph pl i es, Eq cn, Show ph, Show cn, Show l, Show r, Log2 :> es) => GameAction l cn r ph -> Eff es (Maybe (GameControl ph))
+act :: forall l r cn ph pl i es. (Ord l, Ord r, RNG :> es, ModifyGame l cn r ph pl i es, Eq cn, Show ph, Show cn, Show l, Show r, Log2 :> es, Eq ph) => GameAction l cn r ph -> Eff es (Maybe (GameControl ph))
 act DoNothing = continueGame
 act a@(MkTransfer l l' r) =
   modifyingGameState (#objects . #locations) (transfer r l l')
@@ -273,14 +283,31 @@ act a@(RollCounter c) = do
   assignGameState (counterVal c) newVal
   _ <- useGameState (counterVal c) >>= inject . logAction2' a
   continueGame
-act a@(MakeVisibleTo p lc) = 
+act a@(MakeVisibleTo p lc) =
     modifyVisibility (\vis -> makeVisible vis p lc)
     >> inject (logAction2' a ' ')
     >> continueGame
-act a@(MakeInvisibleTo p lc) = 
+act a@(MakeInvisibleTo p lc) =
     modifyVisibility (\vis -> makeInvisible vis p lc)
     >> inject (logAction2' a ' ')
-    >> continueGame   
+    >> continueGame
+act a@EndPhase = do
+    phase <- useGameState #currentPhase
+    turn <- useGameState #currentTurn
+    let nextPhase = getNext phase (turnPhases turn)
+    inject (logAction2' a ' ')
+    case nextPhase of
+      Just aPhase -> act (ChangePhase aPhase)
+      Nothing -> act AdvanceTurn
+act a@AdvanceTurn = do
+    turn <- useGameState #currentTurn
+    turns <- useGameState #turns
+    turner <- useGameState #nextTurn
+    let nextTurn = turner turn turns
+    assignGameState #currentTurn nextTurn
+    inject (logAction2' a ' ')
+    act (ChangePhase (NE.head (turnPhases nextTurn)))
+
 
 act a@(ChangePhase ph) =
   assignGameState #currentPhase ph
@@ -346,7 +373,7 @@ chooseBasicInput = interpret $ \_ -> \case
           Just pl -> return pl
           Nothing -> putStrLn "couldn't find" >> loopChoice cs
 
-runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Choosing :> es, ModifyGame l cn r ph pl i es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es) => GameNode l cn r ph pl i -> Eff es (Either (GameControl ph) [Eff es [GameNode l cn r ph pl i]])
+runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Choosing :> es, ModifyGame l cn r ph pl i es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => GameNode l cn r ph pl i -> Eff es (Either (GameControl ph) [Eff es [GameNode l cn r ph pl i]])
 runNode aNode = maybeLeftToEmptyRight <$> bitraverse handleAction handleChoice (view #node aNode)
   where
     handleAction :: GameAction l cn r ph -> Eff es (Maybe (GameControl ph))
@@ -360,7 +387,7 @@ runNode aNode = maybeLeftToEmptyRight <$> bitraverse handleAction handleChoice (
     maybeLeftToEmptyRight (Left (Just i)) = Left i
     maybeLeftToEmptyRight (Right x) = Right x
 
-runFromSeeds2 :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, ModifyGame l cn r ph pl i es, Choosing :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es) => [Eff es [GameNode l cn r ph pl i]] -> Eff es ()
+runFromSeeds2 :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, ModifyGame l cn r ph pl i es, Choosing :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => [Eff es [GameNode l cn r ph pl i]] -> Eff es ()
 runFromSeeds2 nodes = do
   theTree <- fmap (fmap concat) . unTreeMonad . unfoldForestM unfoldFunc $ nodes
   case theTree of
@@ -392,7 +419,7 @@ runFromSeeds2 nodes = do
       result <- runNode aNode
       return ((aNode,) <$> result)
 
-playGame :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es) => Eff es (GameState l cn r ph pl i)
+playGame :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => Eff es (GameState l cn r ph pl i)
 playGame = do
   gs <- getGameState
   let phases = gs ^. #phases
@@ -401,26 +428,90 @@ playGame = do
   runFromSeeds2 newNodes
   getGameState
 
-playGivenNodes :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es) => [Eff es [GameNode l cn r ph pl i]] -> Eff es (GameState l cn r ph pl i)
+data PhaseControl = PCEndPhase | PCEndTurn | PCEndGame deriving (Eq, Ord, Show, Generic)
+
+runPhaseNodes :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, ModifyGame l cn r ph pl i es, Choosing :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => [Eff es [GameNode l cn r ph pl i]] -> Eff es PhaseControl
+runPhaseNodes nodes = do
+  theTree <- fmap (fmap concat) . unTreeMonad . unfoldForestM unfoldFunc $ nodes
+  case theTree of
+    Left End -> pure PCEndGame
+    Left (ChangePhaseTo ph) -> do
+      phaser <- useGameState #phases
+      let thisPhase = phaser ph
+      runPhaseNodes (inject . liftObserve <$> getPhaseNodes thisPhase)
+    Right _ -> error "oops more nodes" -- TODO: make this unrepresentable!!
+  where
+    unfoldFunc ::
+      Eff es [GameNode l cn r ph pl i] ->
+      TreeMonad l cn r ph pl i es (GameNode l cn r ph pl i, [Eff es [GameNode l cn r ph pl i]])
+    unfoldFunc effNodes = TreeMonad $ do
+      nodes' <- effNodes
+      unfolded <- traverse unfoldFunc' nodes'
+      let unfolded' = sequence unfolded
+      return unfolded'
+
+    unfoldFunc' ::
+      GameNode l cn r ph pl i ->
+      Eff
+        es
+        ( Either
+            (GameControl ph)
+            (GameNode l cn r ph pl i, [Eff es [GameNode l cn r ph pl i]])
+        )
+    unfoldFunc' aNode = do
+      result <- runNode aNode
+      return ((aNode,) <$> result)
+
+data TurnControl = TEndTurn | TEndGame deriving (Eq, Ord, Show, Generic)
+
+runFromPhases :: (GameInteract 'Modify l cn r ph pl i :> es, Ord l, Finitary cn, Show ph, Choosing :> es, RNG :> es, Log2 :> es, Ord r, Eq ph, Show cn, Ord cn, Show l, Show r, Show pl, Show i) => [ph] -> Eff es TurnControl
+runFromPhases (phase:theRest) = do
+    assignGameState #currentPhase phase
+    phases <- useGameState #phases
+    let newNodes = inject . liftObserve <$> getPhaseNodes (phases phase)
+    result <- runPhaseNodes newNodes
+    case result of
+      PCEndPhase -> runFromPhases theRest
+      PCEndTurn -> return TEndTurn
+      PCEndGame -> return TEndGame
+runFromPhases [] = return TEndTurn
+
+
+runTurns :: (GameInteract 'Modify l cn r ph pl i :> es, Finitary cn, Choosing :> es, RNG :> es, Log2 :> es, Ord l, Ord r, Eq ph, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => Turn ph -> Eff es TurnControl
+runTurns turn  = do
+    let phases = NE.toList (turn ^. #turnPhases)
+    runFromPhases phases
+
+
+playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => Eff es TurnControl
+playGameTurns = do
+    gs <- getGameState
+    let currentTurn = gs ^. #currentTurn
+    result <- runTurns currentTurn
+    case result of
+      TEndGame -> return TEndGame
+      TEndTurn -> act AdvanceTurn >> playGameTurns
+
+playGivenNodes :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => [Eff es [GameNode l cn r ph pl i]] -> Eff es (GameState l cn r ph pl i)
 playGivenNodes nodes = do
   runFromSeeds2 nodes
   getGameState
 
-action :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn -> IO (GameState l cn r ph pl i)
+action :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn -> IO (GameState l cn r ph pl i)
 action gdata playRunner vis = do
   gen <- newCryptoRNGState
-  runEff . runGameInteract gdata playRunner vis . runCryptoRNG gen . chooseBasicInput . logStdOut DebugLevel $ playGame
+  runEff . runGameInteract gdata playRunner vis . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGame
 
 ----- Condition, perhaps soon to be Observation?
 -- type Condition l cn r ph pl i es a = Eff es a
 
-runNodesAgainstState :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph pl i)
+runNodesAgainstState :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph pl i)
 runNodesAgainstState game playRunner vis nodes = do
   gen <- newCryptoRNGState
   runEff . runGameInteract game playRunner vis . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGivenNodes [pure nodes]
 
 runEffNodesAgainstState ::
-  (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i) =>
+  (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) =>
   GameState l cn r ph pl i ->
   PlayRunner l cn r ph pl i ->
   VisibilityMap l cn ->
@@ -449,4 +540,4 @@ instance Num a => Num (Eff es a) where
 
 -- data GameController l r cn r ph pl i m = GameController {
 --     game :: Game l cn r ph pl i,
-    
+
