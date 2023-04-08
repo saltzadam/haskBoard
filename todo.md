@@ -7,7 +7,7 @@ haskboard
   r i = Play (name :: Text) (nodes :: GameNode ...)`
 - Re-evaluate: why is `phase` a type parameter instead of `data Phase
   ...`
-- Add Turn -> Phase structure
+- Add Turn -> Phase structure :check:
     - Pros: more obvious control flow; game less likely to stall out for
       lack of nodes
     - Cons: possible that some games don't fit but can't think of one.

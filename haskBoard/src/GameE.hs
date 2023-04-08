@@ -54,18 +54,21 @@ import Effectful.Crypto.RNG
 import Effectful.Dispatch.Dynamic (interpret, send)
 import Effectful.Dispatch.Static (SideEffects (..), StaticRep, evalStaticRep, getStaticRep, putStaticRep)
 import FinitaryMap (ftAt)
-import GHC.Base (Applicative (..))
+import GHC.Base (Applicative (..), NonEmpty)
 import GHC.Generics (Generic)
 import Game.Log
 import Game.Options
 import Game.Player (Player)
 import GameNode (GameAction (..), GameNode)
-import Location (Counter, GameObjects, LocationShape, decrement, increment, inventory, setCounter, transfer)
+import Location (Counter, GameObjects, LocationShape (..), decrement, increment, inventory, setCounter, transfer)
 import Text.Read (readMaybe)
 import TreeMonad
 import Visibility (VisibilityMap, makeVisible, makeInvisible)
 import Util (getNext)
-import Control.Monad (forM)
+import System.Random.Shuffle (shuffle)
+import qualified Data.Foldable as F
+import Control.Monad (replicateM)
+import qualified Data.Sequence as Seq
 
 -- TODO: export list
 
@@ -146,9 +149,9 @@ data GameState l cn r ph pl i = GameState
     objects :: GameObjects l cn r,
     currentPhase :: ph,
     phases :: ph -> Phase ph l cn r pl i,
-    turns :: [Turn ph],
+    turns :: NonEmpty (Turn ph),
     currentTurn :: Turn ph,
-    nextTurn :: Turn ph -> [Turn ph] -> Turn ph
+    nextTurn :: Turn ph -> NonEmpty (Turn ph) -> Turn ph
   }
   deriving (Generic)
 
@@ -213,6 +216,7 @@ logAction2 (IncrementCounter cn) val = logComponent (T.pack $ "Incremented " ++ 
 logAction2 (DecrementCounter cn) val = logComponent (T.pack $ "Decremented " ++ show cn ++ " to " ++ show val)
 logAction2 (SetCounter cn i) _ = logComponent (T.pack $ "Set " ++ show cn ++ " to " ++ show i)
 logAction2 (RollCounter cn) val = logComponent (T.pack $ "Rolled " ++ show cn ++ " to " ++ show val)
+logAction2 (Shuffle l) _ = logComponent (T.pack $ "Shuffled " ++ show l)
 logAction2 (ChangePhase ph) _ = logComponent (T.pack $ "Changed phase to " ++ show ph)
 logAction2 (MakeVisibleTo l p) _ = logComponent (T.pack $ "Made " ++ show l ++ "visible to " ++ show p)
 logAction2 (MakeInvisibleTo l p) _ = logComponent (T.pack $ "Made " ++ show l ++ "invisible to " ++ show p)
@@ -283,6 +287,17 @@ act a@(RollCounter c) = do
   assignGameState (counterVal c) newVal
   _ <- useGameState (counterVal c) >>= inject . logAction2' a
   continueGame
+act a@(Shuffle l) = do
+    loc <- useGameState (#objects . #locations . ftAt l)
+    case loc of
+      Deck cards -> do
+        uniformSample <- replicateM (length cards - 1) (randomR (0, length cards - 1))
+        let shuffled = Seq.fromList $ shuffle (F.toList cards) uniformSample
+        assignGameState (#objects . #locations . ftAt l) (Deck shuffled)
+      _ -> pure ()
+    inject (logAction2' a ' ')
+    continueGame
+
 act a@(MakeVisibleTo p lc) =
     modifyVisibility (\vis -> makeVisible vis p lc)
     >> inject (logAction2' a ' ')
@@ -334,7 +349,7 @@ chooseNode cs =
    in askRunner
         <*> ( do
                 options <- cs'
-                logGame (T.pack ("Choosing from " ++ show options))
+                logGame (T.pack ("Choosing from " ++ displayOptions options))
                 c <- choose options
                 logGame (T.pack ("Chose " ++ show c))
                 return c
@@ -502,6 +517,16 @@ action gdata playRunner vis = do
   gen <- newCryptoRNGState
   runEff . runGameInteract gdata playRunner vis . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGame
 
+actionTurns :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l,
+ Show r, Show pl, Show i, Eq ph) =>
+  GameState l cn r ph pl i
+  -> PlayRunner l cn r ph pl i
+  -> VisibilityMap l cn
+  -> IO TurnControl
+actionTurns gdata playRunner vis = do
+    gen <- newCryptoRNGState
+    runEff . runGameInteract gdata playRunner vis . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGameTurns
+
 ----- Condition, perhaps soon to be Observation?
 -- type Condition l cn r ph pl i es a = Eff es a
 
@@ -537,6 +562,29 @@ instance Num a => Num (Eff es a) where
   fromInteger = return . fromInteger
   negate = fmap negate
 
+--- Helpers ---
+(<+) :: Enum a => a -> Int -> a
+a <+ i
+  | i > 0 = succ a <+ (i - 1)
+  | i < 0 = pred a <+ (i + 1)
+  | otherwise = a
+
+findResourceWithin' :: Observe es => CantStopResource -> [CantStopLocation] -> Eff es [CantStopLocation]
+findResourceWithin' r locationNames = do
+  locs <- useGameState (#objects . #locations)
+  return $ findResourceWithin r locationNames locs
+
+mkMoveNode :: Player -> GameAction l cn r ph -> GameNode l cn r ph pl i
+mkMoveNode p act = GameNode (Left act) (Just p)
+
+howManyAt :: Observe es => CantStopLocation -> CantStopResource -> Eff es (Cnt Int)
+howManyAt l r = flip howMany' r <$> useGameState (location l)
+
+has :: Observe es => CantStopLocation -> CantStopResource -> Eff es Bool
+has l r = (> 0) <$> howManyAt l r
+
+doesNotHave :: Observe es => CantStopLocation -> CantStopResource -> Eff es Bool
+doesNotHave l r = not <$> has l r
 
 -- data GameController l r cn r ph pl i m = GameController {
 --     game :: Game l cn r ph pl i,

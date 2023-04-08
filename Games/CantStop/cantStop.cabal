@@ -17,7 +17,7 @@ author:             Adam Saltz
 maintainer:         saltz.adam@gmail.com
 
 library
-    hs-source-dirs: CantStop
+    hs-source-dirs: .
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
@@ -31,7 +31,7 @@ library
 
 executable CantStop
     main-is: Main.hs
-    hs-source-dirs: CantStop
+    hs-source-dirs: .
     build-depends: base, CantStop, haskBoard, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl, finitary, mmorph,

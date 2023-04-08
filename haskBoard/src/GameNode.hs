@@ -14,6 +14,7 @@ data GameAction l cn r ph
   | DecrementCounter cn
   | SetCounter cn (Cnt Int)
   | RollCounter cn
+  | Shuffle l
   | ChangePhase ph
   | EndPhase
   | AdvanceTurn

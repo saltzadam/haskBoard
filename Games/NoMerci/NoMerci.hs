@@ -231,4 +231,26 @@ moreInterestingGameState =
 runCSTurns :: IO TurnControl
 runCSTurns = actionTurns (initGameState 3) csRunPlay allVisible
 
+--- Helpers ---
+(<+) :: Enum a => a -> Int -> a
+a <+ i
+  | i > 0 = succ a <+ (i - 1)
+  | i < 0 = pred a <+ (i + 1)
+  | otherwise = a
 
+findResourceWithin' :: Observe es => CantStopResource -> [CantStopLocation] -> Eff es [CantStopLocation]
+findResourceWithin' r locationNames = do
+  locs <- useGameState (#objects . #locations)
+  return $ findResourceWithin r locationNames locs
+
+mkMoveNode :: Player -> GameAction l cn r ph -> GameNode l cn r ph pl i
+mkMoveNode p act = GameNode (Left act) (Just p)
+
+howManyAt :: Observe es => CantStopLocation -> CantStopResource -> Eff es (Cnt Int)
+howManyAt l r = flip howMany' r <$> useGameState (location l)
+
+has :: Observe es => CantStopLocation -> CantStopResource -> Eff es Bool
+has l r = (> 0) <$> howManyAt l r
+
+doesNotHave :: Observe es => CantStopLocation -> CantStopResource -> Eff es Bool
+doesNotHave l r = not <$> has l r

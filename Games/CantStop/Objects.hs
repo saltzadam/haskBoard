@@ -15,7 +15,7 @@ import Data.Set (Set)
 import qualified Data.Sequence as Seq
 import qualified Data.Map as M
 import qualified Data.Set as S
-import GameE (Phase, GameState, Game, ObserveGame)
+import GameE (Phase, GameState, Game, ObserveGame, Turn)
 import GameNode (GameAction, GameNode)
 import Count (Cnt)
 import FinitaryMap (FTMap(..))
@@ -100,6 +100,7 @@ initGameObjects ps =
 data Issue = ThreeTempMarkersOut | TrackCompleted | AtTop deriving (Eq, Ord, Show, Generic)
 data PlayName = Move Player TrackName TrackName | Stop Player | DontStop Player deriving (Eq, Ord, Show, Generic)
 data CantStopPhaseName = CSTurn Player deriving (Eq, Ord, Show, Generic)
+type CantStopTurn = Turn CantStopPhaseName
 type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource PlayName Issue
 type CantStopAction = GameAction CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 

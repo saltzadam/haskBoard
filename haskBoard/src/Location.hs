@@ -27,7 +27,8 @@ module Location
      decrement,
      GameObjects(..),
      howMany,
-     look
+     look,
+     dummyCounter
     )
  where
 import Control.Lens (makeFields, set)
@@ -184,6 +185,9 @@ type Counters name = FTMap name Counter
 
 makeCounter :: (Cnt Int, Cnt Int) -> Counter
 makeCounter (a, b) = Counter a (a, b)
+
+dummyCounter :: Counter
+dummyCounter = Counter 0 (0,0)
 
 d6 :: Counter
 d6 = makeCounter (Cnt 1, Cnt 6)
