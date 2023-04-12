@@ -23,10 +23,11 @@ import Game.Options (Legality (..), Options (..), buildOptions, mustNotElse)
 import Game.Player
 import GameE
 import GameNode
-import Location (findResourceWithin, howMany', inventory, listAllF)
+import Location (inventory, listAllF)
 import Objects
 import Util (graphMapM, getNext)
 import Visibility (VisibilityMap (..), allVisible)
+import Helpers
 
 -- Plays --
 
@@ -153,7 +154,7 @@ checkWinner = do
   let playerHistogram = histogramF trackMap
   let winners = M.keys . M.filter (>= 3) $ playerHistogram
   if not (null winners)
-    then return [mkActionNode EndGame]
+    then return [mkActionNode (EndGame winners)]
     else return [mkActionNode DoNothing]
 
 trackWinner :: Observe es => TrackName -> Eff es (Maybe Player)
@@ -165,6 +166,8 @@ trackWinners :: Observe es => Eff es (Map TrackName Player)
 trackWinners = graphMapM trackWinner inhabitants
 
 -- Initialization --
+setupNodes = pure []
+
 cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (CSTurn p) =
   Phase
@@ -214,12 +217,12 @@ playerTurn p = Turn p (NE.singleton (CSTurn p))
 
 runEffCSNodes effNodes = do
   let gs = initGameState 3
-  runEffNodesAgainstState gs csRunPlay effNodes
+  runEffNodesAgainstState gs csRunPlay csVisibility effNodes
 
-runCSNodes = runNodesAgainstState (initGameState 3) csRunPlay allVisible
+runCSNodes = runNodesAgainstState (initGameState 3) csRunPlay allVisible 
 
 moreInterestingGameState =
-  runCSNodes
+  runCSNodes . pure $
     [ mkActionNode (MkTransfer (PlayerStuff (Player 2)) (TrackSpot Six HThree) (PlayerMarker (Player 2))),
       mkActionNode (MkTransfer (PlayerStuff (Player 1)) (TrackSpot Two HOne) (PlayerMarker (Player 1))),
       mkActionNode (MkTransfer (PlayerStuff (Player 3)) (TrackSpot Ten HTwo) (PlayerMarker (Player 3)))
@@ -229,6 +232,6 @@ moreInterestingGameState =
 -- run game from Turns
 
 runCSTurns :: IO TurnControl
-runCSTurns = actionTurns (initGameState 3) csRunPlay allVisible
+runCSTurns = actionTurns (initGameState 3) csRunPlay allVisible setupNodes
 
 

@@ -28,7 +28,8 @@ module Location
      GameObjects(..),
      howMany,
      look,
-     dummyCounter
+     dummyCounter,
+     howManyF
     )
  where
 import Control.Lens (makeFields, set)
@@ -87,9 +88,12 @@ moveFromL _ Dummy = (Dummy, Failure)
 
 moveToL :: Ord r => r -> LocationShape r -> (LocationShape r, TransferStatus)
 moveToL r (Deck s) = (Deck (r <| s), Success) -- add to left (i.e. "top")
-moveToL r (Pile pileMap) = if r `M.member` pileMap
-                           then (Pile (M.adjust (+1) r pileMap), Success)
-                           else (Pile pileMap, Failure)
+moveToL r (Pile pileMap) = (Pile (M.alter addOneWithDefault r pileMap), Success) where
+    addOneWithDefault Nothing = Just 1
+    addOneWithDefault (Just i) = Just (i+1)
+                           -- if r `M.member` pileMap
+                           -- then (Pile (M.adjust (+1) r pileMap), Success)
+                           -- else (Pile pileMap, Failure)
 moveToL r (Slot Nothing) = (Slot (Just r), Success)
 moveToL _ (Slot (Just r')) = (Slot (Just r'), Failure)
 moveToL _ Dummy = (Dummy, Failure)
@@ -145,6 +149,9 @@ inventory (Deck s) = histogramF s
 inventory (Slot Nothing) = M.empty
 inventory (Slot (Just r)) = M.singleton r 1
 inventory Dummy = M.empty
+
+howManyF :: Ord r => LocationShape r -> (r -> Bool) -> Cnt Int
+howManyF loc filt = sum . M.filterWithKey (\k _ -> filt k) . inventory $ loc
 
 howMany' :: Ord r => LocationShape r -> r -> Cnt Int
 howMany' loc res = fromMaybe 0 . M.lookup res . inventory $ loc

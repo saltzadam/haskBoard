@@ -1,10 +1,13 @@
 {-# LANGUAGE TupleSections #-}
+    {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 module Util where
 import qualified Data.Map as M
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty(..))
+import GHC.Base (Applicative(..))
 
 graph :: (t -> b) -> t -> (t, b)
 graph f a = (a, f a)
@@ -27,4 +30,35 @@ getNext x (y :| (y':ys)) = if x == y
                       else getNext x (y' :| ys)
 getNext _ (_ :| []) = Nothing
 
+getNextCyclic :: Eq a => a -> NE.NonEmpty a -> Maybe a
+getNextCyclic x ys = case getNext x ys of
+                       Just y' -> Just y'
+                       Nothing -> if x == NE.last ys
+                                  then Just (NE.head ys)
+                                  else Nothing
 
+
+maximaBy :: (a -> a -> Ordering) -> [a] -> [a]
+maximaBy cmp as = go cmp as [] where
+    go cmp (a:remaining) [] = go cmp remaining [a]
+    go cmp (a:remaining) (m:maxes) = case cmp a m of
+                                       LT -> go cmp remaining (m:maxes)
+                                       EQ -> go cmp remaining (a:m:maxes)
+                                       GT -> go cmp remaining [a]
+    go _ [] maxes = maxes
+
+
+
+maximaByScore :: forall a m . Monad m => (a -> m Int) -> [a] -> m [a]
+maximaByScore score as = go score as [] where
+    go :: (a -> m Int) -> [a] -> [a] -> m [a]
+    go score (a:remaining) [] = go score remaining [a]
+    go _ [] maxes = return maxes
+    go score (a:remaining) (m:maxes) = do
+        scorea <- score a
+        scorem <- score m
+        case compare scorea scorem of
+          LT -> go score remaining (m:maxes)
+          EQ -> go score remaining (a:m:maxes)
+          GT -> go score remaining [a]
+        

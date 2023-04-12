@@ -60,7 +60,7 @@ import Game.Log
 import Game.Options
 import Game.Player (Player)
 import GameNode (GameAction (..), GameNode)
-import Location (Counter, GameObjects, LocationShape (..), decrement, increment, inventory, setCounter, transfer)
+import Location (Counter, GameObjects, LocationShape (..), decrement, increment, inventory, setCounter, transfer, findResourceWithin)
 import Text.Read (readMaybe)
 import TreeMonad
 import Visibility (VisibilityMap, makeVisible, makeInvisible)
@@ -100,7 +100,8 @@ type PlayRunner l cn r ph pl i = PlayRunner' l cn r ph pl i 'Observe
 data Game l cn r ph pl i = Game
   { gameState :: GameState l cn r ph pl i,
     playRunner :: PlayRunner l cn r ph pl i,
-    visibility :: VisibilityMap l cn
+    visibility :: VisibilityMap l cn,
+    setup :: Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i]
   }
   deriving (Generic)
 
@@ -121,13 +122,14 @@ runGameInteract ::
   GameState l cn r ph pl i ->
   PlayRunner l cn r ph pl i ->
   VisibilityMap l cn ->
+  Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i] ->
   Eff (GameInteract mode l cn r ph pl i : es) a ->
   Eff es a
-runGameInteract gd pr vis = evalStaticRep (GameInteract (Game gd pr vis) :: StaticRep (GameInteract mode l cn r ph pl i))
+runGameInteract gd pr vis setup = evalStaticRep (GameInteract (Game gd pr vis setup) :: StaticRep (GameInteract mode l cn r ph pl i))
 
 askGame :: GameInteract mode l cn r ph pl i :> es => Eff es (GameState l cn r ph pl i)
 askGame = do
-  GameInteract (Game gd _ _) <- getStaticRep
+  GameInteract (Game gd _ _ _) <- getStaticRep
   return gd
 
 liftObserve :: Eff (GameInteract 'Observe l cn r ph pl i : es) a -> Eff (GameInteract 'Modify l cn r ph pl i : es) a
@@ -155,20 +157,22 @@ data GameState l cn r ph pl i = GameState
   }
   deriving (Generic)
 
+-- playerTurn p = Turn p (NE.singleton (NMTurn p))
+
 askRunner :: forall l cn r ph pl i es. (GameInteract 'Observe l cn r ph pl i :> es) => Eff es (PlayRunner l cn r ph pl i)
 askRunner = do
-  GameInteract (Game _ pr _) <- getStaticRep @(GameInteract 'Observe l cn r ph pl i)
+  GameInteract (Game _ pr _ _) <- getStaticRep @(GameInteract 'Observe l cn r ph pl i)
   return pr
 
 getRunner :: forall l cn r ph pl i es. (GameInteract 'Modify l cn r ph pl i :> es) => Eff es (PlayRunner l cn r ph pl i)
 getRunner = do
-  GameInteract (Game _ pr _) <- getStaticRep @(GameInteract 'Modify l cn r ph pl i)
+  GameInteract (Game _ pr _ _) <- getStaticRep @(GameInteract 'Modify l cn r ph pl i)
   return pr
 
 modifyGameState :: forall l cn r ph pl i es. (GameInteract 'Modify l cn r ph pl i :> es) => (GameState l cn r ph pl i -> GameState l cn r ph pl i) -> Eff es ()
 modifyGameState f = do
-  GameInteract (Game gs gr vis) <- getStaticRep @(GameInteract 'Modify l cn r ph pl i)
-  putStaticRep (GameInteract (Game (f gs) gr vis))
+  GameInteract (Game gs gr vis setup) <- getStaticRep @(GameInteract 'Modify l cn r ph pl i)
+  putStaticRep (GameInteract (Game (f gs) gr vis setup))
 
 modifyingGameState :: (GameInteract 'Modify l cn r ph pl i :> es) => ASetter (GameState l cn r ph pl i) (GameState l cn r ph pl i) a b -> (a -> b) -> Eff es ()
 modifyingGameState o = modifyGameState . over o
@@ -178,7 +182,7 @@ assignGameState l b = modifyGameState (set l b)
 
 getsGameState :: forall mode l cn r ph pl i es b. (GameInteract mode l cn r ph pl i :> es) => (GameState l cn r ph pl i -> b) -> Eff es b
 getsGameState f = do
-  GameInteract (Game gs _ _) <- getStaticRep @(GameInteract mode l cn r ph pl i)
+  GameInteract (Game gs _ _ _) <- getStaticRep @(GameInteract mode l cn r ph pl i)
   return (f gs)
 
 getGameState :: forall mode l cn r ph pl i es. (GameInteract mode l cn r ph pl i :> es) => Eff es (GameState l cn r ph pl i)
@@ -189,13 +193,16 @@ useGameState o = getsGameState (view o)
 
 getsVisibility :: forall mode l cn r ph pl i es b. (GameInteract mode l cn r ph pl i :> es) => (VisibilityMap l cn-> b) -> Eff es b
 getsVisibility f = do
-  GameInteract (Game _ _ vis) <- getStaticRep @(GameInteract mode l cn r ph pl i)
+  GameInteract (Game _ _ vis _) <- getStaticRep @(GameInteract mode l cn r ph pl i)
   return (f vis)
+
+getVisibility :: forall mode l cn r ph pl i es. (GameInteract mode l cn r ph pl i :> es) => Eff es (VisibilityMap l cn)
+getVisibility = getsVisibility id
 
 modifyVisibility :: forall l cn r ph pl i es. (GameInteract 'Modify l cn r ph pl i :> es) => (VisibilityMap l cn ->  VisibilityMap l cn) -> Eff es ()
 modifyVisibility f = do
-  GameInteract (Game gs gr vis) <- getStaticRep @(GameInteract 'Modify l cn r ph pl i)
-  putStaticRep (GameInteract (Game gs gr (f vis)))
+  GameInteract (Game gs gr vis setup) <- getStaticRep @(GameInteract 'Modify l cn r ph pl i)
+  putStaticRep (GameInteract (Game gs gr (f vis) setup))
 
 useVisibility :: (GameInteract mode l cn r ph pl i :> es) => Getting b (VisibilityMap l cn) b -> Eff es b
 useVisibility o = getsVisibility (view o)
@@ -203,10 +210,18 @@ useVisibility o = getsVisibility (view o)
 assignVisibility :: (GameInteract 'Modify l cn r ph pl i :> es) => ASetter (VisibilityMap l cn) (VisibilityMap l cn) a b -> b -> Eff es ()
 assignVisibility l b = modifyVisibility (set l b)
 
+getsSetup :: forall mode l cn r ph pl i es b. (GameInteract mode l cn r ph pl i :> es) => (Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i] -> b) -> Eff es b
+getsSetup f = do
+  GameInteract (Game _ _ _ setup) <- getStaticRep @(GameInteract mode l cn r ph pl i)
+  return (f setup)
+
+getSetup :: forall mode l cn r ph pl i es. (GameInteract mode l cn r ph pl i :> es) => Eff es (Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i])
+getSetup = getsSetup id
+
 
 
 observe :: Game l cn r ph pl i -> Eff '[GameInteract mode l cn r ph pl i] a -> a
-observe g eff = runPureEff . runGameInteract (g ^. #gameState) (g ^. #playRunner) (g ^. #visibility) $ eff
+observe g eff = runPureEff . runGameInteract (g ^. #gameState) (g ^. #playRunner) (g ^. #visibility) (g^. #setup) $ eff
 
 showInventory :: (GameInteract 'Observe l cn r ph pl i :> es, Eq l, Show r, Ord r) => l -> Eff es String
 showInventory l = show . inventory <$> useGameState (location l)
@@ -223,7 +238,7 @@ logAction2 (MakeInvisibleTo l p) _ = logComponent (T.pack $ "Made " ++ show l ++
 logAction2 EndPhase _ = logComponent (T.pack "Ended phase")
 logAction2 DoNothing _ = pure ()
 logAction2 AdvanceTurn _ = logComponent "Advanced turn"
-logAction2 EndGame _ = logComponent "Ended game"
+logAction2 (EndGame winners) _ = logComponent (T.pack ("Game over! Winners: " ++ show winners))
 logAction2 (MkTransfer l l' r) _ = do
   invl <- showInventory l
   invl' <- showInventory l'
@@ -328,7 +343,7 @@ act a@(ChangePhase ph) =
   assignGameState #currentPhase ph
     >> inject (logAction2' a (show ph))
     >> return (Just $ ChangePhaseTo ph)
-act EndGame = inject (logAction2' EndGame ' ') >> return (Just End)
+act a@(EndGame _) = inject (logAction2' a ' ') >> return (Just End)
 
 counter :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Counter
 counter c = #objects . #counters . ftAt c
@@ -454,8 +469,8 @@ runPhaseNodes nodes = do
       phaser <- useGameState #phases
       let thisPhase = phaser ph
       runPhaseNodes (inject . liftObserve <$> getPhaseNodes thisPhase)
-    Right _ -> error "oops more nodes" -- TODO: make this unrepresentable!!
-  where
+    Right _ -> pure PCEndTurn
+    where
     unfoldFunc ::
       Eff es [GameNode l cn r ph pl i] ->
       TreeMonad l cn r ph pl i es (GameNode l cn r ph pl i, [Eff es [GameNode l cn r ph pl i]])
@@ -500,46 +515,56 @@ runTurns turn  = do
 
 playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => Eff es TurnControl
 playGameTurns = do
-    gs <- getGameState
-    let currentTurn = gs ^. #currentTurn
-    result <- runTurns currentTurn
-    case result of
-      TEndGame -> return TEndGame
-      TEndTurn -> act AdvanceTurn >> playGameTurns
+    setupNodes <- getSetup
+    _ <- runPhaseNodes [inject . liftObserve $ setupNodes]
+    playGameTurns' 
+        where
+            playGameTurns' = do
+                gs <- getGameState
+                let currentTurn = gs ^. #currentTurn
+                result <- runTurns currentTurn
+                case result of
+                  TEndGame -> return TEndGame
+                  TEndTurn -> act AdvanceTurn >> playGameTurns'
+
 
 playGivenNodes :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => [Eff es [GameNode l cn r ph pl i]] -> Eff es (GameState l cn r ph pl i)
 playGivenNodes nodes = do
   runFromSeeds2 nodes
   getGameState
 
-action :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn -> IO (GameState l cn r ph pl i)
-action gdata playRunner vis = do
+action :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn -> Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i] -> IO (GameState l cn r ph pl i)
+action gdata playRunner vis setup = do
   gen <- newCryptoRNGState
-  runEff . runGameInteract gdata playRunner vis . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGame
+  runEff . runGameInteract gdata playRunner vis (inject setup) . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGame
 
 actionTurns :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l,
  Show r, Show pl, Show i, Eq ph) =>
   GameState l cn r ph pl i
   -> PlayRunner l cn r ph pl i
   -> VisibilityMap l cn
+  -> Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i] 
   -> IO TurnControl
-actionTurns gdata playRunner vis = do
+actionTurns gdata playRunner vis setup = do
     gen <- newCryptoRNGState
-    runEff . runGameInteract gdata playRunner vis . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGameTurns
+    runEff . runGameInteract gdata playRunner vis setup . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGameTurns
 
 ----- Condition, perhaps soon to be Observation?
 -- type Condition l cn r ph pl i es a = Eff es a
 
-runNodesAgainstState :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph pl i)
-runNodesAgainstState game playRunner vis nodes = do
+runNodesAgainstState :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn 
+   -> Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i]
+                     -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph pl i)
+runNodesAgainstState game playRunner vis setup nodes = do
   gen <- newCryptoRNGState
-  runEff . runGameInteract game playRunner vis . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGivenNodes [pure nodes]
+  runEff . runGameInteract game playRunner vis setup . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGivenNodes [pure nodes]
 
 runEffNodesAgainstState ::
   (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) =>
   GameState l cn r ph pl i ->
   PlayRunner l cn r ph pl i ->
   VisibilityMap l cn ->
+  Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i] ->
   [ Eff
       '[ Log2,
          Choosing,
@@ -550,9 +575,9 @@ runEffNodesAgainstState ::
       [GameNode l cn r ph pl i]
   ] ->
   IO (GameState l cn r ph pl i)
-runEffNodesAgainstState game playRunner vis nodes = do
+runEffNodesAgainstState game playRunner vis setup nodes = do
   gen <- newCryptoRNGState
-  runEff . runGameInteract game playRunner vis . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGivenNodes nodes
+  runEff . runGameInteract game playRunner vis setup . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGivenNodes nodes
 
 instance Num a => Num (Eff es a) where
   (+) = liftA2 (+)
@@ -561,30 +586,6 @@ instance Num a => Num (Eff es a) where
   signum = fmap signum
   fromInteger = return . fromInteger
   negate = fmap negate
-
---- Helpers ---
-(<+) :: Enum a => a -> Int -> a
-a <+ i
-  | i > 0 = succ a <+ (i - 1)
-  | i < 0 = pred a <+ (i + 1)
-  | otherwise = a
-
-findResourceWithin' :: Observe es => CantStopResource -> [CantStopLocation] -> Eff es [CantStopLocation]
-findResourceWithin' r locationNames = do
-  locs <- useGameState (#objects . #locations)
-  return $ findResourceWithin r locationNames locs
-
-mkMoveNode :: Player -> GameAction l cn r ph -> GameNode l cn r ph pl i
-mkMoveNode p act = GameNode (Left act) (Just p)
-
-howManyAt :: Observe es => CantStopLocation -> CantStopResource -> Eff es (Cnt Int)
-howManyAt l r = flip howMany' r <$> useGameState (location l)
-
-has :: Observe es => CantStopLocation -> CantStopResource -> Eff es Bool
-has l r = (> 0) <$> howManyAt l r
-
-doesNotHave :: Observe es => CantStopLocation -> CantStopResource -> Eff es Bool
-doesNotHave l r = not <$> has l r
 
 -- data GameController l r cn r ph pl i m = GameController {
 --     game :: Game l cn r ph pl i,

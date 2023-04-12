@@ -20,7 +20,7 @@ data GameAction l cn r ph
   | AdvanceTurn
   | MakeVisibleTo Player (Either l cn)
   | MakeInvisibleTo  Player (Either l cn)
-  | EndGame
+  | EndGame [Player]
   deriving (Eq, Ord, Show, Generic)
 
 

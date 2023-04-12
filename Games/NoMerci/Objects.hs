@@ -12,10 +12,12 @@ import Location
 import Data.Set (Set)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import GameE (Phase, GameState, Game, ObserveGame, Turn)
+import GameE (Phase, GameState, Game, ObserveGame, Turn (..))
 import GameNode (GameAction, GameNode)
 import FinitaryMap (FTMap(..))
 import qualified Data.Sequence as Seq
+import qualified Data.List.NonEmpty as NE
+import Data.Finitary
 
 -- data CenterOfTable = CenterOfTable deriving (Eq, Ord, Show, Enum, Generic)
 -- instance Finitary CenterOfTable 
@@ -26,6 +28,10 @@ import qualified Data.Sequence as Seq
 -- don't derive Functor so it's not easy to modify card nums
 data NMResource = Chip | Card Int deriving (Eq, Ord, Show, Generic)
 
+isCard :: NMResource -> Bool
+isCard (Card _) = True
+isCard _ = False
+
 data NMLocation
   = CenterOfTableCard
   | ChipPile
@@ -33,7 +39,9 @@ data NMLocation
   | CardDeck
   deriving (Eq, Ord, Show, Generic)
 
-data NMCounters = DummyCounter
+data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic)
+instance Finitary NMCounters
+
 type NMGameObjects = GameObjects NMLocation NMCounters NMResource
 
 initLocations' :: Set Player -> NMLocation -> LocationShape NMResource
@@ -55,20 +63,22 @@ initGameObjects ps =
     }
 
 
-data Issue = NoMoreCounters deriving (Eq, Ord, Show, Generic)
-data PlayName = Take | Decline deriving (Eq, Ord, Show, Generic)
+data Issue = NoMoreChips deriving (Eq, Ord, Show, Generic)
+data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic)
 data NMPhaseName = NMTurn Player deriving (Eq, Ord, Show, Generic)
 type NMTurn = Turn NMPhaseName
-type NMPhase = Phase NMPhaseName NMLocation NMCounters NMResource PlayName Issue
+type NMPhase = Phase NMPhaseName NMLocation NMCounters NMResource NMPlayName Issue
 type NMAction = GameAction NMLocation NMCounters NMResource NMPhaseName
 
 
-type NMGameState = GameState NMLocation NMCounters NMResource NMPhaseName PlayName Issue
-type NMGame = Game  NMLocation NMCounters NMResource NMPhaseName PlayName Issue
-type NMGameNode = GameNode NMLocation NMCounters NMResource NMPhaseName PlayName Issue
-type Observe es = ObserveGame NMLocation NMCounters NMResource NMPhaseName PlayName Issue es
+type NMGameState = GameState NMLocation NMCounters NMResource NMPhaseName NMPlayName Issue
+type NMGame = Game  NMLocation NMCounters NMResource NMPhaseName NMPlayName Issue
+type NMGameNode = GameNode NMLocation NMCounters NMResource NMPhaseName NMPlayName Issue
+type Observe es = ObserveGame NMLocation NMCounters NMResource NMPhaseName NMPlayName Issue es
 
 currentPlayer :: NMPhaseName ->Player
 currentPlayer (NMTurn p) = p
 
+playerTurn :: Player -> NMTurn
+playerTurn p = Turn p (NE.singleton (NMTurn p))
 
