@@ -17,6 +17,7 @@ module Location
      findResource,
      listAll,
      listAllF,
+     listAllShape,
      peek,
      Counter(..),
      Counters,
@@ -171,8 +172,15 @@ findResource res = findResourceWithin res inhabitants
 listAll :: Ord r => n -> Locations n r -> [r]
 listAll n locs = listAllF n locs (const True)
 
+listAllShapeF :: Ord a => LocationShape a -> (a -> Bool) -> [a]
+listAllShapeF locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs
+
+listAllShape :: Ord a => LocationShape a -> [a]
+listAllShape locs = listAllShapeF locs (const True)
+
 listAllF :: Ord r => n -> Locations n r -> (r -> Bool) -> [r]
-listAllF n locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs !!! n
+listAllF n locs = listAllShapeF (locs !!! n)
+-- listAllF n locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs !!! n
 
 peek :: LocationShape r -> Maybe r
 peek (Pile s) = listToMaybe (M.keys . M.filter (>0) $ s)

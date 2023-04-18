@@ -19,6 +19,7 @@ import GameE (Phase, GameState, Game, ObserveGame, Turn)
 import GameNode (GameAction, GameNode)
 import Count (Cnt)
 import FinitaryMap (FTMap(..))
+import View (GameStateView, GameObjectsView)
 -- Does it make more sense to have an enum or just a newtype int?
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
@@ -69,6 +70,7 @@ data CantStopCounterName = DieOne | DieTwo | DieThree | DieFour
 type CantStopLocations = Locations CantStopLocation CantStopResource
 type CantStopCounters = Counters CantStopCounterName
 type CantStopGameObjects = GameObjects CantStopLocation CantStopCounterName CantStopResource
+type CantStopGameObjectsView = GameObjectsView CantStopLocation CantStopCounterName CantStopResource
 
 allSpots :: [CantStopLocation]
 allSpots = [TrackSpot name height | name <- inhabitants, height <- [HOne .. maxSlot name]]
@@ -107,6 +109,8 @@ type CantStopAction = GameAction CantStopLocation CantStopCounterName CantStopRe
 -- type CantStopGame = Game CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName CantStopTurns Player
 
 type CantStopGameState = GameState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
+type CantStopGameStateView = GameStateView CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
+
 type CantStopGame = Game  CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 -- type CantStopGetOptions = GetOptions CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue

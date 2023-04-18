@@ -22,7 +22,7 @@ library
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
                 brick, effectful-plugin, haskBoard, vty
-    exposed-modules: CantStop, Tui, GridSelector, Panel, Dice, Objects
+    exposed-modules: CantStop, Tui,GridSelector, Panel, Dice, Objects
     -- , Tui, Dice
     default-language: Haskell2010
     ghc-options:  -Wall -fplugin=Effectful.Plugin -threaded

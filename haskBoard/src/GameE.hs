@@ -33,7 +33,7 @@ import Control.Lens
     set,
     to,
     view,
-    (^.),
+    (^.), (.~), at, ix,
   )
 import Control.Lens.Combinators (ASetter)
 import Count
@@ -69,6 +69,9 @@ import System.Random.Shuffle (shuffle)
 import qualified Data.Foldable as F
 import Control.Monad (replicateM)
 import qualified Data.Sequence as Seq
+import Data.Map (Map)
+import Data.Text (Text)
+import Data.String (IsString)
 
 -- TODO: export list
 
@@ -91,7 +94,7 @@ getPhaseNodes (Phase _ seedNodes') = seedNodes'
 -- thanks /u/typedbyte
 -- https://www.reddit.com/r/haskell/comments/10ql43j/monthly_hask_anything_february_2023/jabrmxk/
 
-data Mode = Observe | Modify deriving (Eq, Ord, Show, Generic)
+data Mode = Observe | Modify | ObserveAs Player deriving (Eq, Ord, Show, Generic)
 
 type PlayRunner' l cn r ph pl i mode = pl -> [Eff '[GameInteract mode l cn r ph pl i] [GameNode l cn r ph pl i]]
 
@@ -127,11 +130,6 @@ runGameInteract ::
   Eff es a
 runGameInteract gd pr vis setup = evalStaticRep (GameInteract (Game gd pr vis setup) :: StaticRep (GameInteract mode l cn r ph pl i))
 
-askGame :: GameInteract mode l cn r ph pl i :> es => Eff es (GameState l cn r ph pl i)
-askGame = do
-  GameInteract (Game gd _ _ _) <- getStaticRep
-  return gd
-
 liftObserve :: Eff (GameInteract 'Observe l cn r ph pl i : es) a -> Eff (GameInteract 'Modify l cn r ph pl i : es) a
 liftObserve eff = do
   GameInteract g <- getStaticRep
@@ -153,7 +151,8 @@ data GameState l cn r ph pl i = GameState
     phases :: ph -> Phase ph l cn r pl i,
     turns :: NonEmpty (Turn ph),
     currentTurn :: Turn ph,
-    nextTurn :: Turn ph -> NonEmpty (Turn ph) -> Turn ph
+    nextTurn :: Turn ph -> NonEmpty (Turn ph) -> Turn ph,
+    displayHints :: Map Text Text
   }
   deriving (Generic)
 
@@ -218,6 +217,16 @@ getsSetup f = do
 getSetup :: forall mode l cn r ph pl i es. (GameInteract mode l cn r ph pl i :> es) => Eff es (Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i])
 getSetup = getsSetup id
 
+hint :: forall mode a b l cn r ph pl i es. (GameInteract mode l cn r ph pl i :> es, Show a, Show b) => a -> b -> Eff es ()
+hint name' content' = do
+  let name = T.pack (show name')
+  let content = T.pack (show content')
+  GameInteract g <- getStaticRep @(GameInteract mode l cn r ph pl i)
+  let g' = set (#gameState . #displayHints . ix name) content g
+  putStaticRep (GameInteract g')
+  
+getHint :: (GameInteract mode l cn r ph pl i :> es) => Text -> Eff es (Maybe Text)
+getHint name = useGameState (#displayHints . at name)
 
 
 observe :: Game l cn r ph pl i -> Eff '[GameInteract mode l cn r ph pl i] a -> a
@@ -354,6 +363,7 @@ counterVal c = counter c . #val
 location :: Eq l => l -> Lens' (GameState l cn r ph pl i) (LocationShape r)
 location l = #objects . #locations . ftAt l
 
+
 makeFields ''GameState
 makeFields ''Game
 makeFields ''Phase
@@ -376,7 +386,7 @@ data Choosing :: Effect where
 type instance DispatchOf Choosing = 'Dynamic
 
 choose :: forall l cn r ph pl mode es i. (Choosing :> es, GameInteract mode l cn r ph pl i :> es) => Options pl i -> Eff es pl
-choose cs = askGame >>= \g -> send (Choose g cs)
+choose cs = getGameState >>= \g -> send (Choose g cs)
 
 chooseFirst :: forall es pl. Eff (Choosing : es) pl -> Eff es pl
 chooseFirst = interpret $ \_ -> \case
@@ -513,11 +523,12 @@ runTurns turn  = do
     runFromPhases phases
 
 
-playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => Eff es TurnControl
+playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Choosing :> es, ModifyGame l cn r ph pl i es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph) => Eff es (GameState l cn r ph pl i)
 playGameTurns = do
     setupNodes <- getSetup
     _ <- runPhaseNodes [inject . liftObserve $ setupNodes]
     playGameTurns' 
+    getGameState
         where
             playGameTurns' = do
                 gs <- getGameState
@@ -544,11 +555,11 @@ actionTurns :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l,
   -> PlayRunner l cn r ph pl i
   -> VisibilityMap l cn
   -> Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i] 
-  -> IO TurnControl
+  -> IO (GameState l cn r ph pl i)
 actionTurns gdata playRunner vis setup = do
     gen <- newCryptoRNGState
     runEff . runGameInteract gdata playRunner vis setup . runCryptoRNG gen . chooseRandom . logStdOut DebugLevel $ playGameTurns
-
+    
 ----- Condition, perhaps soon to be Observation?
 -- type Condition l cn r ph pl i es a = Eff es a
 

@@ -8,7 +8,7 @@ import GHC.Generics (Generic)
 import Data.Finitary
 import GHC.Word (Word8)
 
-newtype Player = Player {num :: Word8} deriving (Eq, Ord, Show, Generic)
+newtype Player = Player {num :: Word8} deriving (Eq, Ord, Show, Generic, Read)
     deriving anyclass Finitary
 
 

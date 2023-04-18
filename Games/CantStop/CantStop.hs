@@ -28,6 +28,7 @@ import Objects
 import Util (graphMapM, getNext)
 import Visibility (VisibilityMap (..), allVisible)
 import Helpers
+import Control.Monad (forM_)
 
 -- Plays --
 
@@ -123,8 +124,9 @@ resolveMarkers pl = do
 
 clearWonTracks :: Observe es => Eff es [CantStopGameNode]
 clearWonTracks = do
-  trackWinnerList <- trackWinners
-  concat <$> M.traverseWithKey moveOtherMarkers trackWinnerList
+  trackWinnerList <- M.toList <$> trackWinners
+  forM_ trackWinnerList (\(track,p) -> hint (show track ++ "Winner") p)
+  concat <$> traverse (uncurry moveOtherMarkers) trackWinnerList
   where
     moveOtherMarkers :: Observe es => TrackName -> Player -> Eff es [CantStopGameNode]
     moveOtherMarkers track winningP = do
@@ -185,7 +187,8 @@ initGameState numPlayers =
           phases = cantStopPhases,
           turns = fmap playerTurn (NE.fromList . S.toList $ players),
           currentTurn = playerTurn (Player 0),
-          nextTurn = \t ts -> fromJust (getNext t ts) -- TODO: how to make this safe?
+          nextTurn = \t ts -> fromJust (getNext t ts), -- TODO: how to make this safe?
+          displayHints = M.empty
         }
 
 csVisibility :: VisibilityMap CantStopLocation CantStopCounterName
@@ -231,7 +234,7 @@ moreInterestingGameState =
 
 -- run game from Turns
 
-runCSTurns :: IO TurnControl
+runCSTurns :: IO CantStopGameState
 runCSTurns = actionTurns (initGameState 3) csRunPlay allVisible setupNodes
 
 
