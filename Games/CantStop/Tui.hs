@@ -6,7 +6,7 @@
 module Tui
     where
 
-import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap, on, AttrName, withAttr, str, attrName, hBox, Padding (..), padLeftRight, (<+>), vLimitPercent, (<=>), fill)
+import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap, on, AttrName, withAttr, str, attrName, hBox, Padding (..), padLeftRight, (<+>), vLimitPercent, (<=>), fill, halt)
 import Brick.Types (Widget)
 import Control.Lens ((^.), view)
 import Game.Player (Player (..))
@@ -56,7 +56,9 @@ drawMenu :: CantStopGame -> Widget Name
 drawMenu g =undefined
 
 handleEvent :: BrickEvent Name e -> EventM Name CantStopGameStateView ()
-handleEvent = undefined
+handleEvent e = case e of
+    VtyEvent (V.EvKey V.KEsc []) -> halt
+    _ -> pure ()
 
 player0Attr, player1Attr, player2Attr, player3Attr :: AttrName
 player0Attr = attrName "player0"

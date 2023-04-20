@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleContexts #-}
 
-module Location
+module Game.Location
     (LocationShape(..),
      Locations,
      transfer,
@@ -45,7 +45,7 @@ import GHC.Generics (Generic)
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
 import Data.Finitary
-import Visibility (VisibilityType (..))
+import Game.Visibility (VisibilityType (..))
 
 
 ---- Definitions and instances

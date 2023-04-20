@@ -4,22 +4,22 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
-module View where
-import GameE (Turn, Phase, GameState (..), Game (..),getGameState, GameInteract, PlayRunner, Mode (..), getVisibility)
+module Game.View where
 import Data.List.NonEmpty (NonEmpty)
 import Data.Set (Set)
 import Game.Player (Player)
-import Location (GameObjects, LocationShape, Counter)
+import Game.Location (GameObjects, LocationShape, Counter)
 import GHC.Generics (Generic)
-import Visibility (VisibilityMap (..), VisibilityType (..))
+import Game.Visibility (VisibilityMap (..), VisibilityType (..))
 import FinitaryMap (FTMap (..), ftAt)
 import Control.Lens ((^.), Lens')
 import Effectful (Eff, (:>))
 import Control.Lens.TH (makeFields)
-import GameNode (GameNode)
+import Game.GameNode (GameNode)
 import Data.Text (Text)
 import Data.Map (Map)
 import qualified Data.Map as M
+import Game.GameState
 
 
 data GameStateView l cn r ph pl i = GameStateView

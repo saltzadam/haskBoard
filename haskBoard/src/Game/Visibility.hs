@@ -1,4 +1,4 @@
-module Visibility where
+module Game.Visibility where
 import Game.Player (Player)
 import GHC.Generics (Generic)
 

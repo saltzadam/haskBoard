@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
-module GameNode 
+module Game.GameNode 
     where
 import GHC.Generics (Generic)
 import Count

@@ -1,13 +1,13 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE TypeOperators #-}
-module Helpers
+module Game.Helpers
     where
 import Effectful
 import Game.Player
-import GameNode
+import Game.GameNode
 import Count
-import GameE (useGameState, location, GameInteract)
-import Location (findResourceWithin, howMany', howManyF)
+import Game.Location (findResourceWithin, howMany', howManyF)
+import Game.GameState 
 --- Helpers ---
 (<+) :: Enum a => a -> Int -> a
 a <+ i

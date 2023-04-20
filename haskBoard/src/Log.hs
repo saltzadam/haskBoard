@@ -9,7 +9,7 @@
 {-# HLINT ignore "Use void" #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
 
-module Game.Log
+module Log
     where
 import Effectful
 import Data.Text
