@@ -42,9 +42,8 @@ import Data.Maybe (listToMaybe, fromMaybe)
 import Data.Sequence (Seq ((:<|), Empty), (<|))
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
-import FinitaryMap (FTMap (..), (!!!))
+import FinitaryMap (FTMap (..), (!!!), FakeFinitary, inhabitants)
 import qualified FinitaryMap as FT
-import Data.Finitary
 import Game.Visibility (VisibilityType (..))
 
 
@@ -166,7 +165,7 @@ has' loc r = howMany' loc r > 0
 findResourceWithin :: Ord r => r -> [n] -> Locations n r -> [n]
 findResourceWithin res names locs = filter (\n -> (locs !!! n) `has'` res) names
 
-findResource :: (Finitary n, Eq r, Ord r) => r -> Locations n r -> [n]
+findResource :: (FakeFinitary n, Eq r, Ord r) => r -> Locations n r -> [n]
 findResource res = findResourceWithin res inhabitants
 
 listAll :: Ord r => n -> Locations n r -> [r]

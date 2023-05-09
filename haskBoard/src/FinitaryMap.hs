@@ -4,9 +4,9 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ConstraintKinds #-}
 module FinitaryMap where
 import Prelude hiding (lookup)
-import Data.Finitary
 import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)
@@ -19,23 +19,27 @@ import Control.Lens.Iso
 
 newtype FTMap a b = FTMap {runFn :: a -> b} deriving (Generic, Functor, Applicative)
 
+type FakeFinitary a = (Enum a, Bounded a)
+
+inhabitants :: FakeFinitary a => [a]
+inhabitants = [minBound ..maxBound]
 
 -- From function to Map using the finitary-ness of `a`. 
 -- TODO: should this have an Ord constraint?
-reifyFn :: Finitary a => FTMap a b -> Map a b
+reifyFn :: (FakeFinitary a, Eq a) => FTMap a b -> Map a b
 reifyFn (FTMap f) = M.fromAscList [(a, f a) | a <- inhabitants]
 
 -- unsafe because the map isn't required to be total. 
-unsafeUnreify :: (Ord a, Finitary a) => Map a b -> FTMap a b
+unsafeUnreify :: (Ord a, FakeFinitary a) => Map a b -> FTMap a b
 unsafeUnreify m = FTMap (m M.!)
 
-instance (Eq a, Eq b, Finitary a) => Eq (FTMap a b) where
+instance (Eq a, Eq b, FakeFinitary a) => Eq (FTMap a b) where
     (==) f g = reifyFn f == reifyFn g
 
-instance (Show a, Show b, Finitary a) => Show (FTMap a b) where
+instance (Show a, Show b, FakeFinitary a, Eq a) => Show (FTMap a b) where
     show f = show (reifyFn f)
 
-instance Finitary a => Foldable (FTMap a) where
+instance (Eq a, FakeFinitary a) => Foldable (FTMap a) where
     foldMap g = foldMap g . reifyFn
 
 instance Semigroup b => Semigroup (FTMap a b) where
@@ -52,7 +56,7 @@ instance Num b => Num (FTMap a b) where
     signum = fmap signum
     fromInteger i = FTMap (const (fromInteger i))
 
-instance (Finitary a, Ord a, Ord b) => Ord (FTMap a b) where
+instance (FakeFinitary a, Ord a, Ord b) => Ord (FTMap a b) where
     compare f g = compare (reifyFn f) (reifyFn g)
 
 -- TODO: change to !!! and import qualified
@@ -68,7 +72,7 @@ applyAt a fn f = FTMap (\x -> if x == a then fn (runFn f x) else runFn f x)
 update :: Eq a => (a,b) -> FTMap a b  -> FTMap a b
 update (a,b) f = FTMap (\x -> if x == a then b else runFn f x)
 
-filter :: (Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
+filter :: (FakeFinitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
 filter filt = M.filter filt .  reifyFn
 
 -- Lenses
@@ -76,7 +80,7 @@ filter filt = M.filter filt .  reifyFn
 -- This is not actually an isomorphism. It's a map with a section, i.e. an embedding.
 -- Unsafe stuff could happen on the map side.
 
-ftIso :: (Finitary a, Ord a) =>  Iso' (FTMap a b) (Map a b)
+ftIso :: (FakeFinitary a, Ord a) =>  Iso' (FTMap a b) (Map a b)
 ftIso = iso reifyFn unsafeUnreify
 
 ftAt :: (Eq a, Functor f) => a -> (b -> f b) -> FTMap a b -> f (FTMap a b)

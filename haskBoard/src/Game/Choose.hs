@@ -20,7 +20,7 @@ data Choosing :: Effect where
 
 type instance DispatchOf Choosing = 'Dynamic
 
-choose :: forall l cn r ph pl mode es i. (Choosing :> es, GameInteract mode l cn r ph pl i :> es) => Options pl i -> Eff es pl
+choose :: forall l cn r ph pl es i. (Choosing :> es, GameInteract l cn r ph pl i :> es) => Options pl i -> Eff es pl
 choose cs = getGameState >>= \g -> send (Choose g cs)
 
 chooseFirst :: forall es pl. Eff (Choosing : es) pl -> Eff es pl

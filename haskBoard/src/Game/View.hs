@@ -55,7 +55,7 @@ data GameView l cn r ph pl i = GameView
     { gameStateView :: GameStateView l cn r ph pl i,
       playRunnerView :: PlayRunner l cn r ph pl i,
       visibilityView :: VisibilityMap l cn,
-      setupView :: Eff '[GameInteract 'Observe l cn r ph pl i] [GameNode l cn r ph pl i]
+      setupView :: Eff '[GameInteract l cn r ph pl i] [GameNode l cn r ph pl i]
     } deriving (Generic)
 
 makeFields ''GameStateView
@@ -84,7 +84,7 @@ viewGameStateAs' (GameState ps objs cphase phss trns currTrn nextTrn hints) vis 
 viewGameAs' :: Game l cn r ph pl i -> Player -> GameStateView l cn r ph pl i
 viewGameAs' (Game gs _ vis _) = viewGameStateAs' gs vis
 
-viewGameAs :: GameInteract mode l cn r ph pl i :> es => Player -> Eff es (GameStateView l cn r ph pl i)
+viewGameAs :: GameInteract l cn r ph pl i :> es => Player -> Eff es (GameStateView l cn r ph pl i)
 viewGameAs p = do
     vis <- getVisibility
     gs <- getGameState

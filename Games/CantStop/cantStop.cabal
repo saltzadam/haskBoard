@@ -20,7 +20,7 @@ library
     hs-source-dirs: .
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
-                effectful, effectful-core, mtl, finitary, defaultable-map, mmorph,
+                effectful, effectful-core, mtl,
                 brick, effectful-plugin, haskBoard, vty
     exposed-modules: CantStop, Tui,GridSelector, Panel, Dice, Objects
     -- , Tui, Dice
@@ -34,7 +34,7 @@ executable CantStop
     hs-source-dirs: .
     build-depends: base, CantStop, haskBoard, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
-                effectful, effectful-core, mtl, finitary, mmorph,
+                effectful, effectful-core, mtl,
                 brick, effectful-plugin, haskBoard, vty
 
     default-language: Haskell2010

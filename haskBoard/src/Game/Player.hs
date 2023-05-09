@@ -1,15 +1,15 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
 module Game.Player where
 
 import GHC.Generics (Generic)
-import Data.Finitary
 import GHC.Word (Word8)
 
-newtype Player = Player {num :: Word8} deriving (Eq, Ord, Show, Generic, Read)
-    deriving anyclass Finitary
+newtype Player = Player {num :: Word8} deriving (Eq, Ord, Show, Generic, Read, Bounded)
+
+instance Enum Player where
+    toEnum = Player . toEnum
+    fromEnum (Player num) = fromEnum num
 
 
 

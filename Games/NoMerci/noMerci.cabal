@@ -20,7 +20,7 @@ library
     hs-source-dirs: .
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
-                effectful, effectful-core, mtl, finitary, defaultable-map,
+                effectful, effectful-core, mtl,
                 brick, effectful-plugin, haskBoard, vty
     exposed-modules: NoMerci, Objects
     -- , Tui, Dice
