@@ -11,16 +11,15 @@ import Brick.Types (Widget)
 import Control.Lens ((^.), view)
 import Game.Player (Player (..))
 import qualified Graphics.Vty as V
-import Location (listAllShape)
+import Game.Location (listAllShape)
 import Brick.Widgets.Table (table, Table, rowBorders, columnBorders, surroundingBorder, renderTable, ColumnAlignment (..), setDefaultColAlignment, RowAlignment (..), setDefaultRowAlignment)
 import Brick.Widgets.Core (padTop)
 import Brick.Widgets.Border
-import FinitaryMap ((!!!))
-import Data.Finitary
+import FinitaryMap ((!!!), inhabitants)
 import Dice (renderDice)
 import Brick.Widgets.Center
 import Objects
-import View (GameStateView(..), getHintView, locationView)
+import Game.View (GameStateView(..), getHintView, locationView)
 import qualified Data.Text as T
 
 

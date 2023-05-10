@@ -47,6 +47,9 @@ import Control.Monad (replicateM, void)
 import qualified Data.Sequence as Seq
 import Game.GameState
 import Game.Choose
+import Control.Monad.Trans.Reader (ReaderT, Reader)
+import qualified Effectful.State.Static.Shared as State 
+import Control.Monad.Reader (runReader)
 
 -- TODO: export list
 
@@ -335,4 +338,5 @@ playGivenNodes nodes = do
   runFromSeeds2 nodes
   getGameState
 
-
+readerToEff :: (State.State r :> es) => Reader r a -> Eff es a
+readerToEff reader = State.state (\r -> (runReader reader r, r))

@@ -8,24 +8,18 @@ import CantStop (initGameState, moreInterestingGameState, csRunPlay, csVisibilit
 import Brick (defaultMain, customMain)
 import Tui (app, drawBoardView)
 import Brick.Main (simpleMain)
-import GameE (Game(Game), action)
 import Brick.BChan (newBChan, writeBChan, BChan)
-import View (viewGameAs', viewGameStateAs')
+import Game.View (viewGameAs', viewGameStateAs')
 import Game.Player (Player(..))
-import Visibility (allVisible)
+import Game.Visibility (allVisible)
 import Control.Concurrent (forkIO)
 import Control.Monad (forever, void)
 import qualified Graphics.Vty as V
 import GHC.Conc (threadDelay)
-import Display
 import Objects (CantStopGameState, CantStopLocation, CantStopCounterName, CantStopResource, CantStopPhaseName, PlayName, Issue)
 import Effectful (Eff, (:>), IOE, liftIO)
 import Effectful.Dispatch.Dynamic (interpret)
 
-
-displayBrick :: IOE :> es => BChan CantStopGameState -> Eff (Display CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue : es) a -> Eff es a
-displayBrick chan = interpret $ \_ -> \case
-    UpdateDisplay gs -> liftIO $ writeBChan chan gs
 
 
 

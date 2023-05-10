@@ -28,7 +28,7 @@ library
                 effectful, effectful-core, mtl,
                 crypto-rng-effectful, effectful-plugin,
                 list-transformer, random-shuffle
-    exposed-modules: Count, FinitaryMap, Game.Location, Game.GameE, Game.Player,Game.Options,Game.GameNode, Log,   TreeMonad, Util, Game.Visibility, Game.Helpers, Game.View, Game.Run, Game.GameState, Game.Choose
+    exposed-modules: Count, FinitaryMap, Game.Location, Game.GameE, Game.Player,Game.Options,Game.GameNode, Log,   TreeMonad, Util, Game.Visibility, Game.Helpers, Game.View, Game.Run, Game.GameState, Game.Choose, Game.Monad
     default-language: Haskell2010
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances
     ghc-options:  -Wall -fplugin=Effectful.Plugin

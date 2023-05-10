@@ -9,7 +9,6 @@ module CantStop where
 import Control.Lens (to)
 import Count (Cnt, histogramF)
 import Data.Bitraversable (Bitraversable (bitraverse))
-import Data.Finitary (inhabitants)
 import Data.List (find)
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
@@ -18,37 +17,39 @@ import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe, fromJust)
 import Data.Set (Set)
 import qualified Data.Set as S
 import qualified Data.Set as Set
-import Effectful (Eff)
 import Game.Options (Legality (..), Options (..), buildOptions, mustNotElse)
 import Game.Player
-import GameE
-import GameNode
-import Location (inventory, listAllF)
+import Game.GameState
+import Game.GameNode
+import Game.Location (inventory, listAllF)
 import Objects
 import Util (graphMapM, getNext)
-import Visibility (VisibilityMap (..), allVisible)
-import Helpers
-import Control.Monad (forM_)
+import Game.Visibility (VisibilityMap (..), allVisible)
+import Game.Helpers
+import FinitaryMap (inhabitants)
+import Game.Run (runEffNodesAgainstState, runNodesAgainstState, actionTurns)
+import Game.Monad
+import Control.Monad.Reader (runReader)
 
 -- Plays --
 
-rollNodes :: Observe es => Eff es [CantStopGameNode]
+rollNodes :: CSM [CantStopGameNode]
 rollNodes = pure $ mkActionNode . RollCounter <$> inhabitants
 
-chooseMove :: Observe es => Player -> Eff es [CantStopGameNode]
+chooseMove :: Player -> CSM [CantStopGameNode]
 chooseMove p = (: []) . mkGetOptionsNode p <$> legalMoves p
   where
-    legalMoves :: Observe es => Player -> Eff es (Options PlayName Issue)
+    legalMoves :: Player -> CSM (Options PlayName Issue)
     legalMoves p = buildOptions checkMove (Stop p) (fmap (makeMove p) <$> diceVals)
     makeMove :: Player -> (Cnt Int, Cnt Int) -> PlayName
     makeMove p (x, y) = Move p (diceToTrack x) (diceToTrack y)
-    checkMove' :: Observe es => Player -> TrackName -> Eff es (Legality Issue)
+    checkMove' :: Player -> TrackName -> CSM (Legality Issue)
     checkMove' p track = do
       noMarkersLeft <- flip mustNotElse ThreeTempMarkersOut <$> BoxTop `doesNotHave` TemporaryMarker
       trackWon <- flip mustNotElse TrackCompleted . isJust <$> trackWinner track
       atTop <- flip mustNotElse AtTop <$> maxSpot track `has` PlayerMarker p
       return (noMarkersLeft <> trackWon <> atTop)
-    checkMove :: Observe es => PlayName -> Eff es (Legality Issue)
+    checkMove :: PlayName -> CSM (Legality Issue)
     checkMove (Move p s t) = do
       check_s <- checkMove' p s
       check_t <- checkMove' p t
@@ -58,24 +59,24 @@ chooseMove p = (: []) . mkGetOptionsNode p <$> legalMoves p
         else return (check_s <> check_t)
     -- TODO: is this true?
     checkMove _ = pure Legal
-    diceVals :: Observe es => Eff es [(Cnt Int, Cnt Int)]
+    diceVals :: CSM [(Cnt Int, Cnt Int)]
     diceVals = mapM (bitraverse makeSum makeSum) (mkPairs theDiceL)
       where
-        makeSum :: Observe es => (CantStopCounterName, CantStopCounterName) -> Eff es (Cnt Int)
-        makeSum (c, c') = useGameState (counterVal c) + useGameState (counterVal c')
+        makeSum :: (CantStopCounterName, CantStopCounterName) -> CSM (Cnt Int)
+        makeSum (c, c') = viewGameState (counterVal c) + viewGameState (counterVal c')
         mkPairs :: (a, a, a, a) -> [((a, a), (a, a))]
         mkPairs (x, y, w, z) =
           let pairs1 = [((x, y), (w, z)), ((x, w), (y, z)), ((x, z), (y, w))]
            in -- pairs2 = fmap swap pairs1
               pairs1 -- ++ pairs2
 
-stopOrGoNode :: Observe es => Player -> Eff es [CantStopGameNode]
+stopOrGoNode :: Player -> CSM [CantStopGameNode]
 stopOrGoNode p = (: []) . mkGetOptionsNode p <$> stopOrGo p
   where
-    stopOrGo :: Observe es => Player -> Eff es (Options PlayName i)
+    stopOrGo :: Player -> CSM (Options PlayName i)
     stopOrGo p = return (Options (NE.fromList [Stop p, DontStop p]) mempty)
 
-moveMarkerBy :: Observe es => Player -> TrackName -> Int -> Eff es [CantStopGameNode]
+moveMarkerBy :: Player -> TrackName -> Int -> CSM [CantStopGameNode]
 moveMarkerBy pl s amt = do
   let slots = trackSlots s
   tempMarkerLocs <- findResourceWithin' TemporaryMarker (NE.toList slots)
@@ -104,7 +105,7 @@ returnMarker :: CantStopLocation -> CantStopResource -> GameAction CantStopLocat
 returnMarker n (PlayerMarker p') = MkTransfer n (PlayerStuff p') (PlayerMarker p')
 returnMarker n TemporaryMarker = MkTransfer n BoxTop TemporaryMarker
 
-resolveMarkers :: Observe es => Player -> Eff es [CantStopGameNode]
+resolveMarkers :: Player -> CSM [CantStopGameNode]
 resolveMarkers pl = do
   tempMarkerLocs <- findResourceWithin' TemporaryMarker allSpots
   playerMarkerLocs <- findResourceWithin' (PlayerMarker pl) allSpots
@@ -122,25 +123,24 @@ resolveMarkers pl = do
                 ]
     resolveMarker' _ _ _ = error "resolveMarker' called with newLoc not a TrackSpot!"
 
-clearWonTracks :: Observe es => Eff es [CantStopGameNode]
+clearWonTracks :: CSM [CantStopGameNode]
 clearWonTracks = do
   trackWinnerList <- M.toList <$> trackWinners
-  forM_ trackWinnerList (\(track,p) -> hint (show track ++ "Winner") p)
   concat <$> traverse (uncurry moveOtherMarkers) trackWinnerList
   where
-    moveOtherMarkers :: Observe es => TrackName -> Player -> Eff es [CantStopGameNode]
+    moveOtherMarkers :: TrackName -> Player -> CSM [CantStopGameNode]
     moveOtherMarkers track winningP = do
-      locs <- useGameState (#objects . #locations)
+      locs <- viewGameState (#objects . #locations)
       let -- TODO: could still simplify
           getMarkersToMove :: CantStopLocation -> [CantStopResource]
           getMarkersToMove n = listAllF n locs (/= PlayerMarker winningP)
           mkReturns track = returnMarker track <$> getMarkersToMove track
       pure $ mkActionNode <$> concatMap mkReturns (trackSlots track)
 
-advancePlayer :: Observe es => Eff es [CantStopGameNode]
+advancePlayer :: CSM [CantStopGameNode]
 advancePlayer = do
-  players <- useGameState #players
-  currentPlayer <- useGameState (#currentPhase . to currentPlayer)
+  players <- viewGameState #players
+  currentPlayer <- viewGameState (#currentPhase . to currentPlayer)
   let nextp = unsafeNextCyclic currentPlayer players
   return [mkActionNode (ChangePhase (CSTurn nextp))]
   where
@@ -150,7 +150,7 @@ advancePlayer = do
         go p (p' : p'' : ps) allps = if p == p' then p'' else go p (p'' : ps) allps
         go _ [_] allps = head allps
 
-checkWinner :: Observe es => Eff es [CantStopGameNode]
+checkWinner :: CSM [CantStopGameNode]
 checkWinner = do
   trackMap <- trackWinners
   let playerHistogram = histogramF trackMap
@@ -159,12 +159,12 @@ checkWinner = do
     then return [mkActionNode (EndGame winners)]
     else return [mkActionNode DoNothing]
 
-trackWinner :: Observe es => TrackName -> Eff es (Maybe Player)
+trackWinner :: TrackName -> CSM (Maybe Player)
 trackWinner track = do
-  things <- useGameState (location (maxSpot track))
+  things <- viewGameState (location (maxSpot track))
   return $ listToMaybe . mapMaybe markerOwner . M.keys . M.filter (> 0) $ inventory things
 
-trackWinners :: Observe es => Eff es (Map TrackName Player)
+trackWinners :: CSM (Map TrackName Player)
 trackWinners = graphMapM trackWinner inhabitants
 
 -- Initialization --
@@ -174,7 +174,7 @@ cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (CSTurn p) =
   Phase
     { name = CSTurn p,
-      seedNodes = [rollNodes, chooseMove p]
+      seedNodes = (runReader . zoomInState $ rollNodes) <> (runReader . zoomInState $ chooseMove p)
     }
 
 initGameState :: Int -> CantStopGameState
@@ -194,20 +194,20 @@ initGameState numPlayers =
 csVisibility :: VisibilityMap CantStopLocation CantStopCounterName
 csVisibility = allVisible
 
-csRunPlay :: Observe es => PlayName -> [Eff es [CantStopGameNode]]
-csRunPlay (Move pl s t) =
-  [ moveMarkerBy pl s 1,
-    moveMarkerBy pl t 1,
-    stopOrGoNode pl
-  ]
-csRunPlay (Stop pl) =
-  [ resolveMarkers pl,
-    clearWonTracks,
-    checkWinner,
-    advancePlayer
-  ]
-csRunPlay (DontStop p) =
-  [rollNodes, chooseMove p]
+csRunPlay' :: PlayName -> CSM [CantStopGameNode]
+csRunPlay' (Move pl s t) =
+    moveMarkerBy pl s 1
+    <> moveMarkerBy pl t 1
+    <> stopOrGoNode pl
+csRunPlay' (Stop pl) =
+    resolveMarkers pl
+    <> clearWonTracks
+    <> checkWinner
+    <> advancePlayer
+csRunPlay' (DontStop p) = rollNodes <> chooseMove p
+
+csRunPlay :: CantStopGameState -> PlayName -> [CantStopGameNode]
+csRunPlay = flip (runReader . zoomInState . csRunPlay')
 
 -- Try with Turns instead
 

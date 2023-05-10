@@ -2,33 +2,31 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
 module Objects 
     where
 import GHC.Generics (Generic)
-import Data.Finitary (Finitary, inhabitants)
 import Game.Player
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
-import Location
+import Game.Location
 import Data.Set (Set)
 import qualified Data.Sequence as Seq
 import qualified Data.Map as M
 import qualified Data.Set as S
-import GameE (Phase, GameState, Game, ObserveGame, Turn)
-import GameNode (GameAction, GameNode)
+-- import Game.GameE 
+import Game.GameState
+import Game.GameNode (GameAction, GameNode)
 import Count (Cnt)
-import FinitaryMap (FTMap(..))
-import View (GameStateView, GameObjectsView)
+import FinitaryMap (FTMap(..), inhabitants)
+import Game.View (GameStateView, GameObjectsView)
+import Game.Monad
 -- Does it make more sense to have an enum or just a newtype int?
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
   deriving (Eq, Ord, Show, Enum, Bounded, Generic)
-  deriving anyclass (Finitary)
 
 data TrackHeight = HOne | HTwo | HThree | HFour | HFive | HSix | HSeven | HEight | HNine | HTen | HEleven | HTwelve | HThirteen deriving (Eq, Ord, Show, Enum, Generic)
 
-instance Finitary TrackHeight
 
 diceToTrack :: Cnt Int -> TrackName
 diceToTrack x = toEnum . fromEnum $ (x - 2)
@@ -65,8 +63,7 @@ trackSlots :: TrackName -> NonEmpty CantStopLocation
 trackSlots track = NE.fromList $ TrackSpot track <$> [HOne .. maxSlot track]
 
 data CantStopCounterName = DieOne | DieTwo | DieThree | DieFour
-  deriving (Eq, Ord, Show, Generic, Enum)
-  deriving anyclass (Finitary)
+  deriving (Eq, Ord, Show, Generic, Enum,Bounded)
 type CantStopLocations = Locations CantStopLocation CantStopResource
 type CantStopCounters = Counters CantStopCounterName
 type CantStopGameObjects = GameObjects CantStopLocation CantStopCounterName CantStopResource
@@ -114,7 +111,8 @@ type CantStopGameStateView = GameStateView CantStopLocation CantStopCounterName 
 type CantStopGame = Game  CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 -- type CantStopGetOptions = GetOptions CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
-type Observe es = ObserveGame CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue es
+-- type Observe es = ObserveGame CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue es
+type CSM  = GameM CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 
 currentPlayer :: CantStopPhaseName ->Player
 currentPlayer (CSTurn p) = p
