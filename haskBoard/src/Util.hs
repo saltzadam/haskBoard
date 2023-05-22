@@ -1,5 +1,4 @@
 {-# LANGUAGE TupleSections #-}
-    {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 module Util where
 import qualified Data.Map as M
@@ -7,7 +6,6 @@ import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty(..))
-import GHC.Base (Applicative(..))
 
 graph :: (t -> b) -> t -> (t, b)
 graph f a = (a, f a)
@@ -62,3 +60,4 @@ maximaByScore score as = go score as [] where
           EQ -> go score remaining (a:m:maxes)
           GT -> go score remaining [a]
         
+

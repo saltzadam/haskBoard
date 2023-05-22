@@ -16,12 +16,15 @@ import Brick
       modify,
       AttrName )
 import Brick.Widgets.Table ( renderTable, Table, rowBorders, columnBorders, surroundingBorder, table )
-import Control.Lens (Contravariant (..), makeLenses, over, set)
+import Control.Lens (Contravariant (..), over, set, view)
 import Data.Bifunctor ( Bifunctor(bimap) )
 import Data.Maybe (mapMaybe)
 import Graphics.Vty (Event)
 import qualified Graphics.Vty.Input as V
 import Data.List ((\\))
+import GHC.Generics (Generic(..))
+import Data.Generics.Labels()
+import Control.Lens.TH (makeFields)
 
 
 tableNoBorders :: [[Brick.Widget n]] -> Table n
@@ -36,27 +39,28 @@ toggleInList x xs = if x `elem` xs then xs \\ [x] else x : xs
 
 -- selector widget with name of type n, items of type e dervied from state of type s
 data GridSelector n e s = GridSelector
-  { _gridName :: n,
+  { gridName :: n,
     -- | inner lists are rows
-    _gridItems :: s -> [[Maybe e]],
-    _gridHighlighted :: !(Maybe (Int, Int)), -- think this is a classic example of not actually being strict!!
-    _gridSelected :: ![(Int, Int)], -- switch to set
-    _gridSelectionMax :: Maybe Int,
-    _gridItemHeight :: Int,
-    _gridForbidden :: ![(Int, Int)], -- switch to set
-    _gridRows :: Int,
-    _gridColumns :: Int
-  }
+    gridItems :: s -> [[Maybe e]],
+    gridHighlighted :: !(Maybe (Int, Int)), -- think this is a classic example of not actually being strict!!
+    gridSelected :: ![(Int, Int)], -- switch to set
+    gridSelectionMax :: Maybe Int,
+    gridItemHeight :: Int,
+    gridForbidden :: ![(Int, Int)], -- switch to set
+    gridRows :: Int,
+    gridColumns :: Int
+  } deriving Generic
+
+makeFields ''GridSelector
 
 instance Contravariant (GridSelector n e) where
-  contramap proj grid = grid {_gridItems = newGridItems}
+  contramap proj grid = grid {gridItems = newGridItems}
     where
-      newGridItems = _gridItems grid . proj
+      newGridItems = view #gridItems grid . proj
 
-makeLenses ''GridSelector
 
 instance Named (GridSelector n e s) n where
-  getName = _gridName
+  getName = view #gridName
 
 -- Handle Events --
 
@@ -81,7 +85,7 @@ indexGrid grid = fmap go . zip [1 ..] . fmap (zip [1 ..]) $ grid
 -- note transposition -- this makes the index work like (x,y)
 
 getSelected :: s -> GridSelector n e s -> [((Int, Int), Maybe e)]
-getSelected state grid = filter (\(ind, _) -> ind `elem` _gridSelected grid) . concat . indexGrid $ _gridItems grid state
+getSelected state grid = filter (\(ind, _) -> ind `elem` view #gridSelected grid) . concat . indexGrid $ view #gridItems grid state
 
 getSelectedItems :: s -> GridSelector n e s -> [e]
 getSelectedItems s = mapMaybe snd . getSelected s
@@ -107,29 +111,30 @@ renderGridSelector drawGridElem isFoc attr s grid =
   renderTable . tableNoBorders $ drawn
   where
     padRow :: [Maybe e] -> [Maybe e]
-    padRow row = row ++ replicate (length row - _gridColumns grid) Nothing
-    rows = padRow <$> _gridItems grid s :: [[Maybe e]] -- TODO: add padding on rows too!
+    padRow row = row ++ replicate (length row - view #gridColumns grid) Nothing
+    rows = padRow <$> view #gridItems grid s :: [[Maybe e]] -- TODO: add padding on rows too!
     indexed = indexGrid rows
     drawElemWithState ((i, j), e) = drawGridElem (gridState (i, j)) e
     drawn = fmap (fmap drawElemWithState) indexed
 
     gridState :: (Int, Int) -> GridItemState
     gridState (i, j)
-      | Just (i, j) == _gridHighlighted grid = Highlighted
-      | (i, j) `elem` _gridSelected grid = Selected
+      | Just (i, j) == view #gridHighlighted grid = Highlighted
+      | (i, j) `elem` view #gridSelected grid = Selected
       | otherwise = Normal
 
 clearSelection :: GridSelector n e s -> GridSelector n e s
-clearSelection = set gridHighlighted Nothing . set gridSelected []
+clearSelection = (set #gridHighlighted Nothing :: GridSelector n e s -> GridSelector n e s)
+                . (set #gridSelected [] :: GridSelector n e s -> GridSelector n e s)
 
 gridMoveBy :: (Int, Int) -> GridSelector n e s -> GridSelector n e s
-gridMoveBy (x, y) grid = if _gridHighlighted result `elem` (fmap Just . _gridForbidden $ result) then grid else result
+gridMoveBy (x, y) grid = if view #gridHighlighted result `elem` (fmap Just . view #gridForbidden $ result) then grid else result
   where
     -- need to do 1-indexed modular arithmetic
     addMod modulo i j = ((i + j - 1) `mod` modulo) + 1
-    lenY = _gridRows grid :: Int
-    lenX = _gridColumns grid :: Int
-    result = over gridHighlighted (fmap (bimap (addMod lenX x) (addMod lenY y))) grid
+    lenY = view #gridRows grid :: Int
+    lenX = view #gridColumns grid :: Int
+    result = over #gridHighlighted (fmap (bimap (addMod lenX x) (addMod lenY y))) grid
 
 gridMoveUp :: GridSelector n e s -> GridSelector n e s
 gridMoveUp = gridMoveBy (0, -1)
@@ -145,13 +150,13 @@ gridMoveRight = gridMoveBy (1, 0)
 
 -- simplify -- note that there are only two expressions!
 toggleSelection :: GridSelector n e s -> GridSelector n e s
-toggleSelection grid = case _gridHighlighted grid of
+toggleSelection grid = case view #gridHighlighted grid of
   Nothing -> grid
-  Just highl -> case _gridSelectionMax grid of
-    Nothing -> grid {_gridSelected = toggleInList highl (_gridSelected grid)}
+  Just highl -> case view #gridSelectionMax grid of
+    Nothing -> grid {gridSelected = toggleInList highl (view #gridSelected grid)}
     Just limit ->
-      if (length (_gridSelected grid) < limit) || (highl `elem` _gridSelected grid)
-        then grid {_gridSelected = toggleInList highl (_gridSelected grid)}
+      if (length (view #gridSelected grid) < limit) || (highl `elem` view #gridSelected grid)
+        then grid {gridSelected = toggleInList highl (view #gridSelected grid)}
         else grid
 
 -- avoid using gamestate here -- goal is to send an event back to controller

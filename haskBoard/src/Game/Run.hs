@@ -1,7 +1,5 @@
-{-# LANGUAGE DataKinds #-}
 module Game.Run where
 import Game.GameE
-import Game.Visibility
 import Effectful (Eff, IOE, runEff)
 import Game.GameNode
 import Log
@@ -9,18 +7,18 @@ import Effectful.Crypto.RNG
 import Game.GameState
 import Game.Choose
 import FinitaryMap (FakeFinitary)
-import Effectful.State.Static.Shared (runState, evalState)
+import Effectful.State.Static.Shared (evalState)
 
-runGameTurns ::(Ord l, Ord r, Ord cn, FakeFinitary cn, Show ph, Show cn, Show l,
+runGameTurns ::forall l cn r ph pl i . (Ord l, Ord r, Ord cn, FakeFinitary cn, Show ph, Show cn, Show l,
  Show r, Show pl, Show i, Eq ph) => Game l cn r ph pl i
     -> IO (GameState l cn r ph pl i)
 runGameTurns game = do
     gen <- newCryptoRNGState
     runEff 
-      . evalState (Game (gameState game) (playRunner game) (visibility game) (setup game))
+      . evalState game 
       . runCryptoRNG gen
-      . chooseRandom
       . broadcastHandlerDummy
+      . chooseBasicInput
       . logStdOut DebugLevel
       $ playGameTurns
            
@@ -29,32 +27,30 @@ actionTurns :: (Ord l, Ord r, Ord cn, FakeFinitary cn, Show ph, Show cn, Show l,
  Show r, Show pl, Show i, Eq ph) =>
   GameState l cn r ph pl i
   -> PlayRunner l cn r ph pl i
-  -> VisibilityMap l cn
   -> (GameState l cn r ph pl i -> [GameNode l cn r ph pl i])
   -> IO (GameState l cn r ph pl i)
-actionTurns gdata playRunner vis setup = do
+actionTurns gdata playRunner setup = do
     gen <- newCryptoRNGState
-    runEff . evalState (Game gdata playRunner vis setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGameTurns
+    runEff . evalState (Game gdata playRunner setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGameTurns
     
 ----- Condition, perhaps soon to be Observation?
 -- type Condition l cn r ph pl i es a = Eff es a
 
-runNodesAgainstState :: (Ord l, Ord r, Ord cn, FakeFinitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i -> VisibilityMap l cn 
+runNodesAgainstState :: (Ord l, Ord r, Ord cn, FakeFinitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i 
    -> (GameState l cn r ph pl i -> [GameNode l cn r ph pl i])
                      -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph pl i)
-runNodesAgainstState game playRunner vis setup nodes = do
+runNodesAgainstState game playRunner setup nodes = do
   gen <- newCryptoRNGState
-  runEff . evalState (Game game playRunner vis setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGivenNodes [pure nodes]
+  runEff . evalState (Game game playRunner setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGivenNodes [pure nodes]
 
 runEffNodesAgainstState ::
   (Ord l, Ord r, Ord cn, FakeFinitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) =>
   GameState l cn r ph pl i ->
   PlayRunner l cn r ph pl i ->
-  VisibilityMap l cn ->
   (GameState l cn r ph pl i -> [GameNode l cn r ph pl i]) ->
   [ Eff
       '[ Log2,
-         Choosing,
+         Interface l cn r ph pl i,
          BroadcastState l cn r ph pl i,
          RNG,
          GameInteract l cn r ph pl i,
@@ -63,8 +59,8 @@ runEffNodesAgainstState ::
       [GameNode l cn r ph pl i]
   ] ->
   IO (GameState l cn r ph pl i)
-runEffNodesAgainstState game playRunner vis setup nodes = do
+runEffNodesAgainstState game playRunner setup nodes = do
   gen <- newCryptoRNGState
-  runEff . evalState (Game game playRunner vis setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGivenNodes nodes
+  runEff . evalState (Game game playRunner setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGivenNodes nodes
 
 

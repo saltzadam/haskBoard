@@ -1,7 +1,4 @@
-{-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 module Game.View where
@@ -10,84 +7,63 @@ import Data.Set (Set)
 import Game.Player (Player)
 import Game.Location (GameObjects, LocationShape, Counter)
 import GHC.Generics (Generic)
-import Game.Visibility (VisibilityMap (..), VisibilityType (..))
-import FinitaryMap (FTMap (..), ftAt)
-import Control.Lens ((^.), Lens')
-import Effectful (Eff, (:>))
+import Game.Visibility (VisibilityMap (..), VisibilityType (..), runVis)
+import FinitaryMap (FTMap (..), (!!!))
+import Control.Lens ((^.), to)
 import Control.Lens.TH (makeFields)
-import Game.GameNode (GameNode)
-import Data.Text (Text)
-import Data.Map (Map)
-import qualified Data.Map as M
 import Game.GameState
 
-
-data GameStateView l cn r ph pl i = GameStateView
-    {   playersView :: Set Player,
-        objectsView :: GameObjectsView l cn r,
-        currentPhaseView :: ph,
-        phasesView :: ph -> Phase ph l cn r pl i,
-        turnsView :: NonEmpty (Turn ph),
-        currentTurnView :: Turn ph,
-        nextTurnView :: Turn ph -> NonEmpty (Turn ph) -> Turn ph,
-        displayHintsView :: Map Text Text
+data GameStateViewC l cn r ph pl i = GameStateViewC
+    {   playersViewC :: Set Player,
+        objectsViewC :: GameObjectsViewC l cn r,
+        currentPhaseViewC :: ph,
+        phasesViewC :: ph -> Phase ph l cn r pl i,
+        turnsViewC :: NonEmpty (Turn ph),
+        currentTurnViewC :: Turn ph,
+        nextTurnViewC :: Turn ph -> NonEmpty (Turn ph) -> Turn ph,
+        visibilityC :: VisibilityMap l cn
     } deriving Generic
 
 
-type LocationsView l r = FTMap l (Maybe (LocationShape r))
-type CountersView cn = FTMap cn (Maybe Counter)
+type LocationsViewC l r = FTMap l (Maybe (LocationShape r))
+type CountersViewC cn = FTMap cn (Maybe Counter)
+
+buildView' :: Maybe Player -> GameState l cn r ph pl i -> GameObjectsViewC l cn r  
+buildView' (Just p) gs = let
+    VisibilityMap vis = gs ^. #visibility
+    locs = gs ^. #objects . #locations
+    counters = gs ^. #objects . #counters
+    locView l = runVis (vis p (Left l)) (locs !!! l)
+    cView cn = runVis (vis p (Right cn)) (counters !!! cn)
+    in GameObjectsViewC (FTMap locView) (FTMap cView)
+buildView' Nothing gs = GameObjectsViewC 
+                        (gs ^. #objects . #locations . to (fmap Just))
+                        (gs ^. #objects . #counters .  to (fmap Just))
 
 
-locationView :: Eq l => l -> Lens' (GameStateView l cn r ph pl i) (Maybe (LocationShape r))
-locationView l = #objectsView . #locationsView . ftAt l
+data GameObjectsViewC l cn r = GameObjectsViewC {
+    locationsViewC :: LocationsViewC l r,
+    countersViewC :: CountersViewC cn} deriving (Generic, Show)
 
+makeFields ''GameStateViewC
+makeFields ''GameObjectsViewC
 
-
-runVis :: VisibilityType -> a -> Maybe a
-runVis Invisible _ = Nothing
-runVis Visible a = Just a
-
-data GameObjectsView l cn r = GameObjectsView {
-    locationsView :: LocationsView l r,
-    countersView :: CountersView cn} deriving (Generic, Show)
-
-data GameView l cn r ph pl i = GameView
-    { gameStateView :: GameStateView l cn r ph pl i,
-      playRunnerView :: PlayRunner l cn r ph pl i,
-      visibilityView :: VisibilityMap l cn,
-      setupView :: Eff '[GameInteract l cn r ph pl i] [GameNode l cn r ph pl i]
-    } deriving (Generic)
-
-makeFields ''GameStateView
-makeFields ''GameObjectsView
-makeFields ''GameView
-
-getHintView :: Text -> GameStateView l cn r ph pl i -> Maybe Text
-getHintView name = M.lookup name . displayHintsView
-
-viewObjectsAs' :: GameObjects l cn r -> VisibilityMap l cn -> Player -> GameObjectsView l cn r
-viewObjectsAs' objs vis p = let
+viewObjectsAs' :: GameObjects l cn r -> VisibilityMap l cn -> Player -> GameObjectsViewC l cn r
+viewObjectsAs' objs (VisibilityMap vis') p = let
     locs = objs ^. #locations
-    locsVisMap = canSee vis p . Left
-    locsView = FTMap (runVis <$> locsVisMap <*> runFn locs)
+    locsVisMap = vis' p . Left
+    locsViewC = FTMap (runVis <$> locsVisMap <*> (locs !!!))
     cns = objs ^. #counters
-    cnsVisMap = canSee vis p . Right
-    cnsView = FTMap (runVis <$> cnsVisMap <*> runFn cns)
- in GameObjectsView locsView cnsView
+    cnsVisMap = vis' p . Right
+    cnsViewC = FTMap (runVis <$> cnsVisMap <*> (cns !!!))
+ in GameObjectsViewC locsViewC cnsViewC
 
-viewGameStateAs' :: GameState l cn r ph pl i -> VisibilityMap l cn -> Player -> GameStateView l cn r ph pl i
-viewGameStateAs' (GameState ps objs cphase phss trns currTrn nextTrn hints) vis p =
-    GameStateView ps
-        (viewObjectsAs' objs vis p)
-        cphase phss trns currTrn nextTrn hints
+viewGameStateAs' :: GameState l cn r ph pl i -> Player -> GameStateViewC l cn r ph pl i
+viewGameStateAs' gs@(GameState ps _ cphase phss trns currTrn nextTrn vis) p =
+    GameStateViewC ps
+        (buildView' (Just p) gs)
+        cphase phss trns currTrn nextTrn vis
 
-viewGameAs' :: Game l cn r ph pl i -> Player -> GameStateView l cn r ph pl i
-viewGameAs' (Game gs _ vis _) = viewGameStateAs' gs vis
-
-viewGameAs :: GameInteract l cn r ph pl i :> es => Player -> Eff es (GameStateView l cn r ph pl i)
-viewGameAs p = do
-    vis <- getVisibility
-    gs <- getGameState
-    return $ viewGameStateAs' gs vis p
-
+-- viewGameAs' :: Game l cn r ph pl i -> Player -> GameStateViewC l cn r ph pl i
+-- viewGameAs' (Game gs _ _) = viewGameStateAs' gs
 

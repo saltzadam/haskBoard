@@ -1,31 +1,47 @@
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use head" #-}
 module Tui
     where
 
-import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap, on, AttrName, withAttr, str, attrName, hBox, Padding (..), padLeftRight, (<+>), vLimitPercent, (<=>), fill, halt)
+import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap, on, AttrName, withAttr, str, attrName, hBox, Padding (..), padLeftRight, (<+>), vLimitPercent, (<=>), fill, halt, put, txt, txtWrap, padBottom)
 import Brick.Types (Widget)
-import Control.Lens ((^.), view)
+import Control.Lens ((^.), view, assign)
 import Game.Player (Player (..))
 import qualified Graphics.Vty as V
 import Game.Location (listAllShape)
 import Brick.Widgets.Table (table, Table, rowBorders, columnBorders, surroundingBorder, renderTable, ColumnAlignment (..), setDefaultColAlignment, RowAlignment (..), setDefaultRowAlignment)
 import Brick.Widgets.Core (padTop)
 import Brick.Widgets.Border
-import FinitaryMap ((!!!), inhabitants)
+import FinitaryMap ((!!!), inhabitants, ftAt)
 import Dice (renderDice)
 import Brick.Widgets.Center
 import Objects
-import Game.View (GameStateView(..), getHintView, locationView)
 import qualified Data.Text as T
+import Game.Helpers (viewCounterVal, viewCounterValC)
+import GHC.Generics (Generic)
+import Draw
+import Control.Lens.TH (makeFields)
 
 
 type Name = ()
 
-app :: App CantStopGameStateView e Name
+data BEvent = Receive CSView 
+            | Request CantStopOptions
+            | Answer PlayName
+            deriving (Generic)
+
+data TUIState = TUIState { gameStateViewC :: CSView
+                        , viewer :: Player
+                        , lastEvent :: BEvent
+                         } deriving (Generic)
+
+makeFields 'TUIState
+
+app :: App TUIState BEvent Name
 app = App {   appDraw = drawUIView
           , appChooseCursor = neverShowCursor
           , appHandleEvent = handleEvent
@@ -33,17 +49,16 @@ app = App {   appDraw = drawUIView
           , appAttrMap = const theAttrMap
           }
 
-drawUIView :: CantStopGameStateView -> [Widget Name]
-drawUIView g = [drawBoardView g <+> (drawDice (objectsView g) <=> border (fill '/'))] -- [ drawBoard g <+> (drawDice g <=> drawMenu g)]
+drawUIView :: TUIState -> [Widget Name]
+drawUIView tui@(TUIState g _ _ ) = [drawBoardView g <+> (drawDice g  <=> drawMenu tui)] -- [ drawBoard g <+> (drawDice g <=> drawMenu g)]
 
-drawBoardView :: CantStopGameStateView -> Widget Name
+drawBoardView :: CSView -> Widget Name
 drawBoardView gsv = border $ padTop Max . renderTable . boxTable $ [drawVerticalTrack gsv <$> [Two .. Twelve], str . show <$> [2 .. 12] ]
 
 
-drawDice :: CantStopGameObjectsView -> Widget Name
+drawDice :: CSView -> Widget Name
 drawDice g = let
-    dice = g ^. #countersView
-    maybeDiceVals' = traverse (fmap (view #val) . (dice !!!)) (inhabitants :: [CantStopCounterName])
+    maybeDiceVals' = traverse (`viewCounterValC` g)  (inhabitants :: [CantStopCounterName])
     maybeDiceVals = fmap (\diceVals'' ->  [[diceVals'' !! 0, diceVals'' !! 1], [diceVals'' !! 2, diceVals'' !! 3]]) maybeDiceVals'
     renderFn =  fmap (fmap (padLeftRight 1 . str . renderDice)) 
     formatFn =  vLimitPercent 40 . border .  center . renderTable . boxTable
@@ -51,41 +66,20 @@ drawDice g = let
                    Just dv -> formatFn . renderFn $ dv
                    Nothing -> formatFn . renderFn $ []
 
-drawMenu :: CantStopGame -> Widget Name
-drawMenu g =undefined
+drawMenu :: TUIState -> Widget Name
+drawMenu (TUIState _ _ (Receive _)) =  border $ fill ' '
+drawMenu (TUIState _ _ (Request options)) = border . txtWrap $ printOptions options
 
-handleEvent :: BrickEvent Name e -> EventM Name CantStopGameStateView ()
+handleEvent :: BrickEvent Name BEvent -> EventM Name TUIState ()
 handleEvent e = case e of
     VtyEvent (V.EvKey V.KEsc []) -> halt
+    AppEvent (Receive gvc) -> assign #gameStateViewC gvc >> assign #lastEvent (Receive gvc)
+    AppEvent (Request opts) -> undefined
     _ -> pure ()
 
-player0Attr, player1Attr, player2Attr, player3Attr :: AttrName
-player0Attr = attrName "player0"
-player1Attr = attrName "player1"
-player2Attr = attrName "player2"
-player3Attr = attrName "player3"
+-- handleRequest :: CantStopOptions -> _
+-- handleRequest opts = 
 
-playerAttrs :: [AttrName]
-playerAttrs = [player0Attr, player1Attr, player2Attr, player3Attr]
-
-emptyAttr :: AttrName
-emptyAttr = attrName "empty"
-
-tempMarkAttr :: AttrName
-tempMarkAttr = attrName "tempMark"
-
-theAttrMap :: AttrMap
-theAttrMap = attrMap (V.brightRed `on` V.black)
-    [ (player0Attr, V.red `on` V.black),
-      (player1Attr, V.blue `on` V.black),
-      (player2Attr, V.green `on` V.black),
-      (player3Attr, V.yellow `on` V.black),
-      (tempMarkAttr, V.white `on` V.black),
-      (emptyAttr, V.rgbColor 160 160 160  `on` V.black)
-    ]
-
-playerToColor :: Player -> AttrName
-playerToColor (Player i) = playerAttrs !! fromIntegral i
 
 boxTable :: [[Widget n]] -> Table n
 boxTable = rowBorders False. columnBorders False . surroundingBorder False
@@ -98,9 +92,9 @@ drawPiece :: CantStopResource -> Widget Name
 drawPiece (PlayerMarker p) = padTop (Pad 1) . withAttr (playerToColor p) $ square
 drawPiece TemporaryMarker = padTop (Pad 1) . withAttr tempMarkAttr $ square
 
-drawSlot :: CantStopGameStateView -> CantStopLocation -> Widget Name
+drawSlot :: CSView -> CantStopLocation -> Widget Name
 drawSlot gsv t@(TrackSpot _ _) = let
-    pieces = listAllShape <$> (gsv ^. locationView t)
+    pieces = listAllShape <$> (gsv ^. #objectsViewC . #locationsViewC . ftAt t)
       in case pieces of
         Nothing -> padTop (Pad 1) square
         (Just []) -> padTop (Pad 1) square
@@ -111,12 +105,12 @@ drawSlot gsv t@(TrackSpot _ _) = let
 drawSlot _ _ = error "can only draw TrackSpot"
 
 
-drawVerticalTrack :: CantStopGameStateView -> TrackName -> Widget Name
+drawVerticalTrack :: CSView -> TrackName -> Widget Name
 drawVerticalTrack gsv track = formatTrack  $
-                            case getHintView (T.pack $ show track ++ "Winner") gsv  of
-                              Just pText -> let p = read (T.unpack pText) :: Player
-                                            in fmap (const (drawPiece (PlayerMarker p))) <$> spots
-                              Nothing -> fmap (drawSlot gsv) <$> spots
+                            -- case getHintView (T.pack $ show track ++ "Winner") gsv  of
+                            --   Just pText -> let p = read (T.unpack pText) :: Player
+                            --                 in fmap (const (drawPiece (PlayerMarker p))) <$> spots
+                            fmap (drawSlot gsv) <$> spots
                             where
                                 formatTrack = padLeftRight 3 .  renderTable . boxTable
                                 spots = reverse [[TrackSpot track i] | i <- [HOne .. maxSlot track]]

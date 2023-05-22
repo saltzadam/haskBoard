@@ -22,8 +22,9 @@ library
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
                 brick, effectful-plugin, haskBoard, vty
-    exposed-modules: CantStop, Tui,GridSelector, Panel, Dice, Objects
+    exposed-modules: CantStop, Tui,GridSelector, Panel, Dice, Objects, Draw
     -- , Tui, Dice
+    default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
     default-language: Haskell2010
     ghc-options:  -Wall -fplugin=Effectful.Plugin -threaded
     -- Modules included in this executable, other than Main.
@@ -36,6 +37,6 @@ executable CantStop
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
                 brick, effectful-plugin, haskBoard, vty
-
+    default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
     default-language: Haskell2010
     ghc-options: -fplugin=Effectful.Plugin -threaded

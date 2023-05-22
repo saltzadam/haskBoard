@@ -18,6 +18,7 @@ module Game.Location
      listAll,
      listAllF,
      listAllShape,
+     listAllShapeF,
      peek,
      Counter(..),
      Counters,

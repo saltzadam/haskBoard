@@ -1,6 +1,4 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveFunctor #-}
 module Game.Options where
 import GHC.Generics (Generic)
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -10,8 +8,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Foldable as F
 import Util (graphM)
-import qualified Data.Text as T
-import Data.Text (Text)
+import Game.Player (Player)
 
 -- A move may have lots of illegality.
 -- Concatenate where possible.
@@ -31,7 +28,8 @@ buildSafeNonempty :: [a] -> a -> NonEmpty a
 buildSafeNonempty xs def = if null xs then def :| [] else NE.fromList xs
 
 data Options pl i = Options {legal :: NonEmpty pl,
-                             illegal :: Map pl (Legality i)
+                             illegal :: Map pl (Legality i),
+                             owner :: Player
                             } deriving (Eq, Ord, Show, Generic)
 
 
@@ -45,16 +43,16 @@ mustNotElse :: Bool -> issue -> Legality issue
 mustNotElse True i = Illegal [i]
 mustNotElse False _ = Legal
 
-buildOptions :: (Monad m, Traversable t, Eq issue, Ord play) => (play -> m (Legality issue)) -> play -> m (t play) -> m (Options play issue)
-buildOptions checkPlay defaultPlay plays = do
+buildOptions :: (Monad m, Traversable t, Eq issue, Ord play) => Player -> (play -> m (Legality issue)) -> play -> m (t play) -> m (Options play issue)
+buildOptions p checkPlay defaultPlay plays = do
     thePlays <- plays
     legalities <- traverse (graphM checkPlay) thePlays
     let (legalMoves, illegalMoves) = M.partition (== Legal) . M.fromList . F.toList $ legalities
     let legalMovesWithDefault = buildSafeNonempty (M.keys legalMoves) defaultPlay    
-    return (Options legalMovesWithDefault illegalMoves)
+    return (Options legalMovesWithDefault illegalMoves p)
 
 displayOptions :: (Show pl, Show i) => Options pl i -> String
-displayOptions (Options legalO illegalO) =
+displayOptions (Options legalO illegalO p) =
     show (NE.toList legalO) ++ "\n"
     ++ "Cannot choose: " ++ showMapAsList illegalO
         where

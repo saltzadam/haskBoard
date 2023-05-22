@@ -9,11 +9,6 @@ Stability   :  unstable
 
 Integers with positive infinity to represent containers with finite or infinite contents.
 -}
-{-# LANGUAGE FlexibleInstances #-}
--- {-# LANGUAGE NoFieldSelectors #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveFunctor #-}
 
 module Count
     (Cnt(..),
@@ -31,7 +26,7 @@ import Control.Monad.Random
 import Data.Bifunctor (bimap)
 
 -- This is Maybe a with the opposite order for Nothing
-data Cnt a = Cnt a | Infinity deriving (Eq, Show, Functor, Generic, Finite)
+data Cnt a = Cnt a | Infinity deriving (Eq, Show, Functor, Generic)
 
 instance Ord a => Ord (Cnt a) where
   (Cnt a) <= (Cnt b) = a <= b
