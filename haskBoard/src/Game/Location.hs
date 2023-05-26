@@ -29,7 +29,6 @@ module Game.Location
      decrement,
      GameObjects(..),
      howMany,
-     look,
      dummyCounter,
      howManyF
     )
@@ -43,9 +42,9 @@ import Data.Maybe (listToMaybe, fromMaybe)
 import Data.Sequence (Seq ((:<|), Empty), (<|))
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
-import FinitaryMap (FTMap (..), (!!!), FakeFinitary, inhabitants)
+import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
-import Game.Visibility (VisibilityType (..))
+import Data.Finitary (inhabitants, Finitary)
 
 
 ---- Definitions and instances
@@ -166,7 +165,7 @@ has' loc r = howMany' loc r > 0
 findResourceWithin :: Ord r => r -> [n] -> Locations n r -> [n]
 findResourceWithin res names locs = filter (\n -> (locs !!! n) `has'` res) names
 
-findResource :: (FakeFinitary n, Eq r, Ord r) => r -> Locations n r -> [n]
+findResource :: (Finitary n, Eq r, Ord r) => r -> Locations n r -> [n]
 findResource res = findResourceWithin res inhabitants
 
 listAll :: Ord r => n -> Locations n r -> [r]
@@ -226,12 +225,6 @@ decrement' = mapCounter (subtract 1)
 
 decrement :: Counter -> Counter
 decrement = fst . decrement'
-
---- visibility
--- This is kind of silly but adds flexibility for "top card of the deck is always visible"
-look :: LocationShape r -> VisibilityType -> LocationShape r
-look l Visible = l
-look _ Invisible = Dummy
 
 
 data GameObjects n cn r = GameObjects {

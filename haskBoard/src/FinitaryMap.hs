@@ -7,33 +7,34 @@ import qualified Data.Map as M
 import GHC.Generics (Generic)
 import GHC.Base (liftA2)
 import Control.Lens ( lens )
+import Data.Finitary (Finitary, inhabitants)
 
 -- FTMap is a "Finitary, total map". That is, it's a total map from a finitary domain. 
 -- It's represented as a newtype wrapper on `a -> b` where a is Finitary.
 
 newtype FTMap a b = FTMap {runFn :: a -> b} deriving (Generic, Functor, Applicative)
 
-type FakeFinitary a = (Enum a, Bounded a)
+-- type FakeFinitary a = (Enum a, Bounded a)
 
-inhabitants :: FakeFinitary a => [a]
-inhabitants = [minBound ..maxBound]
+-- inhabitants :: Finitary a => [a]
+-- inhabitants = [minBound ..maxBound]
 
 -- From function to Map using the finitary-ness of `a`. 
 -- TODO: should this have an Ord constraint?
-reifyFn :: (FakeFinitary a, Eq a) => FTMap a b -> Map a b
+reifyFn :: (Finitary a, Eq a) => FTMap a b -> Map a b
 reifyFn (FTMap f) = M.fromAscList [(a, f a) | a <- inhabitants]
 
 -- unsafe because the map isn't required to be total. 
-unsafeUnreify :: (Ord a, FakeFinitary a) => Map a b -> FTMap a b
+unsafeUnreify :: (Ord a, Finitary a) => Map a b -> FTMap a b
 unsafeUnreify m = FTMap (m M.!)
 
-instance (Eq a, Eq b, FakeFinitary a) => Eq (FTMap a b) where
+instance (Eq a, Eq b, Finitary a) => Eq (FTMap a b) where
     (==) f g = reifyFn f == reifyFn g
 
-instance (Show a, Show b, FakeFinitary a, Eq a) => Show (FTMap a b) where
+instance (Show a, Show b, Finitary a, Eq a) => Show (FTMap a b) where
     show f = show (reifyFn f)
 
-instance (Eq a, FakeFinitary a) => Foldable (FTMap a) where
+instance (Eq a, Finitary a) => Foldable (FTMap a) where
     foldMap g = foldMap g . reifyFn
 
 instance Semigroup b => Semigroup (FTMap a b) where
@@ -50,7 +51,7 @@ instance Num b => Num (FTMap a b) where
     signum = fmap signum
     fromInteger i = FTMap (const (fromInteger i))
 
-instance (FakeFinitary a, Ord a, Ord b) => Ord (FTMap a b) where
+instance (Finitary a, Ord a, Ord b) => Ord (FTMap a b) where
     compare f g = compare (reifyFn f) (reifyFn g)
 
 -- TODO: change to !!! and import qualified
@@ -66,7 +67,7 @@ applyAt a fn f = FTMap (\x -> if x == a then fn (f !!! x) else f !!! x)
 update :: Eq a => (a,b) -> FTMap a b  -> FTMap a b
 update (a,b) f = FTMap (\x -> if x == a then b else f !!! x)
 
-filter :: (FakeFinitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
+filter :: (Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
 filter filt = M.filter filt .  reifyFn
 
 -- Lenses

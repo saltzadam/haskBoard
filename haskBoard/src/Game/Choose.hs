@@ -14,20 +14,22 @@ import Effectful.Dispatch.Dynamic
 import Control.Lens
 import Text.Read (readMaybe)
 import Data.Maybe (listToMaybe)
-import Game.View (GameStateViewC)
 import Control.Concurrent (Chan, writeChan, readChan)
 import Data.Kind (Type)
+import qualified Debug.Trace as Debug
+import Game.View (GameStateView, viewGameStateAs', viewGameStateAs)
+import Game.Monad (ViewerType)
 
-data Interface (l :: Type) (cn :: Type) (r :: Type) (ph :: Type) (pl :: Type) (i :: Type) :: Effect where
+data Interface l cn r ph pl i :: Effect where
   Choose :: Options pl i -> (Interface l cn r ph pl i) m pl
-  Update :: GameStateViewC l cn r ph pl i -> (Interface l cn r ph pl i) m ()
+  Update :: GameState l cn r ph pl i -> (Interface l cn r ph pl i) m ()
 
 type instance DispatchOf (Interface l cn r ph pl i) = 'Dynamic
 
 choose :: (Interface l cn r ph pl i :> es) =>  Options pl i -> Eff es pl
 choose cs = send (Choose cs) 
 
-update :: (Interface l cn r ph pl i :> es) => GameStateViewC l cn r ph pl i -> Eff es ()
+update :: (Interface l cn r ph pl i :> es) => GameState l cn r ph pl i -> Eff es ()
 update gsvc = send (Update gsvc)
 
 chooseFirst :: Eff (Interface l cn r ph pl i : es) a -> Eff es a
@@ -58,13 +60,16 @@ chooseBasicInput = interpret $ \_ -> \case
           Just pl -> return pl
           Nothing -> putStrLn "couldn't find" >> loopChoice cs
 
-chooseChan :: IOE :> es => Chan (Either (GameStateViewC l cn r ph pl i)  (Options pl i))
+chooseChan :: (IOE :> es, Show pl, Show i) => ViewerType -- could be a list of clients or something in the future
+            -> Chan (Either (GameStateView l cn r ph)  (Options pl i))
             -> Chan pl
-            -> Eff (Interface l cn r ph pl i : es) pl
-            -> Eff es pl
-chooseChan gameToClientChan clientToGameChan = interpret $ \_ -> \case
-    Update gsvc -> liftIO $ writeChan gameToClientChan (Left gsvc)
+            -> Eff (Interface l cn r ph pl i : es) a
+            -> Eff es a
+chooseChan viewer gameToClientChan clientToGameChan = interpret $ \_ -> \case
+    Update gs -> let 
+        gsvc = viewGameStateAs gs viewer
+                  in Debug.trace ("Game: writing gamestate") $ liftIO $ writeChan gameToClientChan (Left gsvc)
     Choose options -> liftIO $ do
-        writeChan gameToClientChan (Right options)
+        Debug.trace ("Game: writing " ++ show options ++ " to gameToClientChan") $ writeChan gameToClientChan (Right options)
         readChan clientToGameChan
         

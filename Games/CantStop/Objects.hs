@@ -1,9 +1,8 @@
+{-# LANGUAGE DeriveAnyClass #-}
 module Objects 
     where
 import GHC.Generics (Generic)
 import Game.Player
-import Data.List.NonEmpty (NonEmpty)
-import qualified Data.List.NonEmpty as NE
 import Game.Location
 import Data.Set (Set)
 import qualified Data.Sequence as Seq
@@ -12,15 +11,16 @@ import qualified Data.Set as S
 import Game.GameState
 import Game.GameNode (GameAction, GameNode)
 import Count (Cnt)
-import FinitaryMap (FTMap(..), inhabitants)
+import FinitaryMap (FTMap(..))
 import Game.Monad
-import Game.View (GameStateViewC)
+import Game.View (GameStateView)
 import Game.Options (Options)
+import Data.Finitary (Finitary, inhabitants)
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
-  deriving (Eq, Ord, Show, Enum, Bounded, Generic)
+  deriving (Eq, Ord, Show, Enum, Bounded, Generic, Finitary)
 
-data TrackHeight = HOne | HTwo | HThree | HFour | HFive | HSix | HSeven | HEight | HNine | HTen | HEleven | HTwelve | HThirteen deriving (Eq, Ord, Show, Enum, Generic)
+data TrackHeight = HOne | HTwo | HThree | HFour | HFive | HSix | HSeven | HEight | HNine | HTen | HEleven | HTwelve | HThirteen deriving (Eq, Ord, Show, Enum, Generic, Finitary)
 
 
 diceToTrack :: Cnt Int -> TrackName
@@ -38,7 +38,7 @@ maxSlot t = if t <= Seven
 getHeight :: TrackHeight -> Int
 getHeight h = fromEnum h + 1
 
-data CantStopResource = PlayerMarker Player | TemporaryMarker deriving (Eq, Ord, Show, Generic)
+data CantStopResource = PlayerMarker Player | TemporaryMarker deriving (Eq, Ord, Show, Generic, Finitary)
 
 markerOwner :: CantStopResource -> Maybe Player
 markerOwner (PlayerMarker p) = Just p
@@ -48,7 +48,7 @@ data CantStopLocation
   = TrackSpot TrackName TrackHeight
   | BoxTop
   | PlayerStuff Player
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, Finitary)
 
 maxSpot :: TrackName -> CantStopLocation
 maxSpot s = TrackSpot s (maxSlot s)
@@ -58,7 +58,7 @@ trackSlots :: TrackName -> [CantStopLocation]
 trackSlots track = TrackSpot track <$> [HOne .. maxSlot track]
 
 data CantStopCounterName = DieOne | DieTwo | DieThree | DieFour
-  deriving (Eq, Ord, Show, Generic, Enum,Bounded)
+  deriving (Eq, Ord, Show, Generic, Enum,Bounded, Finitary)
 type CantStopLocations = Locations CantStopLocation CantStopResource
 type CantStopCounters = Counters CantStopCounterName
 type CantStopGameObjects = GameObjects CantStopLocation CantStopCounterName CantStopResource
@@ -101,9 +101,9 @@ type CantStopGameState = GameState CantStopLocation CantStopCounterName CantStop
 type CantStopOptions = Options PlayName Issue 
 type CantStopGame = Game  CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
 type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
-type CSM  = GameView CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
+type CSM es = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue es
 
-type CSView = GameStateViewC   CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
+type CSView = GameStateView CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 
 
 currentPlayer :: CantStopPhaseName ->Player

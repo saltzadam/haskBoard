@@ -21,9 +21,12 @@ import Objects
 import Util (graphMapM, getNext)
 import Game.Visibility (VisibilityMap (..), allVisible)
 import Game.Helpers
-import FinitaryMap (inhabitants)
-import Game.Run (runEffNodesAgainstState, runNodesAgainstState, actionTurns)
-import Game.Monad (viewToFullState)
+import Data.Finitary (inhabitants)
+-- import Game.Run (runEffNodesAgainstState, runNodesAgainstState, actionTurns)
+import Effectful (runPureEff)
+import qualified Effectful.State.Static.Shared as Eff
+import qualified Effectful.Reader.Static as Eff
+import Game.Monad (ViewerType(..), runGameEff)
 
 -- Plays --
 
@@ -163,16 +166,17 @@ trackWinners :: CSM (Map TrackName Player)
 trackWinners = graphMapM trackWinner inhabitants
 
 -- Initialization --
-setupNodes :: CantStopGameState -> [a]
+setupNodes :: Int -> [a]
 setupNodes = pure []
 
-csVisibility :: VisibilityMap CantStopLocation CantStopCounterName
+csVisibility :: VisibilityMap CantStopLocation CantStopCounterName CantStopPhaseName
 csVisibility = allVisible
 cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (CSTurn p) =
   Phase
     { name = CSTurn p,
-      seedNodes = viewToFullState (rollNodes <> chooseMove p)
+    -- TODO: c'mon
+      seedNodes = \gs -> runGameEff gs . fmap concat . sequence $ [rollNodes, chooseMove p]
     }
 
 initGameState :: Int -> CantStopGameState
@@ -191,48 +195,49 @@ initGameState numPlayers =
 
 
 csRunPlay' :: PlayName -> CSM [CantStopGameNode]
-csRunPlay' (Move pl s t) =
+csRunPlay' (Move pl s t) = concat <$> sequence [
     moveMarkerBy pl s 1
-    <> moveMarkerBy pl t 1
-    <> stopOrGoNode pl
-csRunPlay' (Stop pl) =
+    , moveMarkerBy pl t 1
+    , stopOrGoNode pl]
+csRunPlay' (Stop pl) = concat <$> sequence [
     resolveMarkers pl
-    <> clearWonTracks
-    <> checkWinner
-    <> advancePlayer
+    , clearWonTracks
+    , checkWinner
+    , advancePlayer]
 csRunPlay' (DontStop p) = rollNodes <> chooseMove p
 
 csRunPlay :: CantStopGameState -> PlayName -> [CantStopGameNode]
-csRunPlay gs pl = viewToFullState (csRunPlay' pl) gs
+csRunPlay gs pl = runGameEff gs (csRunPlay' pl)
 
 -- Try with Turns instead
 
 playerTurn :: Player -> CantStopTurn
 playerTurn p = Turn p (NE.singleton (CSTurn p))
 
+cantStop :: Int -> CantStopGame
+cantStop numPlayers = Game (initGameState numPlayers) csRunPlay setupNodes
+
+-- -- Game states --
+
+-- runEffCSNodes effNodes = do
+--   let gs = initGameState 3
+--   runEffNodesAgainstState gs csRunPlay effNodes
+
+-- runCSNodes :: [CantStopGameNode] -> IO CantStopGameState
+-- runCSNodes = runNodesAgainstState (initGameState 3) csRunPlay setupNodes
+
+-- moreInterestingGameState :: IO CantStopGameState
+-- moreInterestingGameState =
+--   runCSNodes
+--     [ mkActionNode (MkTransfer (PlayerStuff (Player 2)) (TrackSpot Six HThree) (PlayerMarker (Player 2))),
+--       mkActionNode (MkTransfer (PlayerStuff (Player 1)) (TrackSpot Two HOne) (PlayerMarker (Player 1))),
+--       mkActionNode (MkTransfer (PlayerStuff (Player 3)) (TrackSpot Ten HTwo) (PlayerMarker (Player 3)))
+--     ]
 
 
--- Game states --
+-- -- run game from Turns
 
-runEffCSNodes effNodes = do
-  let gs = initGameState 3
-  runEffNodesAgainstState gs csRunPlay effNodes
-
-runCSNodes :: [CantStopGameNode] -> IO CantStopGameState
-runCSNodes = runNodesAgainstState (initGameState 3) csRunPlay setupNodes
-
-moreInterestingGameState :: IO CantStopGameState
-moreInterestingGameState =
-  runCSNodes 
-    [ mkActionNode (MkTransfer (PlayerStuff (Player 2)) (TrackSpot Six HThree) (PlayerMarker (Player 2))),
-      mkActionNode (MkTransfer (PlayerStuff (Player 1)) (TrackSpot Two HOne) (PlayerMarker (Player 1))),
-      mkActionNode (MkTransfer (PlayerStuff (Player 3)) (TrackSpot Ten HTwo) (PlayerMarker (Player 3)))
-    ]
-
-
--- run game from Turns
-
-runCSTurns :: IO CantStopGameState
-runCSTurns = actionTurns (initGameState 3) csRunPlay setupNodes
+-- runCSTurns :: IO CantStopGameState
+-- runCSTurns = actionTurns (initGameState 3) csRunPlay setupNodes
 
 

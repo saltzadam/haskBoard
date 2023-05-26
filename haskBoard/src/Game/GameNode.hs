@@ -4,6 +4,7 @@ import GHC.Generics (Generic)
 import Count
 import Game.Options
 import Game.Player
+import Game.Visibility (VisData)
  
 -- These are the fundamental actions in a game. All the "verbs" of a game (besides the observations, e.g. "check" and "count") can be phrased in terms of these.
 data GameAction l cn r ph
@@ -17,8 +18,8 @@ data GameAction l cn r ph
   | ChangePhase ph
   | EndPhase
   | AdvanceTurn
-  | MakeVisibleTo Player (Either l cn)
-  | MakeInvisibleTo  Player (Either l cn)
+  | MakeVisibleTo Player (VisData l cn ph)
+  | MakeInvisibleTo  Player (VisData l cn ph)
   | EndGame [Player]
   deriving (Eq, Ord, Show, Generic)
 
