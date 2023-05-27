@@ -32,12 +32,12 @@ import qualified Data.Sequence as Seq
 import Game.GameState
 import Game.Choose
 import Control.Monad.Trans.Reader (Reader)
-import qualified Effectful.State.Static.Shared as State 
+import qualified Effectful.State.Static.Shared as State
 import Control.Monad.Reader (runReader)
+import qualified Debug.Trace as Debug
 
 -- TODO: export list
 
--- TODO: (lower) abstract out log
 -- TODO: (fun) some kind of history besides log
 
 updateGS :: (ObserveGame l cn r ph pl i es, Interface l cn r ph pl i :> es) => Eff es ()
@@ -82,31 +82,31 @@ act DoNothing = continueGame
 act a@(MkTransfer l l' r) =
   modifyingGameState (#objects . #locations) (transfer r l l')
     >> updateGS
-    >> inject (logAction2 a ' ')
+    >> logAction2 a ' '
     >> continueGame
 act a@(IncrementCounter c) =
   modifyingGameState (counter c) increment
     >> updateGS
     >> useGameState (counter c . #val)
-    >>= inject . logAction2 a
+    >>= logAction2 a
     >> continueGame
 act a@(DecrementCounter c) =
   modifyingGameState (counter c) decrement
     >> updateGS
     >> useGameState (counter c . #val)
-    >>= inject . logAction2 a
+    >>= logAction2 a
     >> continueGame
 act a@(SetCounter c v) =
   modifyingGameState (counter c) (`setCounter` v)
     >> updateGS
     >> useGameState (counter c . #val)
-    >>= inject . logAction2 a
+    >>= logAction2 a
     >> continueGame
 act a@(RollCounter c) = do
   (bl, bu) <- useGameState (counter c . #bounds)
   newVal <- randomR (bl, bu)
   assignGameState (counterVal c) newVal
-  _ <- useGameState (counterVal c) >>= inject . logAction2 a
+  _ <- useGameState (counterVal c) >>= logAction2 a
   updateGS
   continueGame
 act a@(Shuffle l) = do
@@ -117,18 +117,18 @@ act a@(Shuffle l) = do
         let shuffled = Seq.fromList $ shuffle (F.toList cards) uniformSample
         assignGameState (#objects . #locations . ftAt l) (Deck shuffled)
       _ -> pure ()
-    inject (logAction2 a ' ')
+    logAction2 a ' '
     updateGS
     continueGame
 
 act a@(MakeVisibleTo p lc) =
     modifyVisibility (\vis -> makeVisible vis p lc)
-    >> inject (logAction2 a ' ')
+    >> logAction2 a ' '
     >> updateGS
     >> continueGame
 act a@(MakeInvisibleTo p lc) =
     modifyVisibility (\vis -> makeInvisible vis p lc)
-    >> inject (logAction2 a ' ')
+    >> logAction2 a ' '
     >> updateGS
     >> continueGame
 act a@EndPhase = do
@@ -136,7 +136,7 @@ act a@EndPhase = do
     (Turn _ turnPhases) <- useGameState #currentTurn
     let nextPhase = getNext phase turnPhases
     updateGS
-    inject (logAction2 a ' ')
+    logAction2 a ' '
     case nextPhase of
       Just aPhase -> act (ChangePhase aPhase)
       Nothing -> act AdvanceTurn
@@ -146,18 +146,18 @@ act a@AdvanceTurn = do
     turner <- useGameState #nextTurn
     let nextTurn@(Turn _ turnPhases) = turner turn turns
     assignGameState #currentTurn nextTurn
-    inject (logAction2 a ' ')
+    logAction2 a ' '
     updateGS
     act (ChangePhase (NE.head turnPhases))
 act a@(ChangePhase ph) =
   assignGameState #currentPhase ph
-    >> inject (logAction2 a (show ph))
+    >> logAction2 a (show ph)
     >> updateGS
     >> return (Just $ ChangePhaseTo ph)
-act a@(EndGame _) = inject (logAction2 a ' ') >> return (Just End)
+act a@(EndGame _) = logAction2 a ' ' >> return (Just End)
 
 
-chooseNode :: forall l cn r ph pl i es. (Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show pl, Show i, Show l, Show r, Show cn, Show ph, Log2 :> es, GameRun l cn r ph pl i :> es) => Eff es (Options pl i) -> Eff es [GameNode l cn r ph pl i] 
+chooseNode :: forall l cn r ph pl i es. (Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show pl, Show i, Show l, Show r, Show cn, Show ph, Log2 :> es, GameRun l cn r ph pl i :> es) => Eff es (Options pl i) -> Eff es [GameNode l cn r ph pl i]
 chooseNode cs =
   let cs' = cs
    in do
@@ -174,23 +174,20 @@ chooseNode cs =
 
 
 runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, ObserveGame l cn r ph pl i es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, BroadcastState l cn r ph pl i :> es, GameRun l cn r ph pl i :> es) => GameNode l cn r ph pl i -> Eff es (Either (GameControl ph) [Eff es [GameNode l cn r ph pl i]])
-runNode aNode = maybeLeftToEmptyRight <$> bitraverse handleAction handleChoice (view #node aNode)
+runNode aNode = maybeLeftToEmptyRight <$> bitraverse act handleChoice (aNode ^. #node)
   where
-    handleAction :: GameAction l cn r ph -> Eff es (Maybe (GameControl ph))
-    handleAction action = do
-        a <- inject . act $ action
-        broadcastState
-        return a
-
 
     -- TODO: layers of Monad stuff that don't need to be here
     handleChoice :: Options pl i -> Eff es [Eff es [GameNode l cn r ph pl i]]
-    handleChoice = pure . pure . inject . chooseNode . inject . pure
+    handleChoice = pure . pure . chooseNode .  pure
 
     maybeLeftToEmptyRight :: Monoid b => Either (Maybe a) b -> Either a b
     maybeLeftToEmptyRight (Left Nothing) = Right mempty
     maybeLeftToEmptyRight (Left (Just i)) = Left i
     maybeLeftToEmptyRight (Right x) = Right x
+
+pureState :: (a -> b) -> (a -> (b, a))
+pureState f x = (f x, x)
 
 runFromSeeds2 :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, ObserveGame l cn r ph pl i es, Interface l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, BroadcastState l cn r ph pl i :> es, GameRun l cn r ph pl i :> es) => [Eff es [GameNode l cn r ph pl i]] -> Eff es ()
 runFromSeeds2 nodes = do
@@ -201,7 +198,7 @@ runFromSeeds2 nodes = do
       phaser <- useGameState #phases
       let thisPhase = phaser ph
       gs <- getGameState
-      runFromSeeds2 (inject <$> [pure (getPhaseNodes thisPhase gs)])
+      runFromSeeds2 (fmap (State.state . pureState) (getPhaseNodes thisPhase))
     Right _ -> error "oops more nodes" -- TODO: make this unrepresentable!!
   where
     unfoldFunc ::
@@ -230,7 +227,7 @@ playGame = do
   gs <- getGameState
   let phases = gs ^. #phases
   currentPhase <- useGameState #currentPhase
-  let newNodes = inject <$> [pure $ getPhaseNodes (phases currentPhase) gs]
+  let newNodes = State.state . pureState <$> getPhaseNodes (phases currentPhase)
   runFromSeeds2 newNodes
   getGameState
 
@@ -245,7 +242,7 @@ runPhaseNodes nodes = do
       phaser <- useGameState #phases
       let thisPhase = phaser ph
       gs <- getGameState
-      runPhaseNodes (inject <$> [pure $ getPhaseNodes thisPhase gs])
+      runPhaseNodes (State.state . pureState <$> getPhaseNodes thisPhase)
     Right _ -> pure PCEndTurn
     where
     unfoldFunc ::
@@ -276,7 +273,7 @@ runFromPhases (phase:theRest) = do
     assignGameState #currentPhase phase
     phases <- useGameState #phases
     gs <- getGameState
-    let newNodes = inject <$> [pure $ getPhaseNodes (phases phase) gs]
+    let newNodes = State.state . pureState <$> getPhaseNodes (phases phase)
     result <- runPhaseNodes newNodes
     case result of
       PCEndPhase -> runFromPhases theRest
@@ -295,9 +292,10 @@ playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, R
 playGameTurns = do
     getSetupNodes <- getSetup
     gs <- getGameState
+    -- TODO: no just have Game hold the setup
     let setupNodes = pure $ getSetupNodes (gs ^. #players . to length)
-    _ <- runPhaseNodes [inject setupNodes]
-    void playGameTurns' 
+    _ <- runPhaseNodes [setupNodes]
+    void playGameTurns'
     getGameState
         where
             playGameTurns' = do

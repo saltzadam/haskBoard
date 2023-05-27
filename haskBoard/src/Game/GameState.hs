@@ -35,11 +35,11 @@ data Turn phaseName = Turn {owner :: Player,
 
 data Phase phaseName l cn r playName i = Phase
   { name :: phaseName,
-    seedNodes :: GameState l cn r phaseName playName i -> [GameNode l cn r phaseName playName i]
+    seedNodes :: [GameState l cn r phaseName playName i -> [GameNode l cn r phaseName playName i]]
   }
   deriving (Generic)
 
-getPhaseNodes :: Phase phaseName l cn r playName i -> (GameState l cn r phaseName playName i -> [GameNode l cn r phaseName playName i])
+getPhaseNodes :: Phase phaseName l cn r playName i -> [GameState l cn r phaseName playName i -> [GameNode l cn r phaseName playName i]]
 getPhaseNodes (Phase _ seedNodes') = seedNodes'
 
 type PlayRunner l cn r ph pl i = GameState l cn r ph pl i -> pl ->  [GameNode l cn r ph pl i]

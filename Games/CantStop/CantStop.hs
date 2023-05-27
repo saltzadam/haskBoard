@@ -176,7 +176,7 @@ cantStopPhases (CSTurn p) =
   Phase
     { name = CSTurn p,
     -- TODO: c'mon
-      seedNodes = \gs -> runGameEff gs . fmap concat . sequence $ [rollNodes, chooseMove p]
+      seedNodes = fmap (flip runGameEff) [rollNodes, chooseMove p]
     }
 
 initGameState :: Int -> CantStopGameState
