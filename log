@@ -1,0 +1,150 @@
+Rolled DieOne to Cnt 5
+Rolled DieTwo to Cnt 6
+Rolled DieThree to Cnt 1
+Rolled DieFour to Cnt 5
+Choosing from [Move (Player {num = 0}) Six Eleven,Move (Player {num = 0}) Ten Seven,Move (Player {num = 0}) Eleven Six]
+Cannot choose: []
+Chose Move (Player {num = 0}) Six Eleven
+Transfered TemporaryMarker from BoxTop to TrackSpot Six HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+ Contents of TrackSpot Six HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from BoxTop to TrackSpot Eleven HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+ Contents of TrackSpot Eleven HOne: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 0}),DontStop (Player {num = 0})]
+Cannot choose: []
+Chose Stop (Player {num = 0})
+Transfered PlayerMarker (Player {num = 0}) from PlayerStuff (Player {num = 0}) to TrackSpot Six HOne
+ Contents of PlayerStuff (Player {num = 0}): fromList []
+ Contents of TrackSpot Six HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Six HOne to BoxTop
+ Contents of TrackSpot Six HOne: fromList []
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+Transfered PlayerMarker (Player {num = 0}) from PlayerStuff (Player {num = 0}) to TrackSpot Eleven HOne
+ Contents of PlayerStuff (Player {num = 0}): fromList []
+ Contents of TrackSpot Eleven HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Eleven HOne to BoxTop
+ Contents of TrackSpot Eleven HOne: fromList []
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 3)]
+Changed phase to CSTurn (Player {num = 1})
+Rolled DieOne to Cnt 5
+Rolled DieTwo to Cnt 3
+Rolled DieThree to Cnt 5
+Rolled DieFour to Cnt 1
+Choosing from [Move (Player {num = 1}) Six Eight,Move (Player {num = 1}) Eight Six,Move (Player {num = 1}) Ten Four]
+Cannot choose: []
+Chose Move (Player {num = 1}) Eight Six
+Transfered TemporaryMarker from BoxTop to TrackSpot Eight HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+ Contents of TrackSpot Eight HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from BoxTop to TrackSpot Six HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+ Contents of TrackSpot Six HOne: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 1}),DontStop (Player {num = 1})]
+Cannot choose: []
+Chose DontStop (Player {num = 1})
+Rolled DieOne to Cnt 3
+Rolled DieTwo to Cnt 5
+Rolled DieThree to Cnt 3
+Rolled DieFour to Cnt 5
+Choosing from [Move (Player {num = 1}) Six Eight,Move (Player {num = 1}) Eight Six,Move (Player {num = 1}) Ten Four]
+Cannot choose: []
+Chose Move (Player {num = 1}) Six Eight
+Transfered TemporaryMarker from TrackSpot Six HOne to TrackSpot Six HTwo
+ Contents of TrackSpot Six HOne: fromList []
+ Contents of TrackSpot Six HTwo: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Eight HOne to TrackSpot Eight HTwo
+ Contents of TrackSpot Eight HOne: fromList []
+ Contents of TrackSpot Eight HTwo: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 1}),DontStop (Player {num = 1})]
+Cannot choose: []
+Chose DontStop (Player {num = 1})
+Rolled DieOne to Cnt 4
+Rolled DieTwo to Cnt 4
+Rolled DieThree to Cnt 4
+Rolled DieFour to Cnt 2
+Choosing from [Move (Player {num = 1}) Six Ten,Move (Player {num = 1}) Eight Eight]
+Cannot choose: []
+Chose Move (Player {num = 1}) Six Ten
+Transfered TemporaryMarker from TrackSpot Six HTwo to TrackSpot Six HThree
+ Contents of TrackSpot Six HTwo: fromList []
+ Contents of TrackSpot Six HThree: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from BoxTop to TrackSpot Ten HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 0)]
+ Contents of TrackSpot Ten HOne: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 1}),DontStop (Player {num = 1})]
+Cannot choose: []
+Chose Stop (Player {num = 1})
+Transfered PlayerMarker (Player {num = 1}) from PlayerStuff (Player {num = 1}) to TrackSpot Six HThree
+ Contents of PlayerStuff (Player {num = 1}): fromList [(PlayerMarker (Player {num = 1}),Cnt 10)]
+ Contents of TrackSpot Six HThree: fromList [(PlayerMarker (Player {num = 1}),Cnt 1),(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Six HThree to BoxTop
+ Contents of TrackSpot Six HThree: fromList [(PlayerMarker (Player {num = 1}),Cnt 1)]
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+Transfered PlayerMarker (Player {num = 1}) from PlayerStuff (Player {num = 1}) to TrackSpot Eight HTwo
+ Contents of PlayerStuff (Player {num = 1}): fromList [(PlayerMarker (Player {num = 1}),Cnt 9)]
+ Contents of TrackSpot Eight HTwo: fromList [(PlayerMarker (Player {num = 1}),Cnt 1),(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Eight HTwo to BoxTop
+ Contents of TrackSpot Eight HTwo: fromList [(PlayerMarker (Player {num = 1}),Cnt 1)]
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+Transfered PlayerMarker (Player {num = 1}) from PlayerStuff (Player {num = 1}) to TrackSpot Ten HOne
+ Contents of PlayerStuff (Player {num = 1}): fromList [(PlayerMarker (Player {num = 1}),Cnt 8)]
+ Contents of TrackSpot Ten HOne: fromList [(PlayerMarker (Player {num = 1}),Cnt 1),(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Ten HOne to BoxTop
+ Contents of TrackSpot Ten HOne: fromList [(PlayerMarker (Player {num = 1}),Cnt 1)]
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 3)]
+Changed phase to CSTurn (Player {num = 2})
+Rolled DieOne to Cnt 3
+Rolled DieTwo to Cnt 4
+Rolled DieThree to Cnt 3
+Rolled DieFour to Cnt 6
+Choosing from [Move (Player {num = 2}) Six Ten,Move (Player {num = 2}) Seven Nine,Move (Player {num = 2}) Nine Seven]
+Cannot choose: []
+Chose Move (Player {num = 2}) Six Ten
+Transfered TemporaryMarker from BoxTop to TrackSpot Six HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+ Contents of TrackSpot Six HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from BoxTop to TrackSpot Ten HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+ Contents of TrackSpot Ten HOne: fromList [(PlayerMarker (Player {num = 1}),Cnt 1),(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 2}),DontStop (Player {num = 2})]
+Cannot choose: []
+Chose DontStop (Player {num = 2})
+Rolled DieOne to Cnt 2
+Rolled DieTwo to Cnt 1
+Rolled DieThree to Cnt 4
+Rolled DieFour to Cnt 2
+Choosing from [Move (Player {num = 2}) Six Ten,Move (Player {num = 2}) Seven Nine,Move (Player {num = 2}) Nine Seven]
+Cannot choose: []
+Chose Move (Player {num = 2}) Six Ten
+Transfered TemporaryMarker from TrackSpot Six HOne to TrackSpot Six HTwo
+ Contents of TrackSpot Six HOne: fromList []
+ Contents of TrackSpot Six HTwo: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Ten HOne to TrackSpot Ten HTwo
+ Contents of TrackSpot Ten HOne: fromList [(PlayerMarker (Player {num = 1}),Cnt 1)]
+ Contents of TrackSpot Ten HTwo: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 2}),DontStop (Player {num = 2})]
+Cannot choose: []
+Chose DontStop (Player {num = 2})
+Rolled DieOne to Cnt 4
+Rolled DieTwo to Cnt 1
+Rolled DieThree to Cnt 5
+Rolled DieFour to Cnt 4
+Choosing from [Move (Player {num = 2}) Three Six,Move (Player {num = 2}) Four Five,Move (Player {num = 2}) Six Three]
+Cannot choose: []
+Chose Move (Player {num = 2}) Three Six
+Transfered TemporaryMarker from BoxTop to TrackSpot Three HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 0)]
+ Contents of TrackSpot Three HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Six HTwo to TrackSpot Six HThree
+ Contents of TrackSpot Six HTwo: fromList []
+ Contents of TrackSpot Six HThree: fromList [(PlayerMarker (Player {num = 1}),Cnt 1),(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 2}),DontStop (Player {num = 2})]
+Cannot choose: []
+Chose DontStop (Player {num = 2})
+Rolled DieOne to Cnt 5
+Rolled DieTwo to Cnt 5
+Rolled DieThree to Cnt 1
+Rolled DieFour to Cnt 4
+Choosing from [Stop (Player {num = 2})]
+Cannot choose: [(Move (Player {num = 2}) Five Nine,Illegal [ThreeTempMarkersOut,ThreeTempMarkersOut]),(Move (Player {num = 2}) Eight Six,Illegal [ThreeTempMarkersOut,ThreeTempMarkersOut]),(Move (Player {num = 2}) 

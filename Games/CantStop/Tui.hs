@@ -97,7 +97,7 @@ handleEvent e =  do
       EndGame -> case e of 
           VtyEvent (V.EvKey V.KEsc []) -> halt
           _ -> return ()
-      ShowState -> case e of 
+      _ -> case e of
           VtyEvent (V.EvKey V.KEsc []) -> halt
           AppEvent (Receive gsv) -> do
               assign #gameStateView gsv
@@ -106,17 +106,17 @@ handleEvent e =  do
           AppEvent (Request opts) ->  do
               assign #lastEvent (Just (Request opts))
               assign #tuiMode (Ask opts)
-          _ -> return ()
-      Ask options -> case e of
-          VtyEvent (V.EvKey V.KEsc []) -> halt
-          VtyEvent (V.EvKey (V.KChar c) []) -> 
-              case (readMay [c] :: Maybe Int) of
-                Nothing -> pure ()
-                Just i -> case options ^. #legal . to (safeIndexList (i-1)) of
-                            Nothing -> pure ()
-                            Just opt -> do
-                                chan <- use #brickToGameChan
-                                liftIO $ writeBChan chan opt
+          VtyEvent (V.EvKey (V.KChar c) []) -> do
+              case mode of 
+                Ask options ->
+                  case (readMay [c] :: Maybe Int) of
+                    Nothing -> pure ()
+                    Just i -> case options ^. #legal . to (safeIndexList (i-1)) of
+                                Nothing -> pure ()
+                                Just opt -> do
+                                    chan <- use #brickToGameChan
+                                    liftIO $ writeBChan chan opt
+                _ -> return ()
           _ -> return ()
 
  

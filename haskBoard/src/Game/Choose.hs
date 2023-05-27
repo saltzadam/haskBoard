@@ -68,8 +68,8 @@ chooseChan :: (IOE :> es, Show pl, Show i) => ViewerType -- could be a list of c
 chooseChan viewer gameToClientChan clientToGameChan = interpret $ \_ -> \case
     Update gs -> let 
         gsvc = viewGameStateAs gs viewer
-                  in Debug.trace ("Game: writing gamestate") $ liftIO $ writeChan gameToClientChan (Left gsvc)
+                  in liftIO $ writeChan gameToClientChan (Left gsvc)
     Choose options -> liftIO $ do
-        Debug.trace ("Game: writing " ++ show options ++ " to gameToClientChan") $ writeChan gameToClientChan (Right options)
+        writeChan gameToClientChan (Right options)
         readChan clientToGameChan
         

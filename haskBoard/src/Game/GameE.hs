@@ -34,7 +34,6 @@ import Game.Choose
 import Control.Monad.Trans.Reader (Reader)
 import qualified Effectful.State.Static.Shared as State
 import Control.Monad.Reader (runReader)
-import qualified Debug.Trace as Debug
 
 -- TODO: export list
 

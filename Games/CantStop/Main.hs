@@ -34,13 +34,19 @@ main = do
     gameToBrickBChan <- newBChan 100
     brickToGameBChan <- newBChan 100
     initVty <- V.mkVty V.defaultConfig
+
+
+    -- setup Game -> Brick channel
     forkIO $ forever $ do
         payload <- readChan gameToBrickChan
         let parsed = parsePayload payload
         writeBChan gameToBrickBChan parsed
+
+    -- setup Brick -> Game channel 
     forkIO $ forever $ do
         payload' <- readBChan brickToGameBChan
-        Debug.trace ("brickToGameBChan -> brickToGameChan: " ++ show payload') $ writeChan brickToGameChan payload'
+        writeChan brickToGameChan payload'
+
     forkIO $ forever $
         runGameChannels (Player 0) 
             (cantStop 3 ^. #gameState) 
@@ -48,6 +54,5 @@ main = do
             gameToBrickChan 
             brickToGameChan
     let initTUI = TUIState gsv (Player 0) Nothing ShowState brickToGameBChan
-    -- writeChan gameToBrickChan (Left gs)
     void $ customMain initVty (V.mkVty V.defaultConfig) (Just gameToBrickBChan) app initTUI
 
