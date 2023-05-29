@@ -28,6 +28,10 @@ getNext x (y :| (y':ys)) = if x == y
                       else getNext x (y' :| ys)
 getNext _ (_ :| []) = Nothing
 
+buildSafeNonempty :: [a] -> a -> NonEmpty a
+buildSafeNonempty xs def = if null xs then def :| [] else NE.fromList xs
+
+
 getNextCyclic :: Eq a => a -> NE.NonEmpty a -> Maybe a
 getNextCyclic x ys = case getNext x ys of
                        Just y' -> Just y'
@@ -60,4 +64,9 @@ maximaByScore score as = go score as [] where
           EQ -> go score remaining (a:m:maxes)
           GT -> go score remaining [a]
         
-
+ifM :: Monad m => m Bool -> m a -> m a -> m a
+ifM mbool mtrue mfalse = do
+    boolResult <- mbool
+    if boolResult
+    then mtrue
+    else mfalse

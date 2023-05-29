@@ -15,7 +15,7 @@ data GameAction l cn r ph
   | SetCounter cn (Cnt Int)
   | RollCounter cn
   | Shuffle l
-  | ChangePhase ph
+  -- | ChangePhase ph
   | EndPhase
   | AdvanceTurn
   | MakeVisibleTo Player (VisData l cn ph)

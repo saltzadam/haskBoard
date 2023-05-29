@@ -22,11 +22,10 @@ import Util (graphMapM, getNext)
 import Game.Visibility (VisibilityMap (..), allVisible)
 import Game.Helpers
 import Data.Finitary (inhabitants)
--- import Game.Run (runEffNodesAgainstState, runNodesAgainstState, actionTurns)
 import Effectful (runPureEff)
 import qualified Effectful.State.Static.Shared as Eff
 import qualified Effectful.Reader.Static as Eff
-import Game.Monad (ViewerType(..), runGameEff)
+import Game.Monad (ViewerType(..), runGameEff, injectGame)
 
 -- Plays --
 
@@ -37,7 +36,7 @@ chooseMove :: Player -> CSM [CantStopGameNode]
 chooseMove p = (: []) . mkGetOptionsNode p <$> legalMoves p
   where
     legalMoves :: Player -> CSM CantStopOptions
-    legalMoves p = buildOptions p checkMove (Stop p) (fmap (makeMove p) <$> diceVals)
+    legalMoves p = buildOptions p checkMove (ForceStop p) (fmap (makeMove p) <$> diceVals)
     makeMove :: Player -> (Cnt Int, Cnt Int) -> PlayName
     makeMove p (x, y) = Move p (diceToTrack x) (diceToTrack y)
     checkMove' :: Player -> TrackName -> CSM (Legality Issue)
@@ -120,6 +119,11 @@ resolveMarkers pl = do
                 ]
     resolveMarker' _ _ _ = error "resolveMarker' called with newLoc not a TrackSpot!"
 
+clearTempMarkers :: Player -> CSM [CantStopGameNode]
+clearTempMarkers p = fmap (mkMoveNode p . (`returnMarker` TemporaryMarker))
+    <$> findResourceWithin' TemporaryMarker allSpots
+
+
 clearWonTracks :: CSM [CantStopGameNode]
 clearWonTracks = do
   trackWinnerList <- M.toList <$> trackWinners
@@ -137,16 +141,16 @@ clearWonTracks = do
 
 advancePlayer :: CSM [CantStopGameNode]
 advancePlayer = do
-  players <- viewPlayers
-  currentPlayer <- fmap currentPlayer viewCurrentPhase
-  let nextp = unsafeNextCyclic currentPlayer players
-  return [mkActionNode (ChangePhase (CSTurn nextp))]
-  where
-    unsafeNextCyclic :: Player -> Set Player -> Player
-    unsafeNextCyclic player players = go player (S.toList players) (S.toList players)
-      where
-        go p (p' : p'' : ps) allps = if p == p' then p'' else go p (p'' : ps) allps
-        go _ [_] allps = head allps
+  -- players <- viewPlayers
+  -- currentPlayer <- fmap currentPlayer viewCurrentPhase
+  -- let nextp = unsafeNextCyclic currentPlayer players
+  return [mkActionNode AdvanceTurn]
+  -- where
+    -- unsafeNextCyclic :: Player -> Set Player -> Player
+    -- unsafeNextCyclic player players = go player (S.toList players) (S.toList players)
+    --   where
+    --     go p (p' : p'' : ps) allps = if p == p' then p'' else go p (p'' : ps) allps
+    --     go _ [_] allps = head allps
 
 checkWinner :: CSM [CantStopGameNode]
 checkWinner = do
@@ -176,7 +180,7 @@ cantStopPhases (CSTurn p) =
   Phase
     { name = CSTurn p,
     -- TODO: c'mon
-      seedNodes = fmap (flip runGameEff) [rollNodes, chooseMove p]
+      seedNodes = injectGame <$> [rollNodes, chooseMove p]
     }
 
 initGameState :: Int -> CantStopGameState
@@ -186,7 +190,6 @@ initGameState numPlayers =
         { players = players,
           objects = initGameObjects players,
           currentPhase = CSTurn (head (S.toList players)),
-          phases = cantStopPhases,
           turns = fmap playerTurn (NE.fromList . S.toList $ players),
           currentTurn = playerTurn (Player 0),
           nextTurn = \t ts -> fromJust (getNext t ts), -- TODO: how to make this safe?
@@ -194,20 +197,25 @@ initGameState numPlayers =
         }
 
 
-csRunPlay' :: PlayName -> CSM [CantStopGameNode]
-csRunPlay' (Move pl s t) = concat <$> sequence [
+csRunPlay' :: PlayName -> [CSM [CantStopGameNode]]
+csRunPlay' (Move pl s t) = [
     moveMarkerBy pl s 1
     , moveMarkerBy pl t 1
     , stopOrGoNode pl]
-csRunPlay' (Stop pl) = concat <$> sequence [
+csRunPlay' (Stop pl) = [
     resolveMarkers pl
     , clearWonTracks
     , checkWinner
     , advancePlayer]
-csRunPlay' (DontStop p) = rollNodes <> chooseMove p
+csRunPlay' (DontStop p) = [rollNodes, chooseMove p]
+csRunPlay' (ForceStop p) = [
+    clearTempMarkers p
+        , advancePlayer
+                                               ]
 
-csRunPlay :: CantStopGameState -> PlayName -> [CantStopGameNode]
-csRunPlay gs pl = runGameEff gs (csRunPlay' pl)
+csRunPlay = fmap injectGame . csRunPlay'
+-- csRunPlay :: PlayName -> [CantStopGameState -> [CantStopGameNode]]
+-- csRunPlay pl = flip runGameEff <$> csRunPlay' pl
 
 -- Try with Turns instead
 
@@ -215,7 +223,7 @@ playerTurn :: Player -> CantStopTurn
 playerTurn p = Turn p (NE.singleton (CSTurn p))
 
 cantStop :: Int -> CantStopGame
-cantStop numPlayers = Game (initGameState numPlayers) csRunPlay setupNodes
+cantStop numPlayers = Game (initGameState numPlayers) csRunPlay cantStopPhases (pure $ setupNodes numPlayers)
 
 -- -- Game states --
 

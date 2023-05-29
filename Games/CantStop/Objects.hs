@@ -91,7 +91,7 @@ initGameObjects ps =
 
 
 data Issue = ThreeTempMarkersOut | TrackCompleted | AtTop deriving (Eq, Ord, Show, Generic)
-data PlayName = Move Player TrackName TrackName | Stop Player | DontStop Player deriving (Eq, Ord, Show, Generic)
+data PlayName = Move Player TrackName TrackName | Stop Player | DontStop Player | ForceStop Player deriving (Eq, Ord, Show, Generic)
 data CantStopPhaseName = CSTurn Player deriving (Eq, Ord, Show, Generic)
 type CantStopTurn = Turn CantStopPhaseName
 type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource PlayName Issue

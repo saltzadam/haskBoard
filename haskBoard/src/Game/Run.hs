@@ -1,6 +1,6 @@
 module Game.Run where
 import Game.GameE
-import Effectful (Eff, IOE, runEff)
+import Effectful (Eff, IOE, runEff, inject)
 import Game.GameNode
 import Log
 import Effectful.Crypto.RNG
@@ -21,19 +21,20 @@ runGameChannels :: (Ord l, Ord r, Ord cn, Enum cn, Bounded cn, Show ph, Show cn,
  Show l, Show r, Show pl, Show i, Eq ph, Finitary cn) =>
     Player 
     -> GameState l cn r ph pl i
-    -> (PlayRunner l cn r ph pl i, Int -> [GameNode l cn r ph pl i])
+    -> (PlayRunner l cn r ph pl i, Int -> [GameNode l cn r ph pl i], ph -> Phase ph l cn r pl i)
     -> Chan
          (Either
             (GameStateView l cn r ph)
             (Options pl i))
     -> Chan pl
     -> IO (GameState l cn r ph pl i)
-runGameChannels p gameState gameRun chanGameToClient chanClientToGame = do
+runGameChannels p gameState (playRunner, setup, phases) chanGameToClient chanClientToGame = do
     gen <- newCryptoRNGState
-    withFile "log" WriteMode $ \handle -> runEff
+    withFile "log" WriteMode $ \handle -> 
+      runEff
         . evalState gameState
-        . runReader gameRun
         . runCryptoRNG gen
+        . runReader (playRunner, setup, phases)
         . broadcastHandlerDummy
         . chooseChan (ViewAs p) chanGameToClient chanClientToGame
         . logToFile DebugLevel handle

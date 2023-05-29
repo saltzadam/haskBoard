@@ -25,7 +25,7 @@ tempMarkAttr = attrName "tempMark"
 
 theAttrMap :: AttrMap
 theAttrMap = attrMap (V.brightRed `on` V.black)
-    [ (player0Attr, V.red `on` V.black),
+    [ (player0Attr, V.cyan `on` V.black),
       (player1Attr, V.blue `on` V.black),
       (player2Attr, V.green `on` V.black),
       (player3Attr, V.yellow `on` V.black),
@@ -43,6 +43,7 @@ printPlay (Move _ track track') = if track == track'
                                   else T.pack $ "Move on " ++ show track ++ " and " ++ show track'
 printPlay (Stop _) = T.pack "Stop"
 printPlay (DontStop _) = T.pack "Don't stop"
+printPlay (ForceStop _) = T.pack "owned"
 
 printOptions :: CantStopOptions -> Text
 printOptions (Options legal' _ p) = let

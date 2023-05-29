@@ -7,7 +7,7 @@ import Data.Map (Map)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Foldable as F
-import Util (graphM)
+import Util (graphM, buildSafeNonempty)
 import Game.Player (Player)
 
 -- A move may have lots of illegality.
@@ -23,9 +23,6 @@ instance Semigroup (Legality i) where
 
 instance Monoid (Legality i) where
     mempty = Legal
-
-buildSafeNonempty :: [a] -> a -> NonEmpty a
-buildSafeNonempty xs def = if null xs then def :| [] else NE.fromList xs
 
 data Options pl i = Options {legal :: NonEmpty pl,
                              illegal :: Map pl (Legality i),

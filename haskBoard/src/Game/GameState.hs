@@ -13,6 +13,7 @@ import Data.Set (Set)
 import Game.Location
 import Game.GameNode
 import GHC.Base (NonEmpty)
+import Control.Lens.Tuple
 import Game.Visibility ( VisibilityMap (..), VisibilityMap, runVis, VisData (..) )
 import Control.Lens
     ( makeFields,
@@ -24,7 +25,7 @@ import Control.Lens
       to, lens, Getter, (^.) )
 import Count (Cnt)
 import FinitaryMap (ftAt)
-import Effectful (DispatchOf, Dispatch (..), Effect, Eff, (:>))
+import Effectful (DispatchOf, Dispatch (..), Effect, Eff, (:>), inject, Subset)
 import Effectful.Dispatch.Dynamic (send, interpret)
 import qualified Effectful.State.Static.Shared as State
 import Data.Finitary (Finitary)
@@ -35,20 +36,26 @@ data Turn phaseName = Turn {owner :: Player,
 
 data Phase phaseName l cn r playName i = Phase
   { name :: phaseName,
-    seedNodes :: [GameState l cn r phaseName playName i -> [GameNode l cn r phaseName playName i]]
+    seedNodes :: [Eff '[GameInteract l cn r phaseName playName i] [GameNode l cn r phaseName playName i]]
   }
   deriving (Generic)
 
-getPhaseNodes :: Phase phaseName l cn r playName i -> [GameState l cn r phaseName playName i -> [GameNode l cn r phaseName playName i]]
-getPhaseNodes (Phase _ seedNodes') = seedNodes'
+-- injectPhases :: (Subset es' es) => Phase ph l cn r pl i es' -> Phase ph l cn r pl i es
+-- injectPhases (Phase n seedNodes) = Phase n (inject <$> seedNodes)
 
-type PlayRunner l cn r ph pl i = GameState l cn r ph pl i -> pl ->  [GameNode l cn r ph pl i]
+getPhaseNodes :: (GameInteract l cn r phaseName playName i :> es) => Phase phaseName l cn r playName i -> [Eff es [GameNode l cn r phaseName playName i]]
+getPhaseNodes (Phase _ seedNodes') = fmap inject seedNodes'
+
+-- type PlayRunner l cn r ph pl i =  pl -> [GameState l cn r ph pl i -> GameNode l cn r ph pl i]
+type PlayRunner l cn r ph pl i = pl -> [Eff '[GameInteract l cn r ph pl i] [GameNode l cn r ph pl i]]
+
+-- injectPlayRunner :: (State.State (GameState l cn r phaseName playName i) :> es) => PlayRunner l cn r ph pl i' -> PlayRunner l cn r ph pl i
+-- injectPlayRunner playRunner = fmap inject . playRunner
 
 data GameState l cn r ph pl i = GameState
   { players :: Set Player,
     objects :: GameObjects l cn r,
     currentPhase :: ph,
-    phases :: ph -> Phase ph l cn r pl i,
     turns :: NonEmpty (Turn ph),
     currentTurn :: Turn ph,
     nextTurn :: Turn ph -> NonEmpty (Turn ph) -> Turn ph,
@@ -63,7 +70,7 @@ data GameStateShow l cn r ph = GameStateShow
     } deriving (Generic, Show)
 
 projectShow :: GameState l cn r ph pl i -> GameStateShow l cn r ph
-projectShow (GameState pl obj curr _ _ _ _ _) = GameStateShow pl obj curr
+projectShow (GameState pl obj curr _ _ _ _) = GameStateShow pl obj curr
 
 instance (Finitary l, Finitary cn, Show l, Show r, Show cn, Show ph) => Show (GameState l cn r ph pl i) where
     show = show . projectShow
@@ -71,13 +78,10 @@ instance (Finitary l, Finitary cn, Show l, Show r, Show cn, Show ph) => Show (Ga
 data Game l cn r ph pl i = Game
   { gameState :: GameState l cn r ph pl i,
     playRunner :: PlayRunner l cn r ph pl i,
+    phases :: ph -> Phase ph l cn r pl i,
     setup :: Int -> [GameNode l cn r ph pl i]
   }
   deriving (Generic)
-
-makeFields ''GameState
-makeFields ''Game
-makeFields ''Phase
 
 
 counter :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Counter
@@ -90,9 +94,13 @@ location :: Eq l => l -> Lens' (GameState l cn r ph pl i) (LocationShape r)
 location l = #objects . #locations . ftAt l
 
 type GameInteract l cn r ph pl i = State.State (GameState l cn r ph pl i)
-type GameRun l cn r ph pl i = Reader.Reader (PlayRunner l cn r ph pl i, Int -> [GameNode l cn r ph pl i])
+type GameRun l cn r ph pl i = Reader.Reader (PlayRunner l cn r ph pl i, Int -> [GameNode l cn r ph pl i], ph -> Phase ph l cn r pl i)
 
 type ObserveGame l cn r ph pl i es = GameInteract l cn r ph pl i :> es
+
+makeFields ''GameState
+makeFields ''Game
+makeFields ''Phase
 
 
 getsGameState :: (GameInteract l cn r ph pl i :> es) =>  (GameState l cn r ph pl i -> b) -> Eff es b
@@ -104,13 +112,15 @@ getGameState = getsGameState id
 useGameState :: (GameInteract l cn r ph pl i :> es) => Getting b (GameState l cn r ph pl i) b -> Eff es b
 useGameState o = getsGameState (view o)
 
-
-getRunner :: (GameRun l cn r ph pl i :> es) => Eff es (GameState l cn r ph pl i
-                  -> pl -> [GameNode l cn r ph pl i])
-getRunner = fst <$> Reader.ask 
+getRunner :: (GameRun l cn r ph pl i :> es) => Eff es (PlayRunner l cn r ph pl i)
+getRunner = view _1 <$> Reader.ask 
 
 getSetup :: (GameRun l cn r ph pl i :> es) => Eff es (Int -> [GameNode l cn r ph pl i])
-getSetup = snd <$> Reader.ask
+getSetup = view _2 <$> Reader.ask
+
+getPhases :: (GameRun l cn r ph pl i :> es) => Eff es (ph -> Phase ph l cn r pl i)
+getPhases = view _3 <$> Reader.ask
+
 
 modifyingGame :: (GameInteract l cn r ph pl i :> es) => ASetter (GameState l cn r ph pl i) (GameState l cn r ph pl i) a b -> (a -> b) -> Eff es ()
 modifyingGame o = State.modify . over o

@@ -32,6 +32,7 @@ import Safe (readMay)
 import Control.Monad.Trans (liftIO)
 import qualified Data.Foldable as F
 import Game.GameState (GameState)
+import qualified Debug.Trace as Debug
 
 
 type Name = ()
@@ -116,6 +117,7 @@ handleEvent e =  do
                                 Just opt -> do
                                     chan <- use #brickToGameChan
                                     liftIO $ writeBChan chan opt
+                                    assign #tuiMode ShowState
                 _ -> return ()
           _ -> return ()
 

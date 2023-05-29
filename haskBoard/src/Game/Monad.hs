@@ -3,7 +3,7 @@
 {-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 {-# LANGUAGE RankNTypes #-}
 module Game.Monad where
-import Game.GameState (Game (..), GameState(..), ObserveGame, GameInteract, getGameState)
+import Game.GameState (Game (..), GameState(..), ObserveGame, GameInteract, getGameState, GameRun)
 import GHC.Generics (Generic)
 import Control.Applicative (Applicative(..))
 import Control.Lens (view, Getting)
@@ -11,11 +11,13 @@ import Game.Visibility (VisibilityMap(..), VisibilityType (..), VisData)
 import Game.Player (Player)
 import Data.Maybe (fromJust)
 import Control.Monad.State
-import Effectful (Eff, runPureEff)
+import Effectful (Eff, runPureEff, (:>), inject)
 import Effectful.Reader.Static (Reader(..), ask)
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import qualified Effectful.Reader.Static as EffR
 import qualified Effectful.State.Static.Shared as EffS
+import qualified Effectful.State.Static.Shared as State
+import Util (graph)
 
 
 -- newtype GameM l cn r ph pl i a = GameM {unGame :: State (GameState l cn r ph pl i) a}
@@ -118,3 +120,8 @@ runGameEff' gs viewer (GameEff (MaybeT uneff)) = runPureEff . EffR.runReader vie
 
 runGameEff :: GameState l cn r ph pl i -> GameEff l cn r ph pl i a -> a
 runGameEff gs eff = fromJust (runGameEff' gs ViewFull eff)
+
+injectGame :: (GameInteract l cn r ph pl i :> es) => GameEff l cn r ph pl i a -> Eff es a
+injectGame gameEff = let
+    f g = (runGameEff g gameEff, g)
+                      in inject $ State.state f
