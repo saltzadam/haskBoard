@@ -1,13 +1,6 @@
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use void" #-}
-{-# HLINT ignore "Use newtype instead of data" #-}
 
 module Log
     where
@@ -17,6 +10,7 @@ import qualified Data.Text.IO as TIO
 import GHC.IO.Handle (Handle)
 import Effectful.Dispatch.Dynamic (interpret, send)
 import GHC.Generics (Generic)
+import Control.Monad (void)
 
 
 data LogLevel = DebugLevel | ComponentLevel | GameLevel deriving (Eq, Ord, Generic)
@@ -35,19 +29,19 @@ logThis :: (Log2 :> es) => LogLevel -> Text -> Eff es (LogPayload LogLevel)
 logThis level text = send (LogThis level text)
 
 logDebug :: (Log2 :> es) => Text -> Eff es ()
-logDebug text = logThis DebugLevel text >> return ()
+logDebug text = void $ logThis DebugLevel text
 
 logComponent :: (Log2 :> es) => Text -> Eff es ()
-logComponent text = logThis ComponentLevel text >> return ()
+logComponent text = void (logThis ComponentLevel text)
 
 logGame :: (Log2 :> es) => Text -> Eff es ()
-logGame text = logThis GameLevel text >> return ()
+logGame text = void (logThis GameLevel text)
 
 
 
 
 
-logStdOut :: (IOE :> es) => 
+logStdOut :: (IOE :> es) =>
     LogLevel ->
     Eff (Log2 : es) a ->
     Eff es a

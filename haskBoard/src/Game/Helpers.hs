@@ -4,78 +4,87 @@ module Game.Helpers
 import Game.Player
 import Game.GameNode
 import Count
-import Game.Location (howMany', howManyF, has', LocationShape, Counter, listAllShapeF)
-import Game.Monad (  GameEff(..), askEff, hoistGameEff, ViewerType (..))
+import Game.Location (howMany',has', LocationShape, Counter, listAllShapeF)
+import Game.Monad (  GameEff(..), askEff, hoistGameEff, LookerType(..))
 import Util (graphM)
-import Game.Visibility (VisibilityType(..), VisData (..), VisibilityMap (..), runVis)
-import Control.Lens (view, mapping, Getter, to, (^.), mapped, (^..), (^?), pre)
-import Control.Monad.Trans (MonadTrans(..))
+import Game.Visibility (VisData (..), VisibilityMap (..), runVis)
+import Control.Lens (view, Getter, to, (^.))
 import FinitaryMap (ftAt)
 import Data.Set (Set)
-import Control.Monad.Trans.Maybe (MaybeT(..))
-import Control.Monad.Morph (hoist)
 import Game.GameState
+import Game.View (GameStateView)
 
-viewPlayers :: GameEff l cn r ph pl i (Set Player)
-viewPlayers = view  #players . fst <$> askEff
+-- look for gameeff
 
-viewLocation :: Eq l => l -> GameEff l cn r ph pl i (LocationShape r)
-viewLocation l = do
-    (g,viewer) <- askEff
+lookPlayers :: GameEff l cn r ph pl i (Set Player)
+lookPlayers = view #players . fst <$> askEff
+
+lookLocation :: Eq l => l -> GameEff l cn r ph pl i (LocationShape r)
+lookLocation l = do
+    (g,looker) <- askEff
     let VisibilityMap vis = g ^. #visibility
     let value = g ^.  #objects . #locations . ftAt l 
-    case viewer of
-      ViewAs p -> hoistGameEff $ runVis (vis p (VisLocation l))  value
-      ViewFull -> hoistGameEff . Just $ value
+    case looker of
+      LookAs p -> hoistGameEff $ runVis (vis p (VisLocation l))  value
+      LookFull -> hoistGameEff . Just $ value
 
-viewCounter :: (Eq cn) => cn -> GameEff l cn r ph pl i Counter
-viewCounter c = do
-    (g,viewer) <- askEff
+lookCounter :: (Eq cn) => cn -> GameEff l cn r ph pl i Counter
+lookCounter c = do
+    (g,looker) <- askEff
     let VisibilityMap vis = g ^. #visibility
     let value = g ^.  #objects . #counters . ftAt c 
-    case viewer of
-      ViewAs p -> hoistGameEff $ runVis (vis p (VisCounter c))  value
-      ViewFull -> hoistGameEff . Just $ value
+    case looker of
+      LookAs p -> hoistGameEff $ runVis (vis p (VisCounter c))  value
+      LookFull -> hoistGameEff . Just $ value
 
-viewCounterBounds :: (Eq cn) => cn -> GameEff l cn r ph pl i (Cnt Int, Cnt Int)
-viewCounterBounds cn = fmap (view #bounds) (viewCounter cn) 
+lookCounterBounds :: (Eq cn) => cn -> GameEff l cn r ph pl i (Cnt Int, Cnt Int)
+lookCounterBounds cn = fmap (view #bounds) (lookCounter cn) 
 
-viewCounterVal :: Eq cn => cn -> GameEff l cn r ph pl i (Cnt Int)
-viewCounterVal cn = fmap (view #val) (viewCounter cn)
+lookCounterVal :: Eq cn => cn -> GameEff l cn r ph pl i (Cnt Int)
+lookCounterVal cn = fmap (view #val) (lookCounter cn)
 
--- viewCounterValC :: Eq cn => cn -> GameStateViewC l cn r ph pl i -> Maybe (Cnt Int)
--- viewCounterValC cn = fmap (view #val) . view (#objectsViewC . #countersViewC . ftAt cn)
+lookCurrentPhase :: GameEff l cn r ph pl i ph
+lookCurrentPhase = view #currentPhase . fst <$> askEff
 
-viewCurrentPhase :: GameEff l cn r ph pl i ph
-viewCurrentPhase = view #currentPhase . fst <$> askEff
+-- view for GameView
+viewLocation :: Eq l => GameStateView l cn r ph -> l -> Maybe (LocationShape r)
+viewLocation gsv l = gsv ^. (#objectsView . #locationsView . ftAt l)
+
+viewCounterVal :: Eq cn => GameStateView l cn r ph -> cn -> Maybe (Cnt Int)
+viewCounterVal gsv cn = fmap (view #val) $ gsv ^. (#objectsView . #countersView . ftAt cn)
+
+viewCurrentPlayer ::  GameStateView l cn r ph -> Player
+viewCurrentPlayer gsv = gsv ^. #currPlayer
+
+-- viewCounterBounds
 
 -- lenses 
-lookLoc :: Eq l => Player -> l -> Getter (GameState l cn r ph pl i) (Maybe (LocationShape r))
-lookLoc p l = to $ \gs -> let
+useLoc :: Eq l => Player -> l -> Getter (GameState l cn r ph pl i) (Maybe (LocationShape r))
+useLoc p l = to $ \gs -> let
             VisibilityMap vis = gs ^. #visibility
             in
             runVis  (vis p (VisLocation l)) (gs ^. #objects . #locations . ftAt l)
 
-lookCounterVal ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe (Cnt Int))
-lookCounterVal p c = to $ \gs -> let
+useCounterVal ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe (Cnt Int))
+useCounterVal p c = to $ \gs -> let
             VisibilityMap vis = gs ^. #visibility
             in
             runVis (vis p (VisCounter c)) (gs ^. #objects . #counters . ftAt c . #val)
 
-lookCounterBounds ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe (Cnt Int, Cnt Int))
-lookCounterBounds p c = to $ \gs -> let
+useCounterBounds ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe (Cnt Int, Cnt Int))
+useCounterBounds p c = to $ \gs -> let
             VisibilityMap vis = gs ^. #visibility
             in
             runVis (vis p (VisCounter c)) (gs ^. #objects . #counters . ftAt c . #bounds)
 
-lookCurrentPhase :: Player ->  Getter (GameState l cn r ph pl i) (Maybe ph)
-lookCurrentPhase p = to $ \gs -> let
+useCurrentPhase :: Player ->  Getter (GameState l cn r ph pl i) (Maybe ph)
+useCurrentPhase p = to $ \gs -> let
             VisibilityMap vis = gs ^. #visibility
             in
             runVis (vis p VisCurrentPhase) (gs ^. #currentPhase)
 
-lookTurnOwner :: Player -> Getter (GameState l cn r ph pl i) (Maybe Player)
-lookTurnOwner p = to $ \gs -> let
+useTurnOwner :: Player -> Getter (GameState l cn r ph pl i) (Maybe Player)
+useTurnOwner p = to $ \gs -> let
             VisibilityMap vis = gs ^. #visibility
             in
             runVis (vis p VisCurrentPhase) (gs ^. #currentTurn . #owner)
@@ -87,12 +96,12 @@ lookTurnOwner p = to $ \gs -> let
 -- -- listAllF n locs = listAllShapeF (locs !!! n)
 
 listAllFM :: (Ord r, Eq l) => l -> (r -> Bool) -> GameEff l cn r ph pl i [r]
-listAllFM l filt = flip listAllShapeF filt <$> viewLocation l
+listAllFM l filt = flip listAllShapeF filt <$> lookLocation l
 
 
 findResourceWithin' ::  (Ord r, Eq l) =>  r -> [l] -> GameEff l cn r ph pl i [l]
 findResourceWithin' r locationNames = do
-  shapes <- traverse (graphM viewLocation) locationNames
+  shapes <- traverse (graphM lookLocation) locationNames
   let whoHasIt = filter ((`has'` r) . snd) shapes
   return (fmap fst whoHasIt)
 
@@ -100,7 +109,18 @@ mkMoveNode :: Player -> GameAction l cn r ph -> GameNode l cn r ph pl i
 mkMoveNode p act = GameNode (Left act) (Just p)
 
 howManyAt :: (Ord r, Eq l) => l -> r -> GameEff l cn r ph pl i (Cnt Int)
-howManyAt l r = flip howMany' r <$> viewLocation l
+howManyAt l r = flip howMany' r <$> lookLocation l
+
+howManyAtF :: (Ord r, Eq l) => l -> r -> (Cnt Int -> Bool) -> GameEff l cn r ph pl i Bool
+howManyAtF l r pred = pred <$> howManyAt l r
+
+howManyWithin ::  (Ord r, Eq l) => [l] -> r -> GameEff l cn r ph pl i (Cnt Int)
+howManyWithin ls r = sum ((`howManyAt` r) <$> ls)
+
+howManyWithinF ::  (Ord r, Eq l) => l -> [r] -> (Cnt Int -> Bool) -> GameEff l cn r ph pl i Bool
+howManyWithinF l rs pred = pred <$> sum (howManyAt l <$> rs)
+
+
 
 has ::  (Ord r, Eq l) =>  l -> r -> GameEff l cn r ph pl i Bool
 has l r = (> 0) <$> howManyAt l r

@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module Objects 
     where
 import GHC.Generics (Generic)
@@ -16,6 +17,7 @@ import Game.Monad
 import Game.View (GameStateView)
 import Game.Options (Options)
 import Data.Finitary (Finitary, inhabitants)
+import qualified Data.List.NonEmpty as NE
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, Finitary)
@@ -53,7 +55,6 @@ data CantStopLocation
 maxSpot :: TrackName -> CantStopLocation
 maxSpot s = TrackSpot s (maxSlot s)
 
--- -- TODO: what value are we getting from NonEmpty
 trackSlots :: TrackName -> [CantStopLocation]
 trackSlots track = TrackSpot track <$> [HOne .. maxSlot track]
 
@@ -76,7 +77,7 @@ initLocations' players (PlayerStuff player)
     | player `S.member` players = Pile (M.singleton (PlayerMarker player) 11)
     | otherwise = Dummy
 
-initLocations :: Set Player -> CantStopLocations -- FTMap CantStopLocation (LocationShape CantStopResource)
+initLocations :: Set Player -> CantStopLocations 
 initLocations ps = FTMap (initLocations' ps)
 
 initDice' :: CantStopCounterName -> Counter
@@ -90,23 +91,41 @@ initGameObjects ps =
     }
 
 
-data Issue = ThreeTempMarkersOut | TrackCompleted | AtTop deriving (Eq, Ord, Show, Generic)
-data PlayName = Move Player TrackName TrackName | Stop Player | DontStop Player | ForceStop Player deriving (Eq, Ord, Show, Generic)
+data CantStopIssue = NotEnoughMarkers 
+                   | TrackCompleted 
+                   | AtTop 
+                   | CanMoveTwo
+                   deriving (Eq, Ord, Show, Generic)
+
+data CantStopPlayName = TwoMove Player TrackName TrackName 
+                      | OneMove Player TrackName
+                      | Stop Player 
+                      | DontStop Player 
+                      | ForceStop Player deriving (Show, Generic)
+
+instance Eq CantStopPlayName where
+    (TwoMove p s t) == (TwoMove p' s' t') = p == p' && ((s == s' && t == t') || (s == t' && t == s'))
+    (OneMove p s) == (OneMove p' s') = p == p' && s == s'
+    (Stop p) == (Stop p') = p == p'
+    (DontStop p) == (DontStop p') = p == p'
+    (ForceStop p) == (ForceStop p') = p == p'
+    _ == _ = False
+
+deriving instance Ord CantStopPlayName
+
 data CantStopPhaseName = CSTurn Player deriving (Eq, Ord, Show, Generic)
 type CantStopTurn = Turn CantStopPhaseName
-type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource PlayName Issue
+type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource CantStopPlayName CantStopIssue
 type CantStopAction = GameAction CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
-type CantStopGameState = GameState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
+type CantStopGameState = GameState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
-type CantStopOptions = Options PlayName Issue 
-type CantStopGame = Game  CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
-type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue
-type CSM es = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName PlayName Issue es
+type CantStopOptions = Options CantStopPlayName CantStopIssue 
+type CantStopGame = Game CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
+type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
+type CSM es = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue es
 
 type CSView = GameStateView CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 
-
-currentPlayer :: CantStopPhaseName ->Player
-currentPlayer (CSTurn p) = p
-
+playerTurn :: Player -> CantStopTurn
+playerTurn p = Turn p (NE.singleton (CSTurn p))
 

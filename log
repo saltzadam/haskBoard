@@ -1,0 +1,131 @@
+Rolled DieOne to Cnt 3
+Rolled DieTwo to Cnt 4
+Rolled DieThree to Cnt 4
+Rolled DieFour to Cnt 5
+Choosing from [TwoMove (Player {num = 1}) Seven Nine,TwoMove (Player {num = 1}) Eight Eight]
+Cannot choose: [(OneMove (Player {num = 1}) Seven,Illegal [CanMoveTwo]),(OneMove (Player {num = 1}) Eight,Illegal [CanMoveTwo]),(OneMove (Player {num = 1}) Nine,Illegal [CanMoveTwo])]
+Chose TwoMove (Player {num = 1}) Seven Nine
+Transfered TemporaryMarker from BoxTop to TrackSpot Seven HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+ Contents of TrackSpot Seven HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from BoxTop to TrackSpot Nine HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+ Contents of TrackSpot Nine HOne: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 1}),DontStop (Player {num = 1})]
+Cannot choose: []
+Chose DontStop (Player {num = 1})
+Rolled DieOne to Cnt 5
+Rolled DieTwo to Cnt 5
+Rolled DieThree to Cnt 3
+Rolled DieFour to Cnt 6
+Choosing from [TwoMove (Player {num = 1}) Ten Nine,OneMove (Player {num = 1}) Eight,OneMove (Player {num = 1}) Eleven]
+Cannot choose: [(TwoMove (Player {num = 1}) Eight Eleven,Illegal [NotEnoughMarkers]),(TwoMove (Player {num = 1}) Eleven Eight,Illegal [NotEnoughMarkers]),(OneMove (Player {num = 1}) Nine,Illegal [CanMoveTwo]),(OneMove (Player {num = 1}) Ten,Illegal [CanMoveTwo])]
+Chose TwoMove (Player {num = 1}) Ten Nine
+Transfered TemporaryMarker from BoxTop to TrackSpot Ten HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 0)]
+ Contents of TrackSpot Ten HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Nine HOne to TrackSpot Nine HTwo
+ Contents of TrackSpot Nine HOne: fromList []
+ Contents of TrackSpot Nine HTwo: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 1}),DontStop (Player {num = 1})]
+Cannot choose: []
+Chose DontStop (Player {num = 1})
+Rolled DieOne to Cnt 6
+Rolled DieTwo to Cnt 4
+Rolled DieThree to Cnt 1
+Rolled DieFour to Cnt 4
+Choosing from [OneMove (Player {num = 1}) Ten,OneMove (Player {num = 1}) Seven]
+Cannot choose: [(TwoMove (Player {num = 1}) Seven Eight,Illegal [NotEnoughMarkers,NotEnoughMarkers]),(TwoMove (Player {num = 1}) Ten Five,Illegal [NotEnoughMarkers,NotEnoughMarkers]),(OneMove (Player {num = 1}) Five,Illegal [NotEnoughMarkers]),(OneMove (Player {num = 1}) Eight,Illegal [NotEnoughMarkers])]
+Chose OneMove (Player {num = 1}) Ten
+Transfered TemporaryMarker from TrackSpot Ten HOne to TrackSpot Ten HTwo
+ Contents of TrackSpot Ten HOne: fromList []
+ Contents of TrackSpot Ten HTwo: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 1}),DontStop (Player {num = 1})]
+Cannot choose: []
+Chose DontStop (Player {num = 1})
+Rolled DieOne to Cnt 1
+Rolled DieTwo to Cnt 2
+Rolled DieThree to Cnt 2
+Rolled DieFour to Cnt 4
+Choosing from [ForceStop (Player {num = 1})]
+Cannot choose: [(TwoMove (Player {num = 1}) Three Six,Illegal [NotEnoughMarkers,NotEnoughMarkers,NotEnoughMarkers]),(TwoMove (Player {num = 1}) Five Four,Illegal [NotEnoughMarkers,NotEnoughMarkers,NotEnoughMarkers]),(OneMove (Player {num = 1}) Three,Illegal [NotEnoughMarkers]),(OneMove (Player {num = 1}) Four,Illegal [NotEnoughMarkers]),(OneMove (Player {num = 1}) Five,Illegal [NotEnoughMarkers]),(OneMove (Player {num = 1}) Six,Illegal [NotEnoughMarkers])]
+Chose ForceStop (Player {num = 1})
+Transfered TemporaryMarker from TrackSpot Seven HOne to BoxTop
+ Contents of TrackSpot Seven HOne: fromList []
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Nine HTwo to BoxTop
+ Contents of TrackSpot Nine HTwo: fromList []
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+Transfered TemporaryMarker from TrackSpot Ten HTwo to BoxTop
+ Contents of TrackSpot Ten HTwo: fromList []
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 3)]
+Advanced turn
+Rolled DieOne to Cnt 2
+Rolled DieTwo to Cnt 1
+Rolled DieThree to Cnt 1
+Rolled DieFour to Cnt 1
+Choosing from [TwoMove (Player {num = 2}) Three Two]
+Cannot choose: [(OneMove (Player {num = 2}) Two,Illegal [CanMoveTwo]),(OneMove (Player {num = 2}) Three,Illegal [CanMoveTwo])]
+Chose TwoMove (Player {num = 2}) Three Two
+Transfered TemporaryMarker from BoxTop to TrackSpot Three HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+ Contents of TrackSpot Three HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from BoxTop to TrackSpot Two HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+ Contents of TrackSpot Two HOne: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 2}),DontStop (Player {num = 2})]
+Cannot choose: []
+Chose DontStop (Player {num = 2})
+Rolled DieOne to Cnt 2
+Rolled DieTwo to Cnt 5
+Rolled DieThree to Cnt 4
+Rolled DieFour to Cnt 2
+Choosing from [OneMove (Player {num = 2}) Six,OneMove (Player {num = 2}) Seven,OneMove (Player {num = 2}) Four,OneMove (Player {num = 2}) Nine]
+Cannot choose: [(TwoMove (Player {num = 2}) Four Nine,Illegal [NotEnoughMarkers]),(TwoMove (Player {num = 2}) Six Seven,Illegal [NotEnoughMarkers]),(TwoMove (Player {num = 2}) Seven Six,Illegal [NotEnoughMarkers])]
+Chose OneMove (Player {num = 2}) Seven
+Transfered TemporaryMarker from BoxTop to TrackSpot Seven HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 0)]
+ Contents of TrackSpot Seven HOne: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 2}),DontStop (Player {num = 2})]
+Cannot choose: []
+Chose Stop (Player {num = 2})
+Transfered PlayerMarker (Player {num = 2}) from PlayerStuff (Player {num = 2}) to TrackSpot Two HOne
+ Contents of PlayerStuff (Player {num = 2}): fromList [(PlayerMarker (Player {num = 2}),Cnt 10)]
+ Contents of TrackSpot Two HOne: fromList [(PlayerMarker (Player {num = 2}),Cnt 1),(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Two HOne to BoxTop
+ Contents of TrackSpot Two HOne: fromList [(PlayerMarker (Player {num = 2}),Cnt 1)]
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+Transfered PlayerMarker (Player {num = 2}) from PlayerStuff (Player {num = 2}) to TrackSpot Three HOne
+ Contents of PlayerStuff (Player {num = 2}): fromList [(PlayerMarker (Player {num = 2}),Cnt 9)]
+ Contents of TrackSpot Three HOne: fromList [(PlayerMarker (Player {num = 2}),Cnt 1),(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Three HOne to BoxTop
+ Contents of TrackSpot Three HOne: fromList [(PlayerMarker (Player {num = 2}),Cnt 1)]
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+Transfered PlayerMarker (Player {num = 2}) from PlayerStuff (Player {num = 2}) to TrackSpot Seven HOne
+ Contents of PlayerStuff (Player {num = 2}): fromList [(PlayerMarker (Player {num = 2}),Cnt 8)]
+ Contents of TrackSpot Seven HOne: fromList [(PlayerMarker (Player {num = 2}),Cnt 1),(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from TrackSpot Seven HOne to BoxTop
+ Contents of TrackSpot Seven HOne: fromList [(PlayerMarker (Player {num = 2}),Cnt 1)]
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 3)]
+Advanced turn
+Rolled DieOne to Cnt 2
+Rolled DieTwo to Cnt 3
+Rolled DieThree to Cnt 2
+Rolled DieFour to Cnt 6
+Choosing from [TwoMove (Player {num = 3}) Five Eight,TwoMove (Player {num = 3}) Four Nine]
+Cannot choose: [(OneMove (Player {num = 3}) Four,Illegal [CanMoveTwo]),(OneMove (Player {num = 3}) Five,Illegal [CanMoveTwo]),(OneMove (Player {num = 3}) Eight,Illegal [CanMoveTwo]),(OneMove (Player {num = 3}) Nine,Illegal [CanMoveTwo])]
+Chose TwoMove (Player {num = 3}) Five Eight
+Transfered TemporaryMarker from BoxTop to TrackSpot Five HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 2)]
+ Contents of TrackSpot Five HOne: fromList [(TemporaryMarker,Cnt 1)]
+Transfered TemporaryMarker from BoxTop to TrackSpot Eight HOne
+ Contents of BoxTop: fromList [(TemporaryMarker,Cnt 1)]
+ Contents of TrackSpot Eight HOne: fromList [(TemporaryMarker,Cnt 1)]
+Choosing from [Stop (Player {num = 3}),DontStop (Player {num = 3})]
+Cannot choose: []
+Chose DontStop (Player {num = 3})
+Rolled DieOne to Cnt 3
+Rolled DieTwo to Cnt 4
+Rolled DieThree to Cnt 1
+Rolled DieFour to Cnt 1
+Choosing from [OneMove (Player {num = 3}) Two,OneMove (Player {num = 3}) Seven,T

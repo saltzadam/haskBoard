@@ -1,8 +1,18 @@
-module Draw where
+module Draw
+    (player0Attr
+    , player1Attr
+    , player2Attr
+    , player3Attr
+    , theAttrMap
+    , playerToColor
+    , printOptions
+    , tempMarkAttr
+    )
+where
 import Brick
 import qualified Graphics.Vty as V
 import Game.Player (Player (..))
-import Objects (CantStopOptions, PlayName (..))
+import Objects (CantStopOptions, CantStopPlayName (..))
 import Data.Text (Text)
 import Game.Options (Options(..))
 import qualified Data.List.NonEmpty as NE
@@ -37,18 +47,19 @@ playerToColor :: Player -> AttrName
 playerToColor (Player i) = playerAttrs !! fromIntegral i
 
 
-printPlay :: PlayName -> Text
-printPlay (Move _ track track') = if track == track'
-                                  then T.pack $ "Move on " ++ show track
+printPlay :: CantStopPlayName -> Text
+printPlay (TwoMove _ track track') = if track == track'
+                                  then T.pack $ "Move on " ++ show track ++ " (2)"
                                   else T.pack $ "Move on " ++ show track ++ " and " ++ show track'
 printPlay (Stop _) = T.pack "Stop"
 printPlay (DontStop _) = T.pack "Don't stop"
 printPlay (ForceStop _) = T.pack "owned"
+printPlay (OneMove _ track) = T.pack $ "Move on " ++ show track
 
 printOptions :: CantStopOptions -> Text
-printOptions (Options legal' _ p) = let
+printOptions (Options legal' _ _) = let
     legal = NE.toList legal'
-    printEnumeratedPlay :: (Int, PlayName) -> Text
+    printEnumeratedPlay :: (Int, CantStopPlayName) -> Text
     printEnumeratedPlay (i, play) = T.pack (show i ++ ") ") <> printPlay play
     in
     T.unlines . fmap printEnumeratedPlay $ zip [1..] legal

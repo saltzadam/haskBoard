@@ -2,7 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Main where
-import CantStop (initGameState, csRunPlay, csVisibility, cantStop)
+import CantStop (initGameState, csRunPlay, cantStop)
 import Brick (defaultMain, customMain)
 import Tui (app, drawBoardView, BEvent (..), TUIState (..), TUIMode (..))
 import Brick.Main (simpleMain)
@@ -14,16 +14,18 @@ import Control.Concurrent (forkIO, newChan, readChan, writeChan)
 import Control.Monad (forever, void)
 import qualified Graphics.Vty as V
 import GHC.Conc (threadDelay)
-import Objects (CantStopGameState, CantStopLocation, CantStopCounterName, CantStopResource, CantStopPhaseName, PlayName, Issue, CSView, CantStopOptions)
+import Objects (CantStopGameState, CantStopLocation, CantStopCounterName, CantStopResource, CantStopPhaseName, CantStopPlayName, CantStopIssue, CSView, CantStopOptions, CantStopLocations, CantStopCounters)
 import Effectful (Eff, (:>), IOE, liftIO)
 import Effectful.Dispatch.Dynamic (interpret)
 import Game.Run (runGameChannels)
 import qualified Debug.Trace as Debug
 import Control.Lens ((^.))
+import Game.Choose (GameToInterfacePayload (..))
 
-parsePayload :: Either CSView CantStopOptions -> BEvent
-parsePayload (Left csv) = Receive csv
-parsePayload (Right opts) = Request opts
+parsePayload :: GameToInterfacePayload CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue -> BEvent
+parsePayload (SendState csv) = Receive csv
+parsePayload (SendOptions opts) = Request opts
+parsePayload (SendWinners winners) = AnnounceWinner winners
 
 main :: IO ()
 main = do
@@ -50,7 +52,7 @@ main = do
     forkIO $ forever $
         runGameChannels (Player 0) 
             (cantStop 3 ^. #gameState) 
-            (cantStop 3 ^. #playRunner,  cantStop 3 ^. #setup, cantStop 3 ^. #phases)
+            (cantStop 3 ^. #playRunner,  cantStop 3 ^. #setup, cantStop 3 ^. #phases, cantStop 3 ^. #score)
             gameToBrickChan 
             brickToGameChan
     let initTUI = TUIState gsv (Player 0) Nothing ShowState brickToGameBChan

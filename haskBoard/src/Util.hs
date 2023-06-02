@@ -6,6 +6,8 @@ import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty(..))
+import Data.Bifunctor (Bifunctor(..))
+import Control.Applicative (Applicative(..))
 
 graph :: (t -> b) -> t -> (t, b)
 graph f a = (a, f a)
@@ -31,6 +33,11 @@ getNext _ (_ :| []) = Nothing
 buildSafeNonempty :: [a] -> a -> NonEmpty a
 buildSafeNonempty xs def = if null xs then def :| [] else NE.fromList xs
 
+splitOnFirst :: (a -> Bool) -> [a] -> ([a],[a])
+splitOnFirst pred  (a:as) = if pred a
+                            then ([a], as)
+                            else first (a:) $ splitOnFirst pred as
+splitOnFirst _ [] = ([],[])
 
 getNextCyclic :: Eq a => a -> NE.NonEmpty a -> Maybe a
 getNextCyclic x ys = case getNext x ys of
@@ -70,3 +77,6 @@ ifM mbool mtrue mfalse = do
     if boolResult
     then mtrue
     else mfalse
+
+andA :: Applicative m => m Bool -> m Bool -> m Bool
+andA = liftA2 (&&)

@@ -1,10 +1,4 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DuplicateRecordFields #-}
--- {-# LANGUAGE NoFieldSelectors #-}
-{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FlexibleContexts #-}
 
 module Game.Location
     (LocationShape(..),
@@ -19,7 +13,7 @@ module Game.Location
      listAllF,
      listAllShape,
      listAllShapeF,
-     peek,
+     -- peek,
      Counter(..),
      Counters,
      makeCounter,
@@ -28,7 +22,7 @@ module Game.Location
      increment,
      decrement,
      GameObjects(..),
-     howMany,
+     howMany, -- TODO: needed?
      dummyCounter,
      howManyF
     )

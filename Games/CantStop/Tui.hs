@@ -1,10 +1,9 @@
-{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use head" #-}
-{-# HLINT ignore "Use newtype instead of data" #-}
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 module Tui
     where
 
@@ -17,35 +16,35 @@ import Game.Location (listAllShape)
 import Brick.Widgets.Table (table, Table, rowBorders, columnBorders, surroundingBorder, renderTable, ColumnAlignment (..), setDefaultColAlignment, RowAlignment (..), setDefaultRowAlignment)
 import Brick.Widgets.Core (padTop)
 import Brick.Widgets.Border
-import FinitaryMap ((!!!),ftAt)
+import FinitaryMap (ftAt)
 import Data.Finitary (inhabitants)
 import Dice (renderDice)
 import Brick.Widgets.Center
 import Objects
-import Game.Helpers (viewCounterVal)
 import GHC.Generics (Generic)
 import Draw
 import Control.Lens.TH (makeFields)
-import Game.View (viewGameStateAs')
 import Brick.BChan (BChan, writeBChan)
 import Safe (readMay)
 import Control.Monad.Trans (liftIO)
 import qualified Data.Foldable as F
-import Game.GameState (GameState)
-import qualified Debug.Trace as Debug
+import qualified Data.Text as T
+import Game.Helpers (viewLocation)
 
 
 type Name = ()
 
 data BEvent = Receive CSView
             | Request CantStopOptions
-            | Answer PlayName
+            | Answer CantStopPlayName
+            | AnnounceWinner [Player]
             deriving (Generic)
 
 instance Show BEvent where
     show (Receive g) = "Receive"
     show (Request opts) = "Request (" ++ show opts ++ ")"
     show (Answer play) = "Answer (" ++ show play ++ ")"
+    show (AnnounceWinner winners) = show (head winners) ++ " is the winner!"
 
 data TUIMode options = ShowState | Ask options | EndGame
 
@@ -54,7 +53,7 @@ data TUIState = TUIState { gameStateView :: CSView
                         , viewer :: Player
                         , lastEvent :: Maybe BEvent
                         , tuiMode :: TUIMode CantStopOptions
-                        , brickToGameChan :: BChan PlayName
+                        , brickToGameChan :: BChan CantStopPlayName
                          } deriving (Generic)
 
 makeFields 'TUIState
@@ -77,25 +76,28 @@ drawBoardView gsv = border $ padTop Max . renderTable . boxTable $ [drawVertical
 
 drawDice :: CSView -> Widget Name
 drawDice csv = let
-    maybeDice = fmap (\i -> csv ^. #objectsView . #countersView . ftAt i)  (inhabitants :: [CantStopCounterName])
-    maybeDiceVals' = fmap (view #val) <$> maybeDice
+    maybeDiceVals' = fmap (viewCounterVal csv)  (inhabitants :: [CantStopCounterName])
     maybeDiceVals = [[maybeDiceVals' !! 0, maybeDiceVals' !! 1], [maybeDiceVals' !! 2, maybeDiceVals' !! 3]]
     renderFn =  fmap (padLeftRight 1 . str . renderDice) 
     formatFn =  vLimitPercent 40 . border .  center . renderTable . boxTable
                 in formatFn . fmap renderFn $ maybeDiceVals
 
 drawMenu :: TUIState -> Widget Name
-drawMenu tui = case tui ^. #tuiMode of
-                 Ask options -> border . txtWrap $ printOptions options
-                 ShowState -> border . fill $ ' '
-                 EndGame -> border . txtWrap $ "game over!"
+drawMenu tui = let
+                         p = tui ^. #gameStateView . #currPlayer
+                         playerW = withAttr (playerToColor p) (txtWrap (T.pack . show $ p))
+    in
+    case tui ^. #tuiMode of
+                 Ask options -> border (playerW <=> txtWrap (printOptions options))
+                 ShowState -> border (playerW <=> fill ' ')
+                 EndGame -> border (playerW <=> txtWrap "game over!")
                  
 
 handleEvent :: BrickEvent Name BEvent -> EventM Name TUIState ()
 handleEvent e =  do
     mode <- use #tuiMode
     case mode of
-      EndGame -> case e of 
+      EndGame -> case e of  
           VtyEvent (V.EvKey V.KEsc []) -> halt
           _ -> return ()
       _ -> case e of
@@ -130,14 +132,11 @@ safeIndexList i xs = if i < 0 then Nothing else safeIndexList' i (F.toList xs)
                              safeIndexList' _ [] = Nothing
 
 
--- handleRequest :: CantStopOptions -> _
--- handleRequest opts = 
-
-
 boxTable :: [[Widget n]] -> Table n
 boxTable = rowBorders False. columnBorders False . surroundingBorder False
         . setDefaultRowAlignment AlignBottom . setDefaultColAlignment AlignCenter
         . table
+
 square :: Widget Name
 square = str "\x02588"
 
@@ -147,7 +146,7 @@ drawPiece TemporaryMarker = padTop (Pad 1) . withAttr tempMarkAttr $ square
 
 drawSlot :: CSView -> CantStopLocation -> Widget Name
 drawSlot csv t@(TrackSpot _ _) = let
-    pieces = listAllShape <$> (csv ^. #objectsView . #locationsView . ftAt t)
+    pieces = listAllShape <$> viewLocation csv t
       in case pieces of
         Nothing -> padTop (Pad 1) square
         (Just []) -> padTop (Pad 1) square

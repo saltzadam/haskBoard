@@ -1,18 +1,15 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE RankNTypes #-}
 module Game.View where
-import Data.List.NonEmpty (NonEmpty)
 import Data.Set (Set)
 import Game.Player (Player)
 import Game.Location (GameObjects, LocationShape, Counter)
 import GHC.Generics (Generic)
-import Game.Visibility (VisibilityMap (..), VisibilityType (..), runVis, VisData (..))
+import Game.Visibility (VisibilityMap (..), runVis, VisData (..))
 import FinitaryMap (FTMap (..), (!!!))
 import Control.Lens ((^.), to)
 import Control.Lens.TH (makeFields)
 import Game.GameState
-import Game.Monad (ViewerType(..))
+import Game.Monad (LookerType(..))
 
 data GameStateView l cn r ph = GameStateView
     {   playersView :: Set Player,
@@ -67,7 +64,7 @@ viewGameStateAs' gs@(GameState{players = ps, currentPhase = cphase, currentTurn 
         (buildView' (Just p) gs)
         cphase p'
 
-viewGameStateAs :: GameState l cn r ph pl i -> ViewerType -> GameStateView l cn r ph
-viewGameStateAs gs (ViewAs p) = viewGameStateAs' gs p
-viewGameStateAs gs ViewFull = project gs
+viewGameStateAs :: GameState l cn r ph pl i -> LookerType -> GameStateView l cn r ph
+viewGameStateAs gs (LookAs p) = viewGameStateAs' gs p
+viewGameStateAs gs LookFull = project gs
 

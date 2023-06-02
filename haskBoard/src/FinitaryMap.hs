@@ -1,12 +1,17 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE ConstraintKinds #-}
-module FinitaryMap where
+{-# LANGUAGE RankNTypes #-}
+module FinitaryMap 
+    (FTMap (..)
+    , (!!!)
+    , applyAt
+    , ftAt)
+    where
 import Prelude
 import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)
 import GHC.Base (liftA2)
-import Control.Lens ( lens )
+import Control.Lens ( lens, Lens, view )
 import Data.Finitary (Finitary, inhabitants)
 
 -- FTMap is a "Finitary, total map". That is, it's a total map from a finitary domain. 
@@ -14,13 +19,7 @@ import Data.Finitary (Finitary, inhabitants)
 
 newtype FTMap a b = FTMap {runFn :: a -> b} deriving (Generic, Functor, Applicative)
 
--- type FakeFinitary a = (Enum a, Bounded a)
-
--- inhabitants :: Finitary a => [a]
--- inhabitants = [minBound ..maxBound]
-
 -- From function to Map using the finitary-ness of `a`. 
--- TODO: should this have an Ord constraint?
 reifyFn :: (Finitary a, Eq a) => FTMap a b -> Map a b
 reifyFn (FTMap f) = M.fromAscList [(a, f a) | a <- inhabitants]
 
@@ -61,12 +60,10 @@ instance (Finitary a, Ord a, Ord b) => Ord (FTMap a b) where
 applyAt :: Eq a => a -> (b -> b) -> FTMap a b -> FTMap a b
 applyAt a fn f = FTMap (\x -> if x == a then fn (f !!! x) else f !!! x)
 
--- TODO: is this better with some kind of strictness marking?
--- probably not significant for this use case
--- update (a,b) = applyAt (a, const b)
 update :: Eq a => (a,b) -> FTMap a b  -> FTMap a b
 update (a,b) f = FTMap (\x -> if x == a then b else f !!! x)
 
+-- TODO : wonder if this could be used elsewhere
 filter :: (Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
 filter filt = M.filter filt .  reifyFn
 
@@ -75,8 +72,9 @@ filter filt = M.filter filt .  reifyFn
 ftAt :: (Eq a, Functor f) => a -> (b -> f b) -> FTMap a b -> f (FTMap a b)
 ftAt x = lens (!!! x) (\f y -> update (x,y) f)
 
+--((x -> y) -> a) -> ((x -> y) -> b -> t) -> Lens (x -> y) t a b
+fUpdate :: Eq t => (t -> b) -> (t, b) -> t -> b
+fUpdate f (x,y) = \z -> if z == x then y else f x
 
-
-
-
+funLens x = lens (\f -> f x) (\f y -> fUpdate f (x,y))
 
