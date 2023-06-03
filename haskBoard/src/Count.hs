@@ -13,7 +13,8 @@ Integers with positive infinity to represent containers with finite or infinite 
 module Count
     (Cnt(..),
     histogramF,
-    countF)
+    countF,
+    notInfinite)
     where
 
 import Control.Applicative (liftA2)
@@ -66,6 +67,9 @@ instance Num a => Num (Cnt a) where
 infinityToMax :: Bounded a => Cnt a -> a
 infinityToMax Infinity = maxBound
 infinityToMax (Cnt a) = a
+
+notInfinite :: Bounded a => Cnt a -> a
+notInfinite = infinityToMax
 
 safeTuple :: (Bounded a, Bounded b) => (Cnt a, Cnt b) -> (a,b)
 safeTuple = bimap infinityToMax infinityToMax

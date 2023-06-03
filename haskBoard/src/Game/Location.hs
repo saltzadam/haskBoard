@@ -49,6 +49,8 @@ data LocationShape r = Deck (Seq r) -- Ordered items. Transfers from the topmost
                      | Dummy -- No space
  deriving (Eq, Ord, Show, Generic)
 
+
+
 type Locations names r = FTMap names (LocationShape r)
 
 -- Transfer should not happen unless sender and recipient allow it.

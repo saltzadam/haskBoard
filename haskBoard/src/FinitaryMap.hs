@@ -11,8 +11,8 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)
 import GHC.Base (liftA2)
-import Control.Lens ( lens, Lens, view )
 import Data.Finitary (Finitary, inhabitants)
+import Control.Lens (lens)
 
 -- FTMap is a "Finitary, total map". That is, it's a total map from a finitary domain. 
 -- It's represented as a newtype wrapper on `a -> b` where a is Finitary.
@@ -72,9 +72,4 @@ filter filt = M.filter filt .  reifyFn
 ftAt :: (Eq a, Functor f) => a -> (b -> f b) -> FTMap a b -> f (FTMap a b)
 ftAt x = lens (!!! x) (\f y -> update (x,y) f)
 
---((x -> y) -> a) -> ((x -> y) -> b -> t) -> Lens (x -> y) t a b
-fUpdate :: Eq t => (t -> b) -> (t, b) -> t -> b
-fUpdate f (x,y) = \z -> if z == x then y else f x
-
-funLens x = lens (\f -> f x) (\f y -> fUpdate f (x,y))
 

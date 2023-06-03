@@ -27,7 +27,6 @@ import Game.Visibility (makeInvisible, makeVisible)
 import Log
 import System.Random.Shuffle (shuffle)
 import Game.Player (Player)
-import qualified Debug.Trace as Debug
 -- TODO: (fun) some kind of history besides log
 
 updateGS :: (GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es) => Eff es ()
@@ -128,7 +127,10 @@ act a@EndPhase = do
 act a@AdvanceTurn = do
   logAction2 a ' '
   return (Just PCEndTurn)
-act a@(EndGame _) = logAction2 a ' ' >> return (Just PCEndGame)
+act a@(EndGame winners) = do 
+    announceWinners winners 
+    logAction2 a ' ' 
+    return (Just PCEndGame)
 
 chooseNode :: forall l cn r ph pl i es. (Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show pl, Show i, Show l, Show r, Show cn, Show ph, Log2 :> es, GameRun l cn r ph pl i :> es) => Eff es (Options pl i) -> Eff es [Eff es [GameNode l cn r ph pl i]]
 chooseNode cs = do
@@ -221,4 +223,5 @@ playGameTurns = do
         TEndTurn -> do
                     nextTurn <- useGameState #nextTurn <*> useGameState #currentTurn <*> useGameState #turns
                     assignGameState #currentTurn nextTurn
+
                     playGameTurns'

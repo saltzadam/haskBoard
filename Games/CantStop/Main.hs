@@ -49,12 +49,12 @@ main = do
         payload' <- readBChan brickToGameBChan
         writeChan brickToGameChan payload'
 
-    forkIO $ forever $
-        runGameChannels (Player 0) 
+    forkIO $ 
+        void $ runGameChannels (Player 0) 
             (cantStop 3 ^. #gameState) 
             (cantStop 3 ^. #playRunner,  cantStop 3 ^. #setup, cantStop 3 ^. #phases, cantStop 3 ^. #score)
             gameToBrickChan 
             brickToGameChan
-    let initTUI = TUIState gsv (Player 0) Nothing ShowState brickToGameBChan
+    let initTUI = TUIState gsv (Player 0) Nothing ShowState brickToGameBChan Nothing
     void $ customMain initVty (V.mkVty V.defaultConfig) (Just gameToBrickBChan) app initTUI
 

@@ -7,16 +7,19 @@
 module Tui
     where
 
-import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap, on, AttrName, withAttr, str, attrName, hBox, Padding (..), padLeftRight, (<+>), vLimitPercent, (<=>), fill, halt, put, txt, txtWrap, padBottom)
+import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap, on, AttrName, withAttr, str, attrName, hBox, Padding (..), padLeftRight, (<+>), vLimitPercent, (<=>), fill, halt, put, txt, txtWrap, padBottom, hLimit,strWrap)
+import Brick.Widgets.Center (center)
+import Data.Maybe (fromJust)
 import Brick.Types (Widget)
+import Data.Maybe (listToMaybe)
 import Control.Lens ((^.), view, assign, use, to)
 import Game.Player (Player (..))
 import qualified Graphics.Vty as V
-import Game.Location (listAllShape)
-import Brick.Widgets.Table (table, Table, rowBorders, columnBorders, surroundingBorder, renderTable, ColumnAlignment (..), setDefaultColAlignment, RowAlignment (..), setDefaultRowAlignment)
-import Brick.Widgets.Core (padTop)
+import Data.List (sort)
+import Game.Location (listAllShape, inventory)
+import Brick.Widgets.Table (table, Table, rowBorders, columnBorders, surroundingBorder, renderTable, ColumnAlignment (..), setDefaultColAlignment, RowAlignment (..), setDefaultRowAlignment, alignCenter, alignLeft)
+import Brick.Widgets.Core (padTop, padLeft, padRight)
 import Brick.Widgets.Border
-import FinitaryMap (ftAt)
 import Data.Finitary (inhabitants)
 import Dice (renderDice)
 import Brick.Widgets.Center
@@ -29,7 +32,8 @@ import Safe (readMay)
 import Control.Monad.Trans (liftIO)
 import qualified Data.Foldable as F
 import qualified Data.Text as T
-import Game.Helpers (viewLocation)
+import Game.Helpers
+import Count (notInfinite)
 
 
 type Name = ()
@@ -54,6 +58,7 @@ data TUIState = TUIState { gameStateView :: CSView
                         , lastEvent :: Maybe BEvent
                         , tuiMode :: TUIMode CantStopOptions
                         , brickToGameChan :: BChan CantStopPlayName
+                        , winner :: Maybe Player
                          } deriving (Generic)
 
 makeFields 'TUIState
@@ -67,18 +72,21 @@ app = App {   appDraw = drawUIView
           }
 
 drawUIView :: TUIState -> [Widget Name]
-drawUIView tui = let g = tui ^. #gameStateView in 
+drawUIView tui = let g = tui ^. #gameStateView in
                      [drawBoardView g <+> (drawDice g  <=> drawMenu tui)] -- [ drawBoard g <+> (drawDice g <=> drawMenu g)]
 
 drawBoardView :: CSView -> Widget Name
-drawBoardView gsv = border $ padTop Max . renderTable . boxTable $ [drawVerticalTrack gsv <$> [Two .. Twelve], str . show <$> [2 .. 12] ]
+drawBoardView gsv = border $ padBottom Max . padTop Max . renderTable .  boxTable $ widgets
+    where
+        widgets = [drawVerticalTrack gsv <$> [Two .. Twelve], str . showNum <$> [2 .. 12] ]
+        showNum i = show i ++ "    "
 
 
 drawDice :: CSView -> Widget Name
 drawDice csv = let
     maybeDiceVals' = fmap (viewCounterVal csv)  (inhabitants :: [CantStopCounterName])
     maybeDiceVals = [[maybeDiceVals' !! 0, maybeDiceVals' !! 1], [maybeDiceVals' !! 2, maybeDiceVals' !! 3]]
-    renderFn =  fmap (padLeftRight 1 . str . renderDice) 
+    renderFn =  fmap (padLeftRight 1 . str . renderDice)
     formatFn =  vLimitPercent 40 . border .  center . renderTable . boxTable
                 in formatFn . fmap renderFn $ maybeDiceVals
 
@@ -90,14 +98,14 @@ drawMenu tui = let
     case tui ^. #tuiMode of
                  Ask options -> border (playerW <=> txtWrap (printOptions options))
                  ShowState -> border (playerW <=> fill ' ')
-                 EndGame -> border (playerW <=> txtWrap "game over!")
-                 
+                 EndGame -> border . strWrap $ ("The winner is Player " ++ show (view #num . fromJust $ tui ^. #winner))
+
 
 handleEvent :: BrickEvent Name BEvent -> EventM Name TUIState ()
 handleEvent e =  do
     mode <- use #tuiMode
     case mode of
-      EndGame -> case e of  
+      EndGame -> case e of
           VtyEvent (V.EvKey V.KEsc []) -> halt
           _ -> return ()
       _ -> case e of
@@ -109,8 +117,12 @@ handleEvent e =  do
           AppEvent (Request opts) ->  do
               assign #lastEvent (Just (Request opts))
               assign #tuiMode (Ask opts)
+          AppEvent (AnnounceWinner winners) -> do
+              assign #lastEvent (Just (AnnounceWinner winners))
+              assign #winner (listToMaybe winners)
+              assign #tuiMode EndGame
           VtyEvent (V.EvKey (V.KChar c) []) -> do
-              case mode of 
+              case mode of
                 Ask options ->
                   case (readMay [c] :: Maybe Int) of
                     Nothing -> pure ()
@@ -123,7 +135,7 @@ handleEvent e =  do
                 _ -> return ()
           _ -> return ()
 
- 
+
 
 safeIndexList :: Foldable f => Int -> f a -> Maybe a
 safeIndexList i xs = if i < 0 then Nothing else safeIndexList' i (F.toList xs)
@@ -140,6 +152,9 @@ boxTable = rowBorders False. columnBorders False . surroundingBorder False
 square :: Widget Name
 square = str "\x02588"
 
+emptySpace :: Int -> Widget n
+emptySpace i = str (replicate i ' ')
+
 drawPiece :: CantStopResource -> Widget Name
 drawPiece (PlayerMarker p) = padTop (Pad 1) . withAttr (playerToColor p) $ square
 drawPiece TemporaryMarker = padTop (Pad 1) . withAttr tempMarkAttr $ square
@@ -147,23 +162,21 @@ drawPiece TemporaryMarker = padTop (Pad 1) . withAttr tempMarkAttr $ square
 drawSlot :: CSView -> CantStopLocation -> Widget Name
 drawSlot csv t@(TrackSpot _ _) = let
     pieces = listAllShape <$> viewLocation csv t
+    numPieces = maybe 0 length pieces
       in case pieces of
-        Nothing -> padTop (Pad 1) square
-        (Just []) -> padTop (Pad 1) square
-        Just pieces' -> if null pieces'
-                        then padTop (Pad 1) square
-                        else
-                            hBox (fmap drawPiece pieces')
+        Nothing -> padTop (Pad 1) (square <+> emptySpace 4)
+        (Just []) -> padTop (Pad 1) (square <+> emptySpace 4)
+        Just pieces' -> hBox (fmap drawPiece (sort pieces') ++ [emptySpace (4 - numPieces)])
 drawSlot _ _ = error "can only draw TrackSpot"
 
 
 drawVerticalTrack :: CSView -> TrackName -> Widget Name
 drawVerticalTrack csv track = formatTrack  $
-                            -- case getHintView (T.pack $ show track ++ "Winner") gsv  of
-                            --   Just pText -> let p = read (T.unpack pText) :: Player
-                            --                 in fmap (const (drawPiece (PlayerMarker p))) <$> spots
                             fmap (drawSlot csv) <$> spots
                             where
-                                formatTrack = padLeftRight 3 .  renderTable . boxTable
+                                formatTrack =   renderTable . boxTable
+                                -- padLeft (Pad 3) . padRight (Pad $ 4 - max 1 trackWidth) . padTop (Pad 1) . renderTable . boxTable
                                 spots = reverse [[TrackSpot track i] | i <- [HOne .. maxSlot track]]
+                                -- slotWidth slot = maybe 0 (sum . inventory) (viewLocation csv slot)
+                                -- trackWidth = notInfinite $ maximum [slotWidth (TrackSpot track i) | i <- [HOne .. maxSlot track]]
 

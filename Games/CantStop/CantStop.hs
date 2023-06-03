@@ -24,7 +24,6 @@ import Objects
 import Util (graphMapM, getNextCyclic, graph, splitOnFirst, buildSafeNonempty, andA)
 import Control.Lens (each, traverseOf, (^.), over, both)
 import FinitaryMap (ftAt)
-import qualified Debug.Trace as Debug
 import Data.Semigroup (sconcat)
 import Data.List.NonEmpty (NonEmpty)
 
@@ -128,7 +127,7 @@ resolveMarkers pl = do
             fromMaybe (PlayerStuff player)
               . find (\(TrackSpot track' _) -> track' == track)
               $ playerMarkers
-       in Debug.traceShow currentPosition $ Debug.traceShow newLoc $ mkMoveNode player
+       in  mkMoveNode player
             <$> [ MkTransfer currentPosition newLoc (PlayerMarker player),
                   returnMarker newLoc TemporaryMarker
                 ]
