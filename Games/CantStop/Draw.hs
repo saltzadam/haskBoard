@@ -12,7 +12,7 @@ where
 import Brick
 import qualified Graphics.Vty as V
 import Game.Player (Player (..))
-import Objects (CantStopOptions, CantStopPlayName (..))
+import Objects (CantStopOptions, CantStopPlayName (..), TrackName)
 import Data.Text (Text)
 import Game.Options (Options(..))
 import qualified Data.List.NonEmpty as NE
@@ -46,15 +46,20 @@ theAttrMap = attrMap (V.brightRed `on` V.black)
 playerToColor :: Player -> AttrName
 playerToColor (Player i) = playerAttrs !! fromIntegral i
 
+writeTrack :: TrackName -> String
+writeTrack track = show (2 + fromEnum track)
+
+writePlayer :: Player -> String
+writePlayer (Player i) = "Player " ++ show i
 
 printPlay :: CantStopPlayName -> Text
 printPlay (TwoMove _ track track') = if track == track'
-                                  then T.pack $ "Move on " ++ show track ++ " (2)"
-                                  else T.pack $ "Move on " ++ show track ++ " and " ++ show track'
+                                  then T.pack $ "Move on " ++ writeTrack track ++ "(x2)"
+                                  else T.pack $ "Move on " ++ writeTrack track ++ " and " ++ writeTrack track'
 printPlay (Stop _) = T.pack "Stop"
 printPlay (DontStop _) = T.pack "Don't stop"
 printPlay (ForceStop _) = T.pack "owned"
-printPlay (OneMove _ track) = T.pack $ "Move on " ++ show track
+printPlay (OneMove _ track) = T.pack $ "Move on " ++ writeTrack track
 
 printOptions :: CantStopOptions -> Text
 printOptions (Options legal' _ _) = let

@@ -9,10 +9,10 @@ module Tui
 
 import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap, on, AttrName, withAttr, str, attrName, hBox, Padding (..), padLeftRight, (<+>), vLimitPercent, (<=>), fill, halt, put, txt, txtWrap, padBottom, hLimit,strWrap)
 import Brick.Widgets.Center (center)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, mapMaybe)
 import Brick.Types (Widget)
 import Data.Maybe (listToMaybe)
-import Control.Lens ((^.), view, assign, use, to)
+import Control.Lens ((^.), view, assign, use, to, modifying)
 import Game.Player (Player (..))
 import qualified Graphics.Vty as V
 import Data.List (sort)
@@ -29,6 +29,7 @@ import Draw
 import Control.Lens.TH (makeFields)
 import Brick.BChan (BChan, writeBChan)
 import Safe (readMay)
+import Control.Monad (unless, when)
 import Control.Monad.Trans (liftIO)
 import qualified Data.Foldable as F
 import qualified Data.Text as T
@@ -44,6 +45,10 @@ data BEvent = Receive CSView
             | AnnounceWinner [Player]
             deriving (Generic)
 
+extractReceive :: BEvent -> Maybe CSView
+extractReceive (Receive gsv) = Just gsv
+extractReceive _ = Nothing
+
 instance Show BEvent where
     show (Receive g) = "Receive"
     show (Request opts) = "Request (" ++ show opts ++ ")"
@@ -55,10 +60,11 @@ data TUIMode options = ShowState | Ask options | EndGame
 
 data TUIState = TUIState { gameStateView :: CSView
                         , viewer :: Player
-                        , lastEvent :: Maybe BEvent
                         , tuiMode :: TUIMode CantStopOptions
+                        , eventQueue :: [BEvent]
                         , brickToGameChan :: BChan CantStopPlayName
                         , winner :: Maybe Player
+                        , batchUpdates :: Bool
                          } deriving (Generic)
 
 makeFields 'TUIState
@@ -73,7 +79,7 @@ app = App {   appDraw = drawUIView
 
 drawUIView :: TUIState -> [Widget Name]
 drawUIView tui = let g = tui ^. #gameStateView in
-                     [drawBoardView g <+> (drawDice g  <=> drawMenu tui)] -- [ drawBoard g <+> (drawDice g <=> drawMenu g)]
+                     [hLimit 85 $ drawBoardView g <+> (drawDice g  <=> drawMenu tui)] -- [ drawBoard g <+> (drawDice g <=> drawMenu g)]
 
 drawBoardView :: CSView -> Widget Name
 drawBoardView gsv = border $ padBottom Max . padTop Max . renderTable .  boxTable $ widgets
@@ -94,11 +100,11 @@ drawMenu :: TUIState -> Widget Name
 drawMenu tui = let
                          p = tui ^. #gameStateView . #currPlayer
                          playerW = withAttr (playerToColor p) (txtWrap (T.pack . show $ p))
-    in
+                in border . padBottom Max $
     case tui ^. #tuiMode of
-                 Ask options -> border (playerW <=> txtWrap (printOptions options))
-                 ShowState -> border (playerW <=> fill ' ')
-                 EndGame -> border . strWrap $ ("The winner is Player " ++ show (view #num . fromJust $ tui ^. #winner))
+                 Ask options -> playerW <=> txtWrap (printOptions options)
+                 ShowState -> playerW <=> fill ' '
+                 EndGame -> strWrap $ ("The winner is Player " ++ show (view #num . fromJust $ tui ^. #winner))
 
 
 handleEvent :: BrickEvent Name BEvent -> EventM Name TUIState ()
@@ -112,13 +118,25 @@ handleEvent e =  do
           VtyEvent (V.EvKey V.KEsc []) -> halt
           AppEvent (Receive gsv) -> do
               assign #gameStateView gsv
-              assign #lastEvent (Just (Receive gsv))
+              doBatch <- use #batchUpdates
+              -- in batch, add items to front
+              if doBatch
+              then modifying #eventQueue (Receive gsv:)
+              else assign #gameStateView gsv
               assign #tuiMode ShowState
           AppEvent (Request opts) ->  do
-              assign #lastEvent (Just (Request opts))
+              -- assign #lastEvent (Just (Request opts))
+              -- in batch, just read first item
+              doBatch <- use #batchUpdates
+              when doBatch (do
+                queue <- use #eventQueue
+                let rQueue = mapMaybe extractReceive queue
+                let endState = listToMaybe rQueue
+                maybe (return ()) (assign #gameStateView) endState 
+                assign #eventQueue [])
               assign #tuiMode (Ask opts)
           AppEvent (AnnounceWinner winners) -> do
-              assign #lastEvent (Just (AnnounceWinner winners))
+              -- assign #lastEvent (Just (AnnounceWinner winners))
               assign #winner (listToMaybe winners)
               assign #tuiMode EndGame
           VtyEvent (V.EvKey (V.KChar c) []) -> do
@@ -175,8 +193,5 @@ drawVerticalTrack csv track = formatTrack  $
                             fmap (drawSlot csv) <$> spots
                             where
                                 formatTrack =   renderTable . boxTable
-                                -- padLeft (Pad 3) . padRight (Pad $ 4 - max 1 trackWidth) . padTop (Pad 1) . renderTable . boxTable
                                 spots = reverse [[TrackSpot track i] | i <- [HOne .. maxSlot track]]
-                                -- slotWidth slot = maybe 0 (sum . inventory) (viewLocation csv slot)
-                                -- trackWidth = notInfinite $ maximum [slotWidth (TrackSpot track i) | i <- [HOne .. maxSlot track]]
 

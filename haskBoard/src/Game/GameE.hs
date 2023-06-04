@@ -134,11 +134,12 @@ act a@(EndGame winners) = do
 
 chooseNode :: forall l cn r ph pl i es. (Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show pl, Show i, Show l, Show r, Show cn, Show ph, Log2 :> es, GameRun l cn r ph pl i :> es) => Eff es (Options pl i) -> Eff es [Eff es [GameNode l cn r ph pl i]]
 chooseNode cs = do
-  runner <- getRunner
   options <- cs
+  gs <- getGameState
   logGame (T.pack ("Choosing from " ++ displayOptions options))
-  c <- choose options
+  c <- choose gs options
   logGame (T.pack ("Chose " ++ show c))
+  runner <- getRunner
   return (inject <$> runner c)
 
 runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => GameNode l cn r ph pl i -> Eff es (Either PhaseControl [Eff es [GameNode l cn r ph pl i]])

@@ -12,10 +12,13 @@ import Control.Concurrent (Chan)
 import System.IO (withFile, IOMode (..))
 import Effectful.Reader.Static (runReader)
 import Game.Player (Player)
-import Game.Monad (LookerType(..))
 import Count (Cnt)
+import Game.Controller (chooseInterface, commonInterface, PlayerInterface, GameController)
+import Control.Lens ((^.), to)
+import qualified Data.Set as S
+import Data.Map (Map)
 
-runGameChannels :: (Ord l, Ord r, Ord cn, Enum cn, Bounded cn, Show ph, Show cn,
+runGameCommonChannels :: (Ord l, Ord r, Ord cn, Enum cn, Bounded cn, Show ph, Show cn,
  Show l, Show r, Show pl, Show i, Eq ph, Finitary cn, Finitary l) =>
     Player
     -> GameState l cn r ph pl i
@@ -23,65 +26,37 @@ runGameChannels :: (Ord l, Ord r, Ord cn, Enum cn, Bounded cn, Show ph, Show cn,
     -> Chan (GameToInterfacePayload l cn r ph pl i)
     -> Chan pl
     -> IO (GameState l cn r ph pl i, [Player])
-runGameChannels p gameState (playRunner, setup, phases, score) chanGameToClient chanClientToGame = do
+runGameCommonChannels p gameState (playRunner, setup, phases, score) chanGameToClient chanClientToGame = do
     gen <- newCryptoRNGState
     withFile "log" WriteMode $ \handle -> 
       runEff
         . evalState gameState
         . runCryptoRNG gen
         . runReader (playRunner, setup, phases, score)
-        . chooseChan (LookAs p) chanGameToClient chanClientToGame
+        -- . chooseChan (LookAs p) chanGameToClient chanClientToGame
+        . chooseInterface (commonInterface thePlayers chanGameToClient chanClientToGame)
+        . logToFile DebugLevel handle
+        $ playGameTurns
+    where
+        thePlayers = gameState ^. #players . to S.toList
+
+runGameFromInterfaces :: (Ord l, Ord r, Ord cn, Enum cn, Bounded cn, Show ph, Show cn,
+ Show l, Show r, Show pl, Show i, Eq ph, Finitary cn, Finitary l) =>
+    GameState l cn r ph pl i
+    -> (PlayRunner l cn r ph pl i, Int -> [GameNode l cn r ph pl i], ph -> Phase ph l cn r pl i, GameState l cn r ph pl i -> Player -> Cnt Int)
+    -> GameController l cn r ph pl i
+    -> IO (GameState l cn r ph pl i, [Player])
+runGameFromInterfaces gameState (playRunner, setup, phases, score) controller = do
+    gen <- newCryptoRNGState
+    withFile "log" WriteMode $ \handle -> 
+      runEff
+        . evalState gameState
+        . runCryptoRNG gen
+        . runReader (playRunner, setup, phases, score)
+        -- . chooseChan (LookAs p) chanGameToClient chanClientToGame
+        . chooseInterface controller
         . logToFile DebugLevel handle
         $ playGameTurns
 
--- runGameTurns ::(Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l,
---  Show r, Show pl, Show i, Eq ph) => Game l cn r ph pl i
---     -> IO (GameState l cn r ph pl i)
--- runGameTurns game = do
---     gen <- newCryptoRNGState
---     runEff 
---       . evalState game 
---       . runCryptoRNG gen
---       . broadcastHandlerDummy
---       . chooseRandom
---       . logStdOut DebugLevel
---       $ playGameTurns
-           
 
--- actionTurns :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l,
---  Show r, Show pl, Show i, Eq ph) =>
---   GameState l cn r ph pl i
---   -> PlayRunner l cn r ph pl i
---   -> (GameState l cn r ph pl i -> [GameNode l cn r ph pl i])
---   -> IO (GameState l cn r ph pl i)
--- actionTurns gdata playRunner setup = do
---     gen <- newCryptoRNGState
---     runEff . evalState (Game gdata playRunner setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGameTurns
-    
--- runNodesAgainstState :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) => GameState l cn r ph pl i -> PlayRunner l cn r ph pl i 
---    -> (GameState l cn r ph pl i -> [GameNode l cn r ph pl i])
---                      -> [GameNode l cn r ph pl i] -> IO (GameState l cn r ph pl i)
--- runNodesAgainstState game playRunner setup nodes = do
---   gen <- newCryptoRNGState
---   runEff . evalState (Game game playRunner setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGivenNodes [pure nodes]
-
--- runEffNodesAgainstState ::
---   (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph) =>
---   GameState l cn r ph pl i ->
---   PlayRunner l cn r ph pl i ->
---   (GameState l cn r ph pl i -> [GameNode l cn r ph pl i]) ->
---   [ Eff
---       '[ Log2,
---          Interface l cn r ph pl i,
---          BroadcastState l cn r ph pl i,
---          RNG,
---          GameInteract l cn r ph pl i,
---          IOE
---        ]
---       [GameNode l cn r ph pl i]
---   ] ->
---   IO (GameState l cn r ph pl i)
--- runEffNodesAgainstState game playRunner setup nodes = do
---   gen <- newCryptoRNGState
---   runEff . evalState (Game game playRunner setup) . runCryptoRNG gen . broadcastHandlerDummy . chooseRandom . logStdOut DebugLevel $ playGivenNodes nodes
 
