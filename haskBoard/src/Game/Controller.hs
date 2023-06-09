@@ -23,7 +23,7 @@ import qualified Data.Map as M
 import Game.Options (Options)
 import Control.Exception
 import Data.Maybe (catMaybes)
-import Game.View ( viewGameStateAs)
+import Game.View ( viewGameStateAs, GameStateView)
 import Game.GameState (GameState)
 import Game.Monad (LookerType(..))
 import Game.Agent (Agent)
@@ -101,4 +101,5 @@ commonInterface ps fromGameChan' toGameChan' =
 
 agentToInterface :: Agent l cn r ph pl i IO -> PlayerInterface l cn r ph pl i
 agentToInterface agent = PlayerInterface (agent ^. #fromGameChannel) (agent ^. #toGameChannel)
+
 

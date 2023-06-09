@@ -8,10 +8,8 @@ module Tui
     where
 
 import Brick (App(..), BrickEvent(..), neverShowCursor, EventM, AttrMap, attrMap, on, AttrName, withAttr, str, attrName, hBox, Padding (..), padLeftRight, (<+>), vLimitPercent, (<=>), fill, halt, put, txt, txtWrap, padBottom, hLimit,strWrap)
-import Brick.Widgets.Center (center)
-import Data.Maybe (fromJust, mapMaybe)
+import Data.Maybe ( fromJust, mapMaybe, listToMaybe )
 import Brick.Types (Widget)
-import Data.Maybe (listToMaybe)
 import Control.Lens ((^.), view, assign, use, to, modifying)
 import Game.Player (Player (..))
 import qualified Graphics.Vty as V
@@ -35,25 +33,22 @@ import qualified Data.Foldable as F
 import qualified Data.Text as T
 import Game.Helpers
 import Count (notInfinite)
+import Game.Agent (BEvent(..))
+import Agent (CSEvent)
+import Util (safeIndexList)
 
 
 type Name = ()
 
-data BEvent = Receive CSView
-            | Request CantStopOptions
-            | Answer CantStopPlayName
-            | AnnounceWinner [Player]
-            deriving (Generic)
+-- data CSEvent = Receive CSView
+--             | Request CantStopOptions
+--             | Answer CantStopPlayName
+--             | AnnounceWinner [Player]
+--             deriving (Generic)
 
-extractReceive :: BEvent -> Maybe CSView
+extractReceive :: CSEvent -> Maybe CSView
 extractReceive (Receive gsv) = Just gsv
 extractReceive _ = Nothing
-
-instance Show BEvent where
-    show (Receive g) = "Receive"
-    show (Request opts) = "Request (" ++ show opts ++ ")"
-    show (Answer play) = "Answer (" ++ show play ++ ")"
-    show (AnnounceWinner winners) = show (head winners) ++ " is the winner!"
 
 data TUIMode options = ShowState | Ask options | EndGame
 
@@ -61,7 +56,7 @@ data TUIMode options = ShowState | Ask options | EndGame
 data TUIState = TUIState { gameStateView :: CSView
                         , viewer :: Player
                         , tuiMode :: TUIMode CantStopOptions
-                        , eventQueue :: [BEvent]
+                        , eventQueue :: [CSEvent]
                         , brickToGameChan :: BChan CantStopPlayName
                         , winner :: Maybe Player
                         , batchUpdates :: Bool
@@ -69,7 +64,7 @@ data TUIState = TUIState { gameStateView :: CSView
 
 makeFields 'TUIState
 
-app :: App TUIState BEvent Name
+app :: App TUIState CSEvent Name
 app = App {   appDraw = drawUIView
           , appChooseCursor = neverShowCursor
           , appHandleEvent = handleEvent
@@ -107,7 +102,7 @@ drawMenu tui = let
                  EndGame -> strWrap $ ("The winner is Player " ++ show (view #num . fromJust $ tui ^. #winner))
 
 
-handleEvent :: BrickEvent Name BEvent -> EventM Name TUIState ()
+handleEvent :: BrickEvent Name CSEvent -> EventM Name TUIState ()
 handleEvent e =  do
     mode <- use #tuiMode
     case mode of
@@ -132,7 +127,7 @@ handleEvent e =  do
                 queue <- use #eventQueue
                 let rQueue = mapMaybe extractReceive queue
                 let endState = listToMaybe rQueue
-                maybe (return ()) (assign #gameStateView) endState 
+                maybe (return ()) (assign #gameStateView) endState
                 assign #eventQueue [])
               assign #tuiMode (Ask opts)
           AppEvent (AnnounceWinner winners) -> do
@@ -154,12 +149,6 @@ handleEvent e =  do
           _ -> return ()
 
 
-
-safeIndexList :: Foldable f => Int -> f a -> Maybe a
-safeIndexList i xs = if i < 0 then Nothing else safeIndexList' i (F.toList xs)
-                         where
-                             safeIndexList' i (x:xs) = if i == 0 then Just x else safeIndexList' (i-1) xs
-                             safeIndexList' _ [] = Nothing
 
 
 boxTable :: [[Widget n]] -> Table n

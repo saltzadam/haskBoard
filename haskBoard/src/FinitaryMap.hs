@@ -1,9 +1,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
-module FinitaryMap 
+module FinitaryMap
     (FTMap (..)
     , (!!!)
     , applyAt
+    -- , fAt
+    -- , fApplyAt
     , ftAt)
     where
 import Prelude
@@ -72,4 +74,11 @@ filter filt = M.filter filt .  reifyFn
 ftAt :: (Eq a, Functor f) => a -> (b -> f b) -> FTMap a b -> f (FTMap a b)
 ftAt x = lens (!!! x) (\f y -> update (x,y) f)
 
+-- fAt :: (Functor f, Eq a) => a -> (b -> f b) -> (a -> b) -> f (a -> b)
+-- fAt x = lens ($ x) (\f y z -> if z == x then y else f x)
 
+
+-- applyAt :: Eq a => a -> (b -> b) -> FTMap a b -> FTMap a b
+-- applyAt a fn f = FTMap (\x -> if x == a then fn (f !!! x) else f !!! x)
+
+-- fApplyAt a fn f x = if x == a then fn (f x) else f x

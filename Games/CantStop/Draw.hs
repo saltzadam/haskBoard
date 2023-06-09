@@ -1,5 +1,5 @@
 module Draw
-    (player0Attr
+    (player4Attr
     , player1Attr
     , player2Attr
     , player3Attr
@@ -18,14 +18,14 @@ import Game.Options (Options(..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Text as T
 
-player0Attr, player1Attr, player2Attr, player3Attr :: AttrName
-player0Attr = attrName "player0"
-player1Attr = attrName "player1"
-player2Attr = attrName "player2"
-player3Attr = attrName "player3"
+player1Attr, player2Attr, player3Attr, player4Attr :: AttrName
+player1Attr = attrName "player0"
+player2Attr = attrName "player1"
+player3Attr = attrName "player2"
+player4Attr = attrName "player3"
 
 playerAttrs :: [AttrName]
-playerAttrs = [player0Attr, player1Attr, player2Attr, player3Attr]
+playerAttrs = [player1Attr, player2Attr, player3Attr, player4Attr]
 
 emptyAttr :: AttrName
 emptyAttr = attrName "empty"
@@ -35,16 +35,16 @@ tempMarkAttr = attrName "tempMark"
 
 theAttrMap :: AttrMap
 theAttrMap = attrMap (V.brightRed `on` V.black)
-    [ (player0Attr, V.cyan `on` V.black),
-      (player1Attr, V.blue `on` V.black),
-      (player2Attr, V.green `on` V.black),
-      (player3Attr, V.yellow `on` V.black),
+    [ (player1Attr, V.cyan `on` V.black),
+      (player2Attr, V.blue `on` V.black),
+      (player3Attr, V.green `on` V.black),
+      (player4Attr, V.yellow `on` V.black),
       (tempMarkAttr, V.white `on` V.black),
       (emptyAttr, V.rgbColor 160 160 160  `on` V.black)
     ]
 
 playerToColor :: Player -> AttrName
-playerToColor (Player i) = playerAttrs !! fromIntegral i
+playerToColor (Player i) = playerAttrs !! (fromEnum i + 1)
 
 writeTrack :: TrackName -> String
 writeTrack track = show (2 + fromEnum track)

@@ -8,12 +8,11 @@ module Game.Location
      howMany',
      has',
      findResourceWithin,
-     findResource,
      listAll,
      listAllF,
      listAllShape,
      listAllShapeF,
-     -- peek,
+     peek,
      Counter(..),
      Counters,
      makeCounter,
@@ -38,8 +37,6 @@ import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
-import Data.Finitary (inhabitants, Finitary)
-
 
 ---- Definitions and instances
 
@@ -159,10 +156,7 @@ has' :: Ord r => LocationShape r -> r -> Bool
 has' loc r = howMany' loc r > 0
 
 findResourceWithin :: Ord r => r -> [n] -> Locations n r -> [n]
-findResourceWithin res names locs = filter (\n -> (locs !!! n) `has'` res) names
-
-findResource :: (Finitary n, Eq r, Ord r) => r -> Locations n r -> [n]
-findResource res = findResourceWithin res inhabitants
+findResourceWithin res names locs = filter (\n -> locs !!! n `has'` res) names
 
 listAll :: Ord r => n -> Locations n r -> [r]
 listAll n locs = listAllF n locs (const True)
@@ -225,7 +219,7 @@ decrement = fst . decrement'
 
 data GameObjects n cn r = GameObjects {
     locations :: Locations n r,
-    counters :: Counters cn} deriving (Generic, Show)
+    counters :: Counters cn} deriving (Generic)
 
 makeFields ''GameObjects
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE StandaloneDeriving #-}
-module Objects 
+module Objects
     where
 import GHC.Generics (Generic)
 import Game.Player
@@ -12,7 +12,6 @@ import qualified Data.Set as S
 import Game.GameState
 import Game.GameNode (GameAction, GameNode)
 import Count (Cnt)
-import FinitaryMap (FTMap(..))
 import Game.Monad
 import Game.View (GameStateView)
 import Game.Options (Options)
@@ -77,8 +76,8 @@ initLocations' players (PlayerStuff player)
     | player `S.member` players = Pile (M.singleton (PlayerMarker player) 11)
     | otherwise = Dummy
 
-initLocations :: Set Player -> CantStopLocations 
-initLocations ps = FTMap (initLocations' ps)
+initLocations :: Set Player -> CantStopLocations
+initLocations = initLocations'
 
 initDice' :: CantStopCounterName -> Counter
 initDice' = const d6
@@ -87,20 +86,20 @@ initGameObjects :: Set Player -> CantStopGameObjects
 initGameObjects ps =
   GameObjects
     { locations = initLocations ps,
-      counters = FTMap initDice'
+      counters = initDice'
     }
 
 
-data CantStopIssue = NotEnoughMarkers 
-                   | TrackCompleted 
-                   | AtTop 
+data CantStopIssue = NotEnoughMarkers
+                   | TrackCompleted
+                   | AtTop
                    | CanMoveTwo
                    deriving (Eq, Ord, Show, Generic)
 
-data CantStopPlayName = TwoMove Player TrackName TrackName 
+data CantStopPlayName = TwoMove Player TrackName TrackName
                       | OneMove Player TrackName
-                      | Stop Player 
-                      | DontStop Player 
+                      | Stop Player
+                      | DontStop Player
                       | ForceStop Player deriving (Show, Generic)
 
 instance Eq CantStopPlayName where
@@ -119,10 +118,10 @@ type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterNam
 type CantStopAction = GameAction CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 type CantStopGameState = GameState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
-type CantStopOptions = Options CantStopPlayName CantStopIssue 
-type CantStopGame = Game CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
+type CantStopOptions = Options CantStopPlayName CantStopIssue
+type CantStopGameRules = GameRules CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
-type CSM es = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue es
+type CSM a = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a
 
 type CSView = GameStateView CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 

@@ -5,9 +5,10 @@ module Game.Monad
     , askEff
     , hoistGameEff
     , injectGame
+    , runGameEff
     )
     where
-import Game.GameState ( GameState(..),  GameInteract, getGameState )
+import Game.GameState ( GameState(..),  GameInteract, getGameState, GameRules )
 import GHC.Generics (Generic)
 import Control.Applicative (Applicative(..))
 import Game.Player (Player)
@@ -60,3 +61,5 @@ injectGame :: (GameInteract l cn r ph pl i :> es) => GameEff l cn r ph pl i a ->
 injectGame gameEff = let
     f g = (runGameEff g gameEff, g)
                       in inject $ State.state f
+
+

@@ -1,0 +1,166 @@
+{-# LANGUAGE TemplateHaskell #-}
+module Tui
+    where
+import Objects
+import Game.Player (Player, displayPlayer)
+import GHC.Generics (Generic)
+import Brick.BChan (BChan, writeBChan)
+import Control.Lens.TH(makeFields)
+import Brick (App (..), neverShowCursor, Widget, hLimit, (<+>), (<=>), str, vLimit, strWrap, fill, txtWrap, vBox, BrickEvent (..), EventM, halt, on)
+import Control.Lens ((^.), view, to, assign, use, modifying)
+import Game.Helpers
+import Game.Location (peek, inventory)
+import Brick.Widgets.Border (border)
+import Data.Text (Text)
+import Game.Options (Options(..))
+import qualified Data.List.NonEmpty as NE
+import qualified Data.Text as T
+import Data.Maybe (fromJust, mapMaybe, listToMaybe)
+import qualified Data.Map as M
+import qualified Data.Set as S
+import Agent (NMEvent)
+import qualified Graphics.Vty as V
+import Game.Agent (BEvent(..), extractReceive)
+import Control.Monad (when)
+import Safe (readMay)
+import Util (safeIndexList)
+import Effectful (MonadIO(..))
+import Brick.AttrMap (attrMap, AttrMap)
+import Data.List (intersperse, delete)
+
+type Name = ()
+
+data TUIMode options = ShowState | Ask options | EndGame
+
+data TUIState = TUIState { gameStateView :: NMView
+                         , viewer :: Player
+                         , tuiMode :: TUIMode NMOptions
+                         , eventQueue :: [NMEvent]
+                         , brickToGameChan :: BChan NMPlayName
+                         , winner :: Maybe Player
+                         , batchUpdates :: Bool
+                         } deriving (Generic)
+
+
+makeFields 'TUIState
+
+app :: App TUIState NMEvent Name
+app = App {   appDraw = drawUIView
+          , appChooseCursor = neverShowCursor
+          , appHandleEvent = handleEvent
+          , appStartEvent = return ()
+          , appAttrMap = const theAttrMap
+          }
+
+drawUIView :: TUIState -> [Widget Name]
+drawUIView tui = let
+    g = tui ^. #gameStateView
+    in
+        [hLimit 85 $ (drawBoardView g <=> drawMenu tui) <+> drawPlayers g]
+
+drawBoardView :: NMView -> Widget Name
+drawBoardView g = case peek =<< (g `viewLocation` CenterOfTableCard) of
+                    Just (Card i) -> drawCard i
+                    _ -> drawNothing
+
+drawNothing :: Widget Name
+drawNothing = str $ unlines (replicate 9 (replicate 9 ' '))
+
+drawCard :: Int -> Widget Name
+drawCard i = str $ unlines [" --------- ",
+                            "|       |",
+                            "|       |",
+                            "|       |",
+                           cardLine i,
+                            "|       |",
+                            "|       |",
+                            "|       |",
+                            " ------- "]
+            where
+                showNum i = if i < 10 then "0" ++ show i else show i
+                cardLine :: Int -> String
+                cardLine i = "|   " ++ showNum i ++ "  |"
+
+drawMenu :: TUIState -> Widget Name
+drawMenu tui = let
+                p = tui ^. #gameStateView . #currPlayer
+                playerW = strWrap (show p)
+           in border . hLimit 9 . vLimit 9 $
+            case tui ^. #tuiMode of
+                Ask options -> playerW <=> txtWrap (printOptions options)
+                ShowState -> playerW <=> fill ' '
+                EndGame -> strWrap $ ("The winner is Player " ++ show (view #num . fromJust $ tui ^. #winner))
+
+
+printOptions :: NMOptions -> Text
+printOptions (Options legal' _ _) = let
+    legal = NE.toList legal'
+    printEnumeratedPlay :: (Int,NMPlayName) -> Text
+    printEnumeratedPlay (i, play) = T.pack (show i ++ ") ") <> printPlay play
+    in
+    T.unlines . fmap printEnumeratedPlay $ zip [1..] legal
+
+printPlay :: NMPlayName -> Text
+printPlay Take = T.pack "Take card"
+printPlay Decline = T.pack "Pay chip"
+
+drawPlayers :: NMView -> Widget Name
+drawPlayers g = vBox (drawPlayer g <$> g ^. #playersView . to S.toList)
+    where
+        drawPlayer :: NMView -> Player -> Widget Name
+        drawPlayer g p = str (displayPlayer p)
+            <=> str (maybe "" (drawCards . filter isCard . M.keys . inventory) (viewLocation g (PlayerStuff p)))
+            <=> str ("Chips: " ++ maybe "" show (viewHowManyAt g (PlayerStuff p) Chip))
+
+drawCards :: [NMResource] -> String
+drawCards = unwords . fmap show .  mapMaybe extractCard
+
+handleEvent :: BrickEvent Name NMEvent -> EventM Name TUIState ()
+handleEvent e =  do
+    mode <- use #tuiMode
+    case mode of
+      EndGame -> case e of
+          VtyEvent (V.EvKey V.KEsc []) -> halt
+          _ -> return ()
+      _ -> case e of
+          VtyEvent (V.EvKey V.KEsc []) -> halt
+          AppEvent (Receive gsv) -> do
+              assign #gameStateView gsv
+              doBatch <- use #batchUpdates
+              -- in batch, add items to front
+              if doBatch
+              then modifying #eventQueue (Receive gsv:)
+              else assign #gameStateView gsv
+              assign #tuiMode ShowState
+          AppEvent (Request opts) ->  do
+              -- assign #lastEvent (Just (Request opts))
+              -- in batch, just read first item
+              doBatch <- use #batchUpdates
+              when doBatch (do
+                queue <- use #eventQueue
+                let rQueue = mapMaybe extractReceive queue
+                let endState = listToMaybe rQueue
+                maybe (return ()) (assign #gameStateView) endState
+                assign #eventQueue [])
+              assign #tuiMode (Ask opts)
+          AppEvent (AnnounceWinner winners) -> do
+              -- assign #lastEvent (Just (AnnounceWinner winners))
+              assign #winner (listToMaybe winners)
+              assign #tuiMode EndGame
+          VtyEvent (V.EvKey (V.KChar c) []) -> do
+              case mode of
+                Ask options ->
+                  case (readMay [c] :: Maybe Int) of
+                    Nothing -> pure ()
+                    Just i -> case options ^. #legal . to (safeIndexList (i-1)) of
+                                Nothing -> pure ()
+                                Just opt -> do
+                                    chan <- use #brickToGameChan
+                                    liftIO $ writeBChan chan opt
+                                    assign #tuiMode ShowState
+                _ -> return ()
+          _ -> return ()
+
+
+theAttrMap :: AttrMap
+theAttrMap = attrMap (V.white `on` V.black) []

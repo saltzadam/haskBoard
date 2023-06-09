@@ -43,7 +43,7 @@ buildView' Nothing gs = GameObjectsView
 
 data GameObjectsView l cn r = GameObjectsView {
     locationsView :: LocationsView l r,
-    countersView :: CountersView cn} deriving (Generic, Show)
+    countersView :: CountersView cn} deriving (Generic)
 
 makeFields ''GameStateView
 makeFields ''GameObjectsView
@@ -52,11 +52,11 @@ viewObjectsAs' :: GameObjects l cn r -> VisibilityMap l cn ph -> Player -> GameO
 viewObjectsAs' objs (VisibilityMap vis') p = let
     locs = objs ^. #locations
     locsVisMap = vis' p . VisLocation
-    locsView = FTMap (runVis <$> locsVisMap <*> (locs !!!))
+    locsView = runVis <$> locsVisMap <*> (locs !!!)
     cns = objs ^. #counters
     cnsVisMap = vis' p . VisCounter
-    cnsView = FTMap (runVis <$> cnsVisMap <*> (cns !!!))
- in GameObjectsView locsView cnsView
+    cnsView = runVis <$> cnsVisMap <*> (cns !!!)
+ in GameObjectsView (FTMap locsView) (FTMap cnsView)
 
 viewGameStateAs' :: GameState l cn r ph pl i -> Player -> GameStateView l cn r ph
 viewGameStateAs' gs@(GameState{players = ps, currentPhase = cphase, currentTurn = (Turn p' _)}) p =

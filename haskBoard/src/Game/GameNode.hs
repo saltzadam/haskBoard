@@ -5,6 +5,7 @@ import Count
 import Game.Options
 import Game.Player
 import Game.Visibility (VisData)
+import Control.Lens ((^.))
  
 -- These are the fundamental actions in a game. All the "verbs" of a game (besides the observations, e.g. "check" and "count") can be phrased in terms of these.
 data GameAction l cn r ph
@@ -34,7 +35,7 @@ data GameNode l cn r ph pl i = GameNode
 mkActionNode :: GameAction l cn r ph -> GameNode l cn r ph pl i
 mkActionNode action = GameNode (Left action) Nothing
 
-mkGetOptionsNode :: Player -> Options pl i -> GameNode l cn r ph pl i
-mkGetOptionsNode p choice = GameNode (Right choice) (Just p)
+mkOptionsNode ::  Options pl i -> GameNode l cn r ph pl i
+mkOptionsNode choice = GameNode (Right choice) (Just (choice ^. #owner))
 
 

@@ -14,7 +14,8 @@ module Count
     (Cnt(..),
     histogramF,
     countF,
-    notInfinite)
+    notInfinite,
+    repeatCnt)
     where
 
 import Control.Applicative (liftA2)
@@ -97,3 +98,7 @@ histogramF = foldl' (flip (M.alter plusOrInsertOne)) mempty
 
 countF :: (Foldable f, Eq a) => a -> f a -> Cnt Int
 countF x = foldl (\acc a -> if a == x then acc + 1 else acc) 0
+
+repeatCnt :: Cnt Int -> a -> [a]
+repeatCnt (Cnt i) = replicate i
+repeatCnt Infinity = repeat

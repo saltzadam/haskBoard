@@ -4,7 +4,7 @@
 
 module CantStop where
 
-import Count (Cnt, histogramF)
+import Count (histogramF, notInfinite)
 import Data.Finitary (inhabitants)
 import Data.List (find, nub)
 import qualified Data.List.NonEmpty as NE
@@ -23,7 +23,7 @@ import Game.Visibility (allVisible)
 import Objects
 import Util (graphMapM, getNextCyclic, graph, splitOnFirst, buildSafeNonempty, andA)
 import Control.Lens (each, traverseOf, (^.), over, both)
-import FinitaryMap (ftAt)
+import FinitaryMap (fAt)
 import Data.Semigroup (sconcat)
 import Data.List.NonEmpty (NonEmpty)
 
@@ -33,7 +33,7 @@ rollNodes :: CSM [CantStopGameNode]
 rollNodes = pure $ mkActionNode . RollCounter <$> inhabitants
 
 chooseMove :: Player -> CSM [CantStopGameNode]
-chooseMove p = (: []) . mkGetOptionsNode p <$> legalMoves p
+chooseMove p = (: []) . mkOptionsNode <$> legalMoves p
   where
     legalMoves :: Player -> CSM CantStopOptions
     legalMoves p = do
@@ -81,7 +81,7 @@ chooseMove p = (: []) . mkGetOptionsNode p <$> legalMoves p
     mkPairs (x, y, w, z) = nub [(x + y, w + z), (x+ w, y+ z), (x+ z, y+ w)]
 
 stopOrGoNode :: Player -> CSM [CantStopGameNode]
-stopOrGoNode p = (: []) . mkGetOptionsNode p <$> stopOrGo p
+stopOrGoNode p = (: []) . mkOptionsNode  <$> stopOrGo p
   where
     stopOrGo :: Player -> CSM CantStopOptions
     stopOrGo p = return (Options (NE.fromList [Stop p, DontStop p]) mempty p)
@@ -172,12 +172,12 @@ trackWinners :: CSM (Map TrackName Player)
 trackWinners = graphMapM trackWinner inhabitants
 
 -- TODO: bummer that this is defined from GS...
-score :: CantStopGameState -> Player -> Cnt Int
+score :: CantStopGameState -> Player -> Int
 score gs p = let
-        topSpots = (\l -> gs ^. #objects . #locations . ftAt l) . maxSpot <$> inhabitants
+        topSpots = (\l -> gs ^. #objects . #locations . fAt l) . maxSpot <$> inhabitants
         pscore = (M.! PlayerMarker p) . inventory <$> topSpots
     in
-        sum pscore
+        notInfinite $ sum pscore
 
 -- Initialization --
 cantStopPhases :: CantStopPhaseName -> CantStopPhase
@@ -189,7 +189,7 @@ cantStopPhases (CSTurn p) =
 
 initGameState :: Int -> CantStopGameState
 initGameState numPlayers =
-  let players = S.fromList (fmap Player [1 .. fromIntegral numPlayers])
+  let players = S.fromList (fmap Player [0 .. fromIntegral numPlayers - 1])
    in GameState
         { players = players,
           objects = initGameObjects players,
@@ -224,5 +224,5 @@ csRunPlay' (ForceStop p) = [
 
 csRunPlay = fmap injectGame . csRunPlay'
 
-cantStop :: Int -> CantStopGame
-cantStop numPlayers = Game (initGameState numPlayers) csRunPlay cantStopPhases (pure []) score
+cantStop ::  CantStopGameRules
+cantStop = GameRules  csRunPlay cantStopPhases score Nothing 

@@ -1,5 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-deferred-out-of-scope-variables #-}
 module Util where
 import qualified Data.Map as M
 import Data.Map (Map)
@@ -7,7 +8,12 @@ import Data.Maybe (mapMaybe)
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Bifunctor (Bifunctor(..))
-import Control.Applicative (Applicative(..))
+import Control.Applicative (Applicative(..), liftA2)
+import Data.List (sortOn)
+import qualified Data.Foldable as F
+import Effectful ((:>), Eff)
+import Effectful.Crypto.RNG (RNG, randomR)
+import System.Random.Shuffle (shuffle)
 
 graph :: (t -> b) -> t -> (t, b)
 graph f a = (a, f a)
@@ -25,7 +31,7 @@ graphMapM fab as = do
     return . M.fromList . mapMaybe sequence $ theGraph
 
 getNext :: Eq a => a -> NE.NonEmpty a -> Maybe a
-getNext x (y :| (y':ys)) = if x == y 
+getNext x (y :| (y':ys)) = if x == y
                       then Just y'
                       else getNext x (y' :| ys)
 getNext _ (_ :| []) = Nothing
@@ -59,18 +65,15 @@ maximaBy cmp as = go cmp as [] where
 
 
 maximaByScore :: forall a m . Monad m => (a -> m Int) -> [a] -> m [a]
-maximaByScore score as = go score as [] where
-    go :: (a -> m Int) -> [a] -> [a] -> m [a]
-    go score (a:remaining) [] = go score remaining [a]
-    go _ [] maxes = return maxes
-    go score (a:remaining) (m:maxes) = do
-        scorea <- score a
-        scorem <- score m
-        case compare scorea scorem of
-          LT -> go score remaining (m:maxes)
-          EQ -> go score remaining (a:m:maxes)
-          GT -> go score remaining [a]
-        
+maximaByScore score as = fmap fst . takeFirstsOn snd . sortOn snd <$> traverse (graphM score) as
+
+takeFirstsOn :: Eq b => (a -> b) -> [a] -> [a]
+takeFirstsOn f as = go f as [] where
+    go f (x:ys) [] = go f ys [x]
+    go f (x:ys) (first:firsts) = if f x == f first then go f ys (x:first:firsts)
+                                                   else first:firsts
+    go _ [] firsts = firsts
+
 ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM mbool mtrue mfalse = do
     boolResult <- mbool
@@ -80,3 +83,18 @@ ifM mbool mtrue mfalse = do
 
 andA :: Applicative m => m Bool -> m Bool -> m Bool
 andA = liftA2 (&&)
+
+safeIndexList :: Foldable f => Int -> f a -> Maybe a
+safeIndexList i xs = if i < 0 then Nothing else safeIndexList' i (F.toList xs)
+                         where
+                             safeIndexList' i (x:xs) = if i == 0 then Just x else safeIndexList' (i-1) xs
+                             safeIndexList' _ [] = Nothing
+
+shuffleRNG :: RNG :> es => [a] -> Eff es [a]
+shuffleRNG elements
+    | null elements = return []
+    | otherwise = fmap (shuffle elements) (rseqM (length elements - 1))
+    where
+        rseqM :: RNG :> es => Int -> Eff es [Int]
+        rseqM 0 = return []
+        rseqM i = liftA2 (:) (randomR (0,i)) (rseqM (i-1))

@@ -3,7 +3,7 @@
 
 module Game.GameE (playGameTurns) where
 
-import Control.Lens (to, (^.))
+import Control.Lens (to, (^.), view)
 import Control.Monad (join, replicateM, void)
 import Data.Bitraversable
 import Data.Finitary (Finitary)
@@ -25,8 +25,9 @@ import Game.Location (LocationShape (..), decrement, increment, inventory, setCo
 import Game.Options
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
-import System.Random.Shuffle (shuffle)
+import System.Random.Shuffle (shuffle, shuffleM)
 import Game.Player (Player)
+import Util (shuffleRNG)
 -- TODO: (fun) some kind of history besides log
 
 updateGS :: (GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es) => Eff es ()
@@ -104,8 +105,12 @@ act a@(Shuffle l) = do
   loc <- useGameState (#objects . #locations . ftAt l)
   case loc of
     Deck cards -> do
-      uniformSample <- replicateM (length cards - 1) (randomR (0, length cards - 1))
-      let shuffled = Seq.fromList $ shuffle (F.toList cards) uniformSample
+      -- "The sequence (r1,...r[n-1]) of numbers such that r[i] is an
+      -- independent sample from a uniform random distribution
+      -- [0..n-i]"
+      -- let makeSample_r i = randomR (0,length cards - i)
+      -- sample <- traverse makeSample_r  [1..(length cards - 1)]
+      shuffled <- Seq.fromList <$> shuffleRNG (F.toList cards)
       assignGameState (#objects . #locations . ftAt l) (Deck shuffled)
     _ -> pure ()
   logAction2 a ' '
@@ -127,9 +132,9 @@ act a@EndPhase = do
 act a@AdvanceTurn = do
   logAction2 a ' '
   return (Just PCEndTurn)
-act a@(EndGame winners) = do 
-    announceWinners winners 
-    logAction2 a ' ' 
+act a@(EndGame winners) = do
+    announceWinners winners
+    logAction2 a ' '
     return (Just PCEndGame)
 
 chooseNode :: forall l cn r ph pl i es. (Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show pl, Show i, Show l, Show r, Show cn, Show ph, Log2 :> es, GameRun l cn r ph pl i :> es) => Eff es (Options pl i) -> Eff es [Eff es [GameNode l cn r ph pl i]]
@@ -206,12 +211,10 @@ runTurns turn = do
   let phases = NE.toList (turn ^. #turnPhases)
   runFromPhases phases
 
-playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => Eff es (GameState l cn r ph pl i, [Player])
-playGameTurns = do
-  getSetupNodes <- getSetup
-  gs <- getGameState
-  let setupNodes = getSetupNodes (gs ^. #players . to length)
-  void $ runPhaseNodes [pure setupNodes]
+playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => Maybe ph -> Eff es (GameState l cn r ph pl i, [Player])
+playGameTurns setupPhaseName = do
+  phases <- getPhases
+  maybe (return ()) (void . runPhaseNodes  . getPhaseNodes . phases) setupPhaseName
   void playGameTurns'
   (,) <$> getGameState <*> winner
   where
@@ -224,5 +227,5 @@ playGameTurns = do
         TEndTurn -> do
                     nextTurn <- useGameState #nextTurn <*> useGameState #currentTurn <*> useGameState #turns
                     assignGameState #currentTurn nextTurn
-
+                    updateGS
                     playGameTurns'

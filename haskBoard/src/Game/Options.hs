@@ -1,14 +1,16 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RankNTypes #-}
 module Game.Options where
 import GHC.Generics (Generic)
 import Data.List.NonEmpty ( NonEmpty )
-import Control.Lens (makeFields)
+import Control.Lens (makeFields, view)
 import Data.Map (Map)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Foldable as F
 import Util (graphM, buildSafeNonempty)
-import Game.Player (Player)
+import Game.Player 
+import Data.Generics.Labels ()
 
 -- A move may have lots of illegality.
 -- Concatenate where possible.
@@ -43,6 +45,9 @@ data Options pl i = Options {legal :: NonEmpty pl,
                             } deriving (Eq, Ord, Show, Generic)
 
 makeFields ''Options
+
+t :: Options pl i -> Player
+t = view #owner
 
 instance (Ord pl) => Semigroup (Options pl i) where
     (Options legal illegal owner) <> (Options legal' illegal' _) = Options (legal <> legal') (illegal <> illegal') owner
