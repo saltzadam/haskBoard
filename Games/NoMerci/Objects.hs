@@ -28,7 +28,7 @@ import Game.View (GameStateView)
 data NMResource = Chip | Card Int deriving (Eq, Ord, Show, Generic, Finitary)
 
 cards :: [NMResource]
-cards = [Card i | i <- [3, 35]]
+cards = [Card i | i <- [3 .. 35]]
 
 extractCard :: NMResource -> Maybe Int
 extractCard (Card i) = Just i
@@ -67,7 +67,7 @@ type NMGameObjects = GameObjects NMLocation NMCounters NMResource
 initLocations' :: Set Player -> NMLocation -> LocationShape NMResource
 initLocations' _ CenterOfTableCard = Slot Nothing
 initLocations' _ ChipPile = Pile M.empty
-initLocations' _ CardDeck = Deck (Seq.fromList [Card i | i <- [3..35]])
+initLocations' _ CardDeck = Deck (Seq.fromList cards)
 initLocations' players (PlayerStuff player)
     | player `S.member` players = Pile (M.singleton Chip 11)
     | otherwise = Dummy

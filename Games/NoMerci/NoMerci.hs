@@ -37,6 +37,10 @@ discardCard = nodeMaybe (mkTransfer CardDeck BoxTop) . peek <$> lookLocation Car
 takeCard ::  Player -> NMM [NMGameNode]
 takeCard p = nodeMaybe (mkTransfer CenterOfTableCard (PlayerStuff p)) . peek <$> lookLocation CenterOfTableCard
 
+takeChips :: Player -> NMM [NMGameNode]
+takeChips p = transferAll ChipPile (PlayerStuff p) Chip
+
+
 -- TODO: list is lame
 payChip :: NMM [NMGameNode]
 payChip = nodeMaybe (\p -> mkTransfer (PlayerStuff p) ChipPile Chip) . currentPlayer <$> lookCurrentPhase
@@ -75,8 +79,10 @@ checkEnd = do
     then return [mkActionNode DoNothing]
     else (:[]) . mkActionNode . EndGame <$> getWinners
 
+-- TODO: this maybe stuff stinks!
 nmRunPlay' ::  NMPlayName -> [NMM [NMGameNode]]
 nmRunPlay' Take = [ maybe (pure []) takeCard . currentPlayer =<< lookCurrentPhase,
+                  maybe (pure []) takeChips . currentPlayer =<< lookCurrentPhase,
                   checkEnd,
                   drawCard,
                   maybe (pure []) chooseMove . currentPlayer =<< lookCurrentPhase]
