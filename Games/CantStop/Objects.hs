@@ -11,7 +11,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Game.GameState
 import Game.GameNode (GameAction, GameNode)
-import Count (Cnt)
 import Game.Monad
 import Game.View (GameStateView)
 import Game.Options (Options)

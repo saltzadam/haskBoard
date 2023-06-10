@@ -3,7 +3,6 @@ module Game.Helpers
     where
 import Game.Player
 import Game.GameNode
-import Count
 import Game.Location (howMany',has', LocationShape, Counter, listAllShapeF, inventory)
 import Game.Monad (  GameEff(..), askEff, hoistGameEff, LookerType(..))
 import Util (graphM)
@@ -39,10 +38,10 @@ lookCounter c = do
       LookAs p -> hoistGameEff $ runVis (vis p (VisCounter c))  value
       LookFull -> hoistGameEff . Just $ value
 
-lookCounterBounds :: (Eq cn) => cn -> GameEff l cn r ph pl i (Cnt Int, Cnt Int)
+lookCounterBounds :: (Eq cn) => cn -> GameEff l cn r ph pl i (Int, Int)
 lookCounterBounds cn = fmap (view #bounds) (lookCounter cn)
 
-lookCounterVal :: Eq cn => cn -> GameEff l cn r ph pl i (Cnt Int)
+lookCounterVal :: Eq cn => cn -> GameEff l cn r ph pl i Int
 lookCounterVal cn = fmap (view #val) (lookCounter cn)
 
 lookCurrentPhase :: GameEff l cn r ph pl i ph
@@ -50,15 +49,15 @@ lookCurrentPhase = view #currentPhase . fst <$> askEff
 
 -- view for GameView
 viewLocation :: Eq l => GameStateView l cn r ph -> l -> Maybe (LocationShape r)
-viewLocation gsv l = gsv ^. (#objectsView . #locationsView . ftAt l)
+viewLocation gsv l = gsv ^. #objectsView . #locationsView . ftAt l
 
-viewCounterVal :: Eq cn => GameStateView l cn r ph -> cn -> Maybe (Cnt Int)
-viewCounterVal gsv cn = fmap (view #val) $ gsv ^. (#objectsView . #countersView . ftAt cn)
+viewCounterVal :: Eq cn => GameStateView l cn r ph -> cn -> Maybe Int
+viewCounterVal gsv cn = fmap (view #val) $ gsv ^. #objectsView . #countersView . ftAt cn
 
 viewCurrentPlayer ::  GameStateView l cn r ph -> Player
 viewCurrentPlayer gsv = gsv ^. #currPlayer
 
-viewHowManyAt :: (Ord r, Eq l) => GameStateView l cn r ph -> l -> r -> Maybe (Cnt Int)
+viewHowManyAt :: (Ord r, Eq l) => GameStateView l cn r ph -> l -> r -> Maybe Int
 viewHowManyAt g l r = flip howMany' r <$> viewLocation g l
 
 
@@ -71,13 +70,13 @@ useLoc p l = to $ \gs -> let
             in
             runVis  (vis p (VisLocation l)) (gs ^. #objects . #locations . ftAt l)
 
-useCounterVal ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe (Cnt Int))
+useCounterVal ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe Int)
 useCounterVal p c = to $ \gs -> let
             VisibilityMap vis = gs ^. #visibility
             in
             runVis (vis p (VisCounter c)) (gs ^. #objects . #counters . ftAt c . #val)
 
-useCounterBounds ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe (Cnt Int, Cnt Int))
+useCounterBounds ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe (Int, Int))
 useCounterBounds p c = to $ \gs -> let
             VisibilityMap vis = gs ^. #visibility
             in
@@ -114,16 +113,16 @@ findResourceWithin' r locationNames = do
 mkMoveNode :: Player -> GameAction l cn r ph -> GameNode l cn r ph pl i
 mkMoveNode p act = GameNode (Left act) (Just p)
 
-howManyAt :: (Ord r, Eq l) => l -> r -> GameEff l cn r ph pl i (Cnt Int)
+howManyAt :: (Ord r, Eq l) => l -> r -> GameEff l cn r ph pl i Int
 howManyAt l r = flip howMany' r <$> lookLocation l
 
-howManyAtF :: (Ord r, Eq l) => l -> r -> (Cnt Int -> Bool) -> GameEff l cn r ph pl i Bool
+howManyAtF :: (Ord r, Eq l) => l -> r -> (Int -> Bool) -> GameEff l cn r ph pl i Bool
 howManyAtF l r pred = pred <$> howManyAt l r
 
-howManyWithin ::  (Ord r, Eq l) => [l] -> r -> GameEff l cn r ph pl i (Cnt Int)
+howManyWithin ::  (Ord r, Eq l) => [l] -> r -> GameEff l cn r ph pl i Int
 howManyWithin ls r = sum ((`howManyAt` r) <$> ls)
 
-howManyWithinF ::  (Ord r, Eq l) => l -> [r] -> (Cnt Int -> Bool) -> GameEff l cn r ph pl i Bool
+howManyWithinF ::  (Ord r, Eq l) => l -> [r] -> (Int -> Bool) -> GameEff l cn r ph pl i Bool
 howManyWithinF l rs pred = pred <$> sum (howManyAt l <$> rs)
 
 
@@ -144,7 +143,7 @@ anyHas :: (Ord r, Eq l, Finitary r) => l -> [r]  -> GameEff l cn r ph pl i Bool
 anyHas l = fmap or . traverse (has l)
 
 transferAll :: (Ord r, Eq l) => l -> l -> r -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
-transferAll source target res = repeatCnt <$> howManyAt source res <*> pure (mkTransfer source target res)
+transferAll source target res = replicate <$> howManyAt source res <*> pure (mkTransfer source target res)
 
 whatsAt :: (Ord r, Eq l) => l -> GameEff l cn r ph pl i (Set r)
 whatsAt loc = M.keysSet  . M.filter (>0) . inventory <$> lookLocation loc

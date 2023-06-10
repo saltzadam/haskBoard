@@ -1,7 +1,6 @@
 module Game.GameNode 
     where
 import GHC.Generics (Generic)
-import Count
 import Game.Options
 import Game.Player
 import Game.Visibility (VisData)
@@ -13,7 +12,7 @@ data GameAction l cn r ph
   | MkTransfer l l r
   | IncrementCounter cn
   | DecrementCounter cn
-  | SetCounter cn (Cnt Int)
+  | SetCounter cn Int
   | RollCounter cn
   | Shuffle l
   -- | ChangePhase ph

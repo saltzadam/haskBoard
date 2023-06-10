@@ -27,7 +27,6 @@ import Util (safeIndexList)
 import Effectful (MonadIO(..))
 import Brick.AttrMap (attrMap, AttrMap)
 import Data.List (intersperse, delete)
-import Count (notInfinite)
 
 type Name = ()
 
@@ -62,7 +61,7 @@ drawUIView tui = let
 drawBoardView :: NMView -> Widget Name
 drawBoardView g = let
     card = (g `viewLocation` CenterOfTableCard) >>= peek >>= extractCard
-    chips = notInfinite <$> viewHowManyAt g ChipPile Chip
+    chips = viewHowManyAt g ChipPile Chip
                    in fromMaybe drawNothing (drawCard <$> card <*> chips)
     
 

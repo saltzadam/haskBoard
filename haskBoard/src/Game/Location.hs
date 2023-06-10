@@ -27,7 +27,6 @@ module Game.Location
     )
  where
 import Control.Lens (makeFields, set)
-import Count
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -37,12 +36,14 @@ import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
+import Data.Foldable (foldl')
 
 ---- Definitions and instances
 
 data LocationShape r = Deck (Seq r) -- Ordered items. Transfers from the topmost, transfers to the top.
-                     | Pile (Map r (Cnt Int)) -- Unordered items
+                     | Pile (Map r Int) -- Unordered items
                      | Slot (Maybe r) -- Single slot
+                     | Infinite r -- infinite pile
                      | Dummy -- No space
  deriving (Eq, Ord, Show, Generic)
 
@@ -76,6 +77,9 @@ moveFromL _ (Slot Nothing) = (Slot Nothing, Failure)
 moveFromL r (Slot (Just r')) = if r' == r
                               then (Slot Nothing, Success)
                               else (Slot (Just r'), Failure)
+moveFromL r (Infinite r') = if r' == r
+                            then (Infinite r, Success)
+                            else (Infinite r, Failure)
 moveFromL _ Dummy = (Dummy, Failure)
 
 
@@ -90,6 +94,9 @@ moveToL r (Pile pileMap) = (Pile (M.alter addOneWithDefault r pileMap), Success)
 moveToL r (Slot Nothing) = (Slot (Just r), Success)
 moveToL _ (Slot (Just r')) = (Slot (Just r'), Failure)
 moveToL _ Dummy = (Dummy, Failure)
+moveToL r (Infinite r') = if r == r'
+                          then (Infinite r', Success)
+                          else (Infinite r', Failure)
 
 
 -- laws!
@@ -133,23 +140,28 @@ transfer :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> Locati
 transfer r n0 n1 l = fst (transferSafelyByName r n0 n1 l)
 
 ----- Querying
+histogram :: (Foldable f, Ord a) => f a -> (Map a) Int
+histogram = foldl' (flip (M.alter plusOrInsertOne)) mempty
+  where
+    plusOrInsertOne = Just . maybe 1 (+ 1)
 
 
 -- why not inventory = histogramF :(
-inventory :: Ord r => LocationShape r -> (Map r) (Cnt Int)
+inventory :: Ord r => LocationShape r -> (Map r) Int
 inventory (Pile s) = s
-inventory (Deck s) = histogramF s
+inventory (Deck s) = histogram s
 inventory (Slot Nothing) = M.empty
 inventory (Slot (Just r)) = M.singleton r 1
 inventory Dummy = M.empty
+inventory (Infinite r) = M.singleton r maxBound
 
-howManyF :: Ord r => LocationShape r -> (r -> Bool) -> Cnt Int
+howManyF :: Ord r => LocationShape r -> (r -> Bool) -> Int
 howManyF loc filt = sum . M.filterWithKey (\k _ -> filt k) . inventory $ loc
 
-howMany' :: Ord r => LocationShape r -> r -> Cnt Int
+howMany' :: Ord r => LocationShape r -> r -> Int
 howMany' loc res = fromMaybe 0 . M.lookup res . inventory $ loc
 
-howMany :: Ord r => Locations l r -> l -> r -> Cnt Int
+howMany :: Ord r => Locations l r -> l -> r -> Int
 howMany locs lname = howMany' (locs !!! lname)
 
 has' :: Ord r => LocationShape r -> r -> Bool
@@ -177,40 +189,41 @@ peek (Deck (x :<| _)) = Just x
 peek (Deck Empty) = Nothing
 peek (Slot s) = s
 peek Dummy = Nothing
+peek (Infinite r) = Just r
 
 ---- Counters
 
-data Counter = Counter {val :: Cnt Int,
-                        bounds :: (Cnt Int, Cnt Int)} deriving (Eq, Show, Generic)
+data Counter = Counter {val :: Int,
+                        bounds :: (Int, Int)} deriving (Eq, Show, Generic)
 
 makeFields ''Counter
 
 type Counters name = FTMap name Counter
 
-makeCounter :: (Cnt Int, Cnt Int) -> Counter
+makeCounter :: (Int, Int) -> Counter
 makeCounter (a, b) = Counter a (a, b)
 
 dummyCounter :: Counter
 dummyCounter = Counter 0 (0,0)
 
 d6 :: Counter
-d6 = makeCounter (Cnt 1, Cnt 6)
+d6 = makeCounter (1, 6)
 
-mapCounter :: (Cnt Int -> Cnt Int) -> Counter -> (Counter, Maybe (Cnt Int))
+mapCounter :: (Int -> Int) -> Counter -> (Counter, Maybe Int)
 mapCounter f c@(Counter a (bl, bu)) = if f a >= bl && f a <= bl
                                     then (Counter (f a) (bl, bu), Just (f a))
                                     else (c, Nothing)
 
-setCounter :: Counter -> Cnt Int -> Counter
+setCounter :: Counter -> Int -> Counter
 setCounter c a = set #val a c
 
-increment' :: Counter -> (Counter, Maybe (Cnt Int))
+increment' :: Counter -> (Counter, Maybe Int)
 increment' = mapCounter (+1)
 
 increment :: Counter -> Counter
 increment = fst . increment'
 
-decrement' :: Counter -> (Counter, Maybe (Cnt Int))
+decrement' :: Counter -> (Counter, Maybe Int)
 decrement' = mapCounter (subtract 1)
 
 decrement :: Counter -> Counter

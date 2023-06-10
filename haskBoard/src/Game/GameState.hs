@@ -20,7 +20,6 @@ import Control.Lens
       over,
       view
    )
-import Count (Cnt)
 import Effectful (Eff, (:>), inject)
 import qualified Effectful.State.Static.Shared as State
 import qualified Effectful.Reader.Static as Reader
@@ -78,7 +77,7 @@ data GameRules l cn r ph pl i = GameRules
 counter :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Counter
 counter c = #objects . #counters . ftAt c
 
-counterVal :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) (Cnt Int)
+counterVal :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Int
 counterVal c = counter c . #val
 
 location :: Eq l => l -> Lens' (GameState l cn r ph pl i) (LocationShape r)
