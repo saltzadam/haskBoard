@@ -4,7 +4,6 @@
 
 module CantStop where
 
-import Count (histogramF, notInfinite)
 import Data.Finitary (inhabitants)
 import Data.List (find, nub)
 import qualified Data.List.NonEmpty as NE
@@ -15,7 +14,7 @@ import qualified Data.Set as S
 import Game.GameNode
 import Game.GameState
 import Game.Helpers
-import Game.Location (inventory)
+import Game.Location (inventory, histogram)
 import Game.Monad (injectGame)
 import Game.Options (Legality (..), Options (..), buildOptions, mustNotElse, mustElse, raiseIssueIf)
 import Game.Player
@@ -23,9 +22,9 @@ import Game.Visibility (allVisible)
 import Objects
 import Util (graphMapM, getNextCyclic, graph, splitOnFirst, buildSafeNonempty, andA)
 import Control.Lens (each, traverseOf, (^.), over, both)
-import FinitaryMap (fAt)
 import Data.Semigroup (sconcat)
 import Data.List.NonEmpty (NonEmpty)
+import FinitaryMap (ftAt)
 
 -- Plays --
 
@@ -157,7 +156,7 @@ advancePlayer = return [mkActionNode AdvanceTurn]
 checkWinner :: CSM [CantStopGameNode]
 checkWinner = do
   trackMap <- trackWinners
-  let playerHistogram = histogramF trackMap
+  let playerHistogram = histogram trackMap
   let winners = M.keys . M.filter (>= 3) $ playerHistogram
   if not (null winners)
     then return [mkActionNode (EndGame winners)]
@@ -172,12 +171,13 @@ trackWinners :: CSM (Map TrackName Player)
 trackWinners = graphMapM trackWinner inhabitants
 
 -- TODO: bummer that this is defined from GS...
+-- TODO: also bummer this uses labels
 score :: CantStopGameState -> Player -> Int
 score gs p = let
-        topSpots = (\l -> gs ^. #objects . #locations . fAt l) . maxSpot <$> inhabitants
+        topSpots = (\l -> gs ^. #objects . #locations . ftAt l) . maxSpot <$> inhabitants
         pscore = (M.! PlayerMarker p) . inventory <$> topSpots
     in
-        notInfinite $ sum pscore
+        sum pscore
 
 -- Initialization --
 cantStopPhases :: CantStopPhaseName -> CantStopPhase

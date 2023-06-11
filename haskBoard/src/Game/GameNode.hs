@@ -10,6 +10,7 @@ import Control.Lens ((^.))
 data GameAction l cn r ph
   = DoNothing
   | MkTransfer l l r
+  | MkSwap l l r r
   | IncrementCounter cn
   | DecrementCounter cn
   | SetCounter cn Int
@@ -23,7 +24,8 @@ data GameAction l cn r ph
   | EndGame [Player]
   deriving (Eq, Ord, Show, Generic)
 
-
+-- TODO: GameAction has no owner, so should just be newtype on
+-- Either (GameAction) (Options pl i, Player)
 data GameNode l cn r ph pl i = GameNode
   { node :: Either  (GameAction l cn r ph) (Options pl i),
     owner :: Maybe Player

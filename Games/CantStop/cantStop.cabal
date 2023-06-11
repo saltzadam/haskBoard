@@ -22,7 +22,7 @@ library
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
                 brick, effectful-plugin, haskBoard, vty, safe, finitary
-    exposed-modules: CantStop, Tui,GridSelector, Panel, Dice, Objects, Draw, Agent
+    exposed-modules: CantStop, Tui, Dice, Objects, Draw, Agent
     -- , Tui, Dice
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
     default-language: Haskell2010

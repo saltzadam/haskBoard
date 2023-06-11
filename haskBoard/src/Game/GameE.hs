@@ -21,7 +21,7 @@ import GHC.Generics (Generic)
 import Game.Choose
 import Game.GameNode (GameAction (..), GameNode)
 import Game.GameState
-import Game.Location (LocationShape (..), decrement, increment, inventory, setCounter, transfer)
+import Game.Location (LocationShape (..), decrement, increment, inventory, setCounter, transfer, swap)
 import Game.Options
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
@@ -66,6 +66,28 @@ logAction2 (MkTransfer l l' r) _ = do
           ++ ": "
           ++ invl'
     )
+logAction2 (MkSwap l l' r r') _ = do
+  invl <- show . inventory <$> useGameState (location l)
+  invl' <- show . inventory <$> useGameState (location l')
+  logComponent
+    ( T.pack $
+        "Swapped "
+          ++ show r
+          ++ " and "
+          ++ show r'
+          ++ " between "
+          ++ show l
+          ++ " and "
+          ++ show l'
+          ++ "\n Contents of "
+          ++ show l
+          ++ ": "
+          ++ invl
+          ++ "\n Contents of "
+          ++ show l'
+          ++ ": "
+          ++ invl'
+    )
 
 -- order:
 -- modify
@@ -76,6 +98,11 @@ act :: forall l r cn ph pl i es. (Ord l, Ord r, RNG :> es, GameInteract l cn r p
 act DoNothing = continueGame
 act a@(MkTransfer l l' r) =
   modifyingGameState (#objects . #locations) (transfer r l l')
+    >> updateGS
+    >> logAction2 a ' '
+    >> continueGame
+act a@(MkSwap l l' r r') =
+    modifyingGameState (#objects . #locations) (swap r r' l l')
     >> updateGS
     >> logAction2 a ' '
     >> continueGame

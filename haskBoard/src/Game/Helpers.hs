@@ -12,7 +12,6 @@ import FinitaryMap (ftAt)
 import Data.Set (Set)
 import Game.GameState
 import Game.View (GameStateView)
-import Data.Finitary
 import qualified Data.Map as M
 
 -- look for gameeff
@@ -130,6 +129,13 @@ howManyWithinF l rs pred = pred <$> sum (howManyAt l <$> rs)
 has ::  (Ord r, Eq l) =>  l -> r -> GameEff l cn r ph pl i Bool
 has l r = (> 0) <$> howManyAt l r
 
+hasMaybe :: (Ord a, Eq l) => l -> a -> GameEff l cn a ph pl i (Maybe a)
+hasMaybe l r = do
+    i <- howManyAt l r
+    return $ if i > 0 
+    then Just r
+    else Nothing
+
 doesNotHave ::  (Ord r, Eq l) =>  l -> r -> GameEff l cn r ph pl i Bool
 doesNotHave l r = not <$> has l r
 
@@ -139,7 +145,7 @@ mkTransfer l l' r = mkActionNode (MkTransfer l l' r)
 nodeMaybe :: (a -> GameNode l cn r ph pl i) -> Maybe a -> [GameNode l cn r ph pl i]
 nodeMaybe f = maybe [mkActionNode DoNothing] ((:[]) . f)
 
-anyHas :: (Ord r, Eq l, Finitary r) => l -> [r]  -> GameEff l cn r ph pl i Bool
+anyHas :: (Ord r, Eq l) => l -> [r]  -> GameEff l cn r ph pl i Bool
 anyHas l = fmap or . traverse (has l)
 
 transferAll :: (Ord r, Eq l) => l -> l -> r -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]

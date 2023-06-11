@@ -30,6 +30,7 @@ data NMResource = Chip | Card Int deriving (Eq, Ord, Show, Generic, Finitary)
 cards :: [NMResource]
 cards = [Card i | i <- [3 .. 35]]
 
+-- TODO: try lens
 extractCard :: NMResource -> Maybe Int
 extractCard (Card i) = Just i
 extractCard _ = Nothing
@@ -88,7 +89,7 @@ data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic)
 data NMPhaseName = Setup | NMTurn Player deriving (Eq, Ord, Show, Generic)
 type NMTurn = Turn NMPhaseName
 type NMPhase = Phase NMPhaseName NMLocation NMCounters NMResource NMPlayName NMIssue
-type NMAction = GameAction NMLocation NMCounters NMResource NMPhaseName
+-- type NMAction = GameAction NMLocation NMCounters NMResource NMPhaseName
 type NMGameState = GameState NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
 
 type NMOptions = Options NMPlayName NMIssue

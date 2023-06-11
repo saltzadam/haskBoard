@@ -1,6 +1,7 @@
 packages:   haskBoard/
             Games/CantStop/
             Games/NoMerci/
+            Games/LoveLetter/
 
 source-repository-package
     type: git

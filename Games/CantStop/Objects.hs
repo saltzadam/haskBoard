@@ -16,6 +16,7 @@ import Game.View (GameStateView)
 import Game.Options (Options)
 import Data.Finitary (Finitary, inhabitants)
 import qualified Data.List.NonEmpty as NE
+import FinitaryMap (FTMap(..))
 
 data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, Finitary)
@@ -23,7 +24,7 @@ data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | 
 data TrackHeight = HOne | HTwo | HThree | HFour | HFive | HSix | HSeven | HEight | HNine | HTen | HEleven | HTwelve | HThirteen deriving (Eq, Ord, Show, Enum, Generic, Finitary)
 
 
-diceToTrack :: Cnt Int -> TrackName
+diceToTrack ::  Int -> TrackName
 diceToTrack x = toEnum . fromEnum $ (x - 2)
 
 
@@ -76,7 +77,7 @@ initLocations' players (PlayerStuff player)
     | otherwise = Dummy
 
 initLocations :: Set Player -> CantStopLocations
-initLocations = initLocations'
+initLocations = FTMap . initLocations'
 
 initDice' :: CantStopCounterName -> Counter
 initDice' = const d6
@@ -85,7 +86,7 @@ initGameObjects :: Set Player -> CantStopGameObjects
 initGameObjects ps =
   GameObjects
     { locations = initLocations ps,
-      counters = initDice'
+      counters = FTMap initDice'
     }
 
 

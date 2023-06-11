@@ -4,10 +4,12 @@ module Game.Location
     (LocationShape(..),
      Locations,
      transfer,
+     swap,
      inventory,
      howMany',
      has',
      findResourceWithin,
+     histogram,
      listAll,
      listAllF,
      listAllShape,
@@ -138,6 +140,21 @@ transferSafelyByName r name0 name1 locs = let
 
 transfer :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> Locations name r
 transfer r n0 n1 l = fst (transferSafelyByName r n0 n1 l)
+
+
+-- Some games have a "swap" action in which r0 and r1 trade places
+-- Suppose r0 is in slot0 and r1 is in slot1 -- how can they swap?
+-- Swap always succeeds at least
+-- TODO: is there a good way to do "swap all"?
+swap :: (Ord r, Eq name) => r -> r -> name -> name -> Locations name r -> Locations name r
+swap r0 r1 l0 l1 locs = let
+    loc0 = locs !!! l0
+    loc1 = locs !!! l1
+
+    loc0' = fst . moveToL r1 . fst . moveFromL r0 $ loc0
+    loc1' = fst . moveToL r0 . fst . moveFromL r1 $ loc1
+    in
+        FT.update (l0, loc0') . FT.update (l1, loc1') $ locs
 
 ----- Querying
 histogram :: (Foldable f, Ord a) => f a -> (Map a) Int

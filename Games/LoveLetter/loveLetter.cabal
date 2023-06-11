@@ -1,0 +1,42 @@
+cabal-version:      2.4
+name:               LoveLetter
+version:            0.1.0.0
+
+-- A short (one-line) description of the package.
+-- synopsis:
+
+-- A longer description of the package.
+-- description:
+
+-- A URL where users can report bugs.
+-- bug-reports:
+
+-- The license under which the package is released.
+-- license:
+author:             Adam Saltz
+maintainer:         saltz.adam@gmail.com
+
+library
+    hs-source-dirs: .
+    build-depends: base, containers,lens, generic-lens, array, these,
+                transformers, text, formatting, MonadRandom, random, prettyprinter,
+                effectful, effectful-core, mtl,
+                brick, effectful-plugin, haskBoard, vty, finitary, safe, finite-typelits
+    exposed-modules: LoveLetter, Objects, Tui, Agent
+    -- , Tui, Dice
+    default-language: Haskell2010
+    ghc-options:  -Wall -fplugin=Effectful.Plugin -threaded
+    default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
+    -- Modules included in this executable, other than Main.
+    -- other-modules:
+
+-- executable NoMerci
+--     main-is: Main.hs
+--     hs-source-dirs: .
+--     build-depends: base, NoMerci, haskBoard, containers,lens, generic-lens, array, these,
+--                 transformers, text, formatting, MonadRandom, random, prettyprinter,
+--                 effectful, effectful-core, mtl, finitary, mmorph, safe,
+--                 brick, effectful-plugin, haskBoard, vty, finite-typelits
+--     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
+--     default-language: Haskell2010
+--     ghc-options: -fplugin=Effectful.Plugin -threaded

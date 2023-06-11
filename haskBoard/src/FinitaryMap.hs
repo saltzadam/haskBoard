@@ -4,6 +4,7 @@ module FinitaryMap
     (FTMap (..)
     , (!!!)
     , applyAt
+    , update
     -- , fAt
     -- , fApplyAt
     , ftAt)
@@ -63,7 +64,7 @@ applyAt :: Eq a => a -> (b -> b) -> FTMap a b -> FTMap a b
 applyAt a fn f = FTMap (\x -> if x == a then fn (f !!! x) else f !!! x)
 
 update :: Eq a => (a,b) -> FTMap a b  -> FTMap a b
-update (a,b) f = FTMap (\x -> if x == a then b else f !!! x)
+update (a,b) = applyAt a (const b)
 
 -- TODO : wonder if this could be used elsewhere
 filter :: (Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
