@@ -39,6 +39,9 @@ getNext _ (_ :| []) = Nothing
 buildSafeNonempty :: [a] -> a -> NonEmpty a
 buildSafeNonempty xs def = if null xs then def :| [] else NE.fromList xs
 
+cartesianProduct :: [a] -> [b] -> [(a,b)]
+cartesianProduct as bs = [(a,b) | a <- as, b <- bs]
+
 splitOnFirst :: (a -> Bool) -> [a] -> ([a],[a])
 splitOnFirst pred  (a:as) = if pred a
                             then ([a], as)

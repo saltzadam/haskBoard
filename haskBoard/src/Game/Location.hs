@@ -14,7 +14,7 @@ module Game.Location
      listAllF,
      listAllShape,
      listAllShapeF,
-     peek,
+     peek',
      Counter(..),
      Counters,
      makeCounter,
@@ -200,13 +200,13 @@ listAllF :: Ord r => n -> Locations n r -> (r -> Bool) -> [r]
 listAllF n locs = listAllShapeF (locs !!! n)
 -- listAllF n locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs !!! n
 
-peek :: LocationShape r -> Maybe r
-peek (Pile s) = listToMaybe (M.keys . M.filter (>0) $ s)
-peek (Deck (x :<| _)) = Just x
-peek (Deck Empty) = Nothing
-peek (Slot s) = s
-peek Dummy = Nothing
-peek (Infinite r) = Just r
+peek' :: LocationShape r -> Maybe r
+peek' (Pile s) = listToMaybe (M.keys . M.filter (>0) $ s)
+peek' (Deck (x :<| _)) = Just x
+peek' (Deck Empty) = Nothing
+peek' (Slot s) = s
+peek' Dummy = Nothing
+peek' (Infinite r) = Just r
 
 ---- Counters
 

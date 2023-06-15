@@ -79,16 +79,16 @@ checkEnd = do
     then return [mkActionNode DoNothing]
     else (:[]) . mkActionNode . EndGame <$> getWinners
 
--- TODO: this maybe stuff stinks! 
 
-ifTurn :: (Player -> NMM [a]) -> NMM [a]
-ifTurn action = maybe (pure []) action . currentPlayer =<< lookCurrentPhase
+activePlayer :: (Player -> NMM [a]) -> NMM [a]
+activePlayer action = maybe (pure []) action . currentPlayer =<< lookCurrentPhase
+
 nmRunPlay' ::  NMPlayName -> [NMM [NMGameNode]]
-nmRunPlay' Take = [ maybe (pure []) takeCard . currentPlayer =<< lookCurrentPhase,
-                  maybe (pure []) takeChips . currentPlayer =<< lookCurrentPhase,
+nmRunPlay' Take = [ activePlayer takeCard,
+                  activePlayer takeChips,
                   checkEnd,
                   drawCard,
-                  maybe (pure []) chooseMove . currentPlayer =<< lookCurrentPhase]
+                  activePlayer chooseMove]
 nmRunPlay' Decline = [payChip,
                       pure [mkActionNode AdvanceTurn]]
 

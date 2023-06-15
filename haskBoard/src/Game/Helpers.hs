@@ -3,7 +3,7 @@ module Game.Helpers
     where
 import Game.Player
 import Game.GameNode
-import Game.Location (howMany',has', LocationShape, Counter, listAllShapeF, inventory)
+import Game.Location (howMany',has', LocationShape, Counter, listAllShapeF, inventory, peek')
 import Game.Monad (  GameEff(..), askEff, hoistGameEff, LookerType(..))
 import Util (graphM)
 import Game.Visibility (VisData (..), VisibilityMap (..), runVis)
@@ -102,6 +102,8 @@ useTurnOwner p = to $ \gs -> let
 listAllFM :: (Ord r, Eq l) => l -> (r -> Bool) -> GameEff l cn r ph pl i [r]
 listAllFM l filt = flip listAllShapeF filt <$> lookLocation l
 
+listAll :: (Ord r, Eq l) => l -> GameEff l cn r ph pl i [r]
+listAll l = listAllFM l (const True)
 
 findResourceWithin' ::  (Ord r, Eq l) =>  r -> [l] -> GameEff l cn r ph pl i [l]
 findResourceWithin' r locationNames = do
@@ -125,6 +127,8 @@ howManyWithinF ::  (Ord r, Eq l) => l -> [r] -> (Int -> Bool) -> GameEff l cn r 
 howManyWithinF l rs pred = pred <$> sum (howManyAt l <$> rs)
 
 
+peek :: Eq l => l -> GameEff l cn r ph pl i (Maybe r)
+peek l =  peek' <$> lookLocation l
 
 has ::  (Ord r, Eq l) =>  l -> r -> GameEff l cn r ph pl i Bool
 has l r = (> 0) <$> howManyAt l r
@@ -142,6 +146,12 @@ doesNotHave l r = not <$> has l r
 mkTransfer :: l -> l -> r -> GameNode l cn r ph pl i
 mkTransfer l l' r = mkActionNode (MkTransfer l l' r)
 
+justTransfer :: Applicative f => l -> l -> r -> f [GameNode l cn r ph pl i]
+justTransfer l l' r = pure [mkTransfer l l' r]
+
+mkSwap :: l -> l -> r -> r -> GameNode l cn r ph pl i
+mkSwap l l' r r' = mkActionNode (MkSwap l l' r r')
+
 nodeMaybe :: (a -> GameNode l cn r ph pl i) -> Maybe a -> [GameNode l cn r ph pl i]
 nodeMaybe f = maybe [mkActionNode DoNothing] ((:[]) . f)
 
@@ -153,6 +163,18 @@ transferAll source target res = replicate <$> howManyAt source res <*> pure (mkT
 
 whatsAt :: (Ord r, Eq l) => l -> GameEff l cn r ph pl i (Set r)
 whatsAt loc = M.keysSet  . M.filter (>0) . inventory <$> lookLocation loc
+
+-- unsafeSwapAll :: l -> l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+unsafeSwapAll :: (Eq l, Ord r) => l -> l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+unsafeSwapAll l0 l1 = (fmap (mkTransfer l0 l1) <$> listAll l0)  
+                      <> (fmap (mkTransfer l1 l0) <$> listAll l1)
+
+
+revealTo :: l -> Player -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+revealTo loc p = pure [mkActionNode $ MakeVisibleTo p (VisLocation loc)]
+
+unrevealTo :: Applicative f => l -> Player -> f [GameNode l cn r ph pl i]
+unrevealTo loc p = pure [mkActionNode $ MakeInvisibleTo p (VisLocation loc)]
 
 (<+) :: Enum a => a -> Int -> a
 a <+ i
