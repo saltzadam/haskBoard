@@ -19,6 +19,7 @@ data Interface l cn r ph pl i :: Effect where
 
 type instance DispatchOf (Interface l cn r ph pl i) = 'Dynamic
 
+-- TODO: should this include GameState???
 choose :: (Interface l cn r ph pl i :> es) => GameState l cn r ph pl i -> Options pl i -> Eff es pl
 choose gs cs = send (Choose gs cs) 
 

@@ -22,7 +22,7 @@ import Data.Foldable (traverse_)
 import qualified Data.Map as M
 import Game.Options (Options)
 import Control.Exception
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, listToMaybe)
 import Game.View ( viewGameStateAs, GameStateView)
 import Game.GameState (GameState)
 import Game.Monad (LookerType(..))
@@ -47,12 +47,10 @@ chooseInterface :: (IOE :> es) => GameController l cn r ph pl i
     -> Eff es a
 chooseInterface controller = interpret $ \_ -> \case
     Update gs ->  sendUpdate controller gs
-    -- TODO: too much Maybe junk
-    -- TODO: redundant arguments? 
     Choose gs opts ->  sendChoice controller gs opts
     AnnounceWinners winners -> sendWinners controller winners
 
-data ControllerException = NoSuchInterface Player deriving (Eq, Ord, Show)
+data ControllerException = NoSuchInterface Player | NoPlayReturned Player deriving (Eq, Ord, Show)
 instance Exception ControllerException
 
 -- sendUpdate :: _
@@ -64,22 +62,19 @@ sendUpdate gc gs = liftIO $ traverse_ (sendUpdate' gs) (gc ^. #playerInterfaces 
                                                (SendState (viewGameStateAs gs (LookAs p)))
 
 sendChoice  :: forall l cn r ph pl i es . (IOE :> es) => GameController l cn r ph pl i -> GameState l cn r ph pl i -> Options pl i ->  Eff es pl
-sendChoice gc@(GameController interfaceMap) gs opts = let chooser = opts ^. #owner
-    in
+sendChoice gc@(GameController interfaceMap) gs opts =
         if chooser `notElem` M.keys interfaceMap
         then throw (NoSuchInterface chooser)
-        else
-            head . catMaybes <$> traverse (sendChoice' gc gs opts) (M.keys interfaceMap)
+        else sendChoice' gc gs opts
+        where chooser = opts ^. #owner
 
-sendChoice' :: forall l cn r ph pl i es . (IOE :> es) => GameController l cn r ph pl i -> GameState l cn r ph pl i -> Options pl i -> Player -> Eff es (Maybe pl)
-sendChoice' gc gs opts p =  if p == chooser
-                        then case gc ^. #playerInterfaces . at p of
+sendChoice' :: forall l cn r ph pl i es . (IOE :> es) => GameController l cn r ph pl i -> GameState l cn r ph pl i -> Options pl i -> Eff es pl
+sendChoice' gc gs opts =  case gc ^. #playerInterfaces . at chooser of
                               Nothing -> throw (NoSuchInterface chooser)
                               Just interface -> liftIO $ do
-                                  let gsv = viewGameStateAs  gs (LookAs p)
+                                  let gsv = viewGameStateAs  gs (LookAs chooser)
                                   writeChan (interface ^. #fromGameChannel) (SendOptions gsv opts)
-                                  Just <$> readChan (interface ^. #toGameChannel)
-                        else return Nothing
+                                  readChan (interface ^. #toGameChannel)
     where
         chooser = opts ^. #owner
 

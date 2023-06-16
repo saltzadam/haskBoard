@@ -21,7 +21,7 @@ import qualified Effectful.Reader.Static as EffR
 import qualified Effectful.State.Static.Shared as EffS
 import qualified Effectful.State.Static.Shared as State
 
--- TODO: how many consumers of this would benefit from Maybe-ish typeclasses?
+-- how many consumers of this would benefit from Maybe-ish typeclasses?
 data LookerType = LookAs Player | LookFull deriving (Generic, Eq, Ord, Show)
 
 newtype GameEff l cn r ph pl i a = GameEff {unEff :: MaybeT (Eff '[GameInteract l cn r ph pl i, Reader LookerType]) a}

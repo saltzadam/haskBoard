@@ -38,7 +38,7 @@ runGameCommonChannels p gameState gameRules chanGameToClient chanClientToGame = 
         thePlayers = gameState ^. #players . to S.toList
 
 -- TODO: remove bounded, enum
-runGameFromInterfaces :: (Ord l, Ord r, Ord cn, Enum cn, Bounded cn, Show ph, Show cn,
+runGameFromInterfaces :: (Ord l, Ord r, Ord cn, Show ph, Show cn,
  Show l, Show r, Show pl, Show i, Eq ph, Finitary cn, Finitary l) =>
     GameState l cn r ph pl i
     -> GameRules l cn r ph pl i

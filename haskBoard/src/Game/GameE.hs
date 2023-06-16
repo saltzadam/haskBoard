@@ -94,7 +94,7 @@ logAction2 (MkSwap l l' r r') _ = do
 -- update
 -- log
 -- continue (or other control)
-act :: forall l r cn ph pl i es. (Ord l, Ord r, RNG :> es, GameInteract l cn r ph pl i :> es, Eq cn, Show ph, Show cn, Show l, Show r, Log2 :> es, Eq ph, Interface l cn r ph pl i :> es) => GameAction l cn r ph -> Eff es (Maybe PhaseControl)
+act :: forall l r cn ph pl i es. (Ord l, Ord r, RNG :> es, GameInteract l cn r ph pl i :> es, Eq cn, Show ph, Show cn, Show l, Show r, Log2 :> es, Eq ph, Interface l cn r ph pl i :> es) => GameAction l cn r ph -> Eff es PhaseControl
 act DoNothing = continueGame
 act a@(MkTransfer l l' r) =
   modifyingGameState (#objects . #locations) (transfer r l l')
@@ -155,14 +155,14 @@ act a@(MakeInvisibleTo p lc) =
     >> continueGame
 act a@EndPhase = do
   logAction2 a ' '
-  return (Just PCEndPhase)
+  return PCEndPhase
 act a@AdvanceTurn = do
   logAction2 a ' '
-  return (Just PCEndTurn)
+  return PCEndTurn
 act a@(EndGame winners) = do
     announceWinners winners
     logAction2 a ' '
-    return (Just PCEndGame)
+    return PCEndGame
 
 chooseNode :: forall l cn r ph pl i es. (Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show pl, Show i, Show l, Show r, Show cn, Show ph, Log2 :> es, GameRun l cn r ph pl i :> es) => Eff es (Options pl i) -> Eff es [Eff es [GameNode l cn r ph pl i]]
 chooseNode cs = do
@@ -175,12 +175,7 @@ chooseNode cs = do
   return (inject <$> runner c)
 
 runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => GameNode l cn r ph pl i -> Eff es (Either PhaseControl [Eff es [GameNode l cn r ph pl i]])
-runNode aNode = maybeLeftToEmptyRight <$> bitraverse act (chooseNode . pure) (aNode ^. #node)
-  where
-    maybeLeftToEmptyRight :: Monoid b => Either (Maybe a) b -> Either a b
-    maybeLeftToEmptyRight (Left Nothing) = Right mempty
-    maybeLeftToEmptyRight (Left (Just i)) = Left i
-    maybeLeftToEmptyRight (Right x) = Right x
+runNode aNode = bitraverse act (chooseNode . pure) (aNode ^. #node)
 
 runPhaseNodes :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [Eff es [GameNode l cn r ph pl i]] -> Eff es PhaseControl
 runPhaseNodes [] = return PCEndPhase
@@ -209,8 +204,8 @@ runPhaseNodes (node : nodes) = do
       fmap (fmap join . sequence) (traverse runNode nodes)
 
 -- TODO: improve
-continueGame :: Eff es (Maybe PhaseControl)
-continueGame = return Nothing
+continueGame :: Eff es PhaseControl
+continueGame = return PCContinue
 
 -- all control stuff
 

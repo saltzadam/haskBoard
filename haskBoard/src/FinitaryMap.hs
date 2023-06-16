@@ -56,7 +56,6 @@ instance Num b => Num (FTMap a b) where
 instance (Finitary a, Ord a, Ord b) => Ord (FTMap a b) where
     compare f g = compare (reifyFn f) (reifyFn g)
 
--- TODO: change to !!! and import qualified
 (!!!) :: FTMap a b -> a -> b
 (!!!) (FTMap f) = f
 
@@ -67,8 +66,8 @@ update :: Eq a => (a,b) -> FTMap a b  -> FTMap a b
 update (a,b) = applyAt a (const b)
 
 -- TODO : wonder if this could be used elsewhere
-filter :: (Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> Map a b
-filter filt = M.filter filt .  reifyFn
+filter :: (Ord a, Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> FTMap a b
+filter filt = unsafeUnreify . M.filter filt .  reifyFn
 
 -- Lenses
 
