@@ -203,7 +203,6 @@ runPhaseNodes (node : nodes) = do
       nodes <- effNodes
       fmap (fmap join . sequence) (traverse runNode nodes)
 
--- TODO: improve
 continueGame :: Eff es PhaseControl
 continueGame = return PCContinue
 
@@ -212,7 +211,6 @@ continueGame = return PCContinue
 data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame deriving (Eq, Ord, Show, Generic)
 
 -- data GameControl ph = CutoffPhase | CutoffTurn | End deriving (Eq, Ord, Show, Generic)
--- TODO: also redundant?
 data TurnControl = TEndTurn | TEndGame deriving (Eq, Ord, Show, Generic)
 
 runFromPhases :: (GameInteract l cn r ph pl i :> es, Ord l, Finitary cn, Show ph, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Ord r, Eq ph, Show cn, Ord cn, Show l, Show r, Show pl, Show i, GameRun l cn r ph pl i :> es) => [ph] -> Eff es TurnControl

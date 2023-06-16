@@ -112,7 +112,7 @@ findResourceWithin' r locationNames = do
   return (fmap fst whoHasIt)
 
 mkMoveNode :: Player -> GameAction l cn r ph -> GameNode l cn r ph pl i
-mkMoveNode p act = GameNode (Left act) (Just p)
+mkMoveNode p act = GameNode (Left act) 
 
 howManyAt :: (Ord r, Eq l) => l -> r -> GameEff l cn r ph pl i Int
 howManyAt l r = flip howMany' r <$> lookLocation l
@@ -144,16 +144,16 @@ doesNotHave ::  (Ord r, Eq l) =>  l -> r -> GameEff l cn r ph pl i Bool
 doesNotHave l r = not <$> has l r
 
 mkTransfer :: l -> l -> r -> GameNode l cn r ph pl i
-mkTransfer l l' r = mkActionNode (MkTransfer l l' r)
+mkTransfer l l' r = action (MkTransfer l l' r)
 
 justTransfer :: Applicative f => l -> l -> r -> f [GameNode l cn r ph pl i]
 justTransfer l l' r = pure [mkTransfer l l' r]
 
 mkSwap :: l -> l -> r -> r -> GameNode l cn r ph pl i
-mkSwap l l' r r' = mkActionNode (MkSwap l l' r r')
+mkSwap l l' r r' = action (MkSwap l l' r r')
 
 nodeMaybe :: (a -> GameNode l cn r ph pl i) -> Maybe a -> [GameNode l cn r ph pl i]
-nodeMaybe f = maybe [mkActionNode DoNothing] ((:[]) . f)
+nodeMaybe f = maybe [action DoNothing] ((:[]) . f)
 
 anyHas :: (Ord r, Eq l) => l -> [r]  -> GameEff l cn r ph pl i Bool
 anyHas l = fmap or . traverse (has l)
@@ -171,10 +171,10 @@ unsafeSwapAll l0 l1 = (fmap (mkTransfer l0 l1) <$> listAll l0)
 
 
 revealTo :: l -> Player -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
-revealTo loc p = pure [mkActionNode $ MakeVisibleTo p (VisLocation loc)]
+revealTo loc p = pure [action $ MakeVisibleTo p (VisLocation loc)]
 
 unrevealTo :: Applicative f => l -> Player -> f [GameNode l cn r ph pl i]
-unrevealTo loc p = pure [mkActionNode $ MakeInvisibleTo p (VisLocation loc)]
+unrevealTo loc p = pure [action $ MakeInvisibleTo p (VisLocation loc)]
 
 (<+) :: Enum a => a -> Int -> a
 a <+ i
