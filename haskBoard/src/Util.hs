@@ -4,7 +4,7 @@
 module Util where
 import qualified Data.Map as M
 import Data.Map (Map)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, fromMaybe, fromJust, isJust)
 import qualified Data.List.NonEmpty as NE
 import Data.List.NonEmpty (NonEmpty(..))
 import Data.Bifunctor (Bifunctor(..))
@@ -14,6 +14,11 @@ import qualified Data.Foldable as F
 import Effectful ((:>), Eff)
 import Effectful.Crypto.RNG (RNG, randomR)
 import System.Random.Shuffle (shuffle)
+import qualified Data.Set as S
+import Data.Finitary (Finitary, inhabitants)
+import Data.Tuple (swap)
+import Data.Monoid (Endo(..))
+import Control.Monad ((>=>))
 
 graph :: (t -> b) -> t -> (t, b)
 graph f a = (a, f a)
@@ -21,6 +26,11 @@ graph f a = (a, f a)
 graphM :: Functor m => (a -> m b) -> (a -> m (a,b))
 graphM f a = fmap (a,) (f a)
 
+compose :: [a -> a] -> (a -> a)
+compose = foldr (.) id
+
+kleisliCompose :: (Monad m) => [a -> m a] -> (a -> m a)
+kleisliCompose = foldr (>=>) return
 
 graphMap :: Ord a => (a -> Maybe b) -> [a] -> Map a b
 graphMap fab = M.fromList . mapMaybe (graphM fab)
@@ -38,6 +48,15 @@ getNext _ (_ :| []) = Nothing
 
 buildSafeNonempty :: [a] -> a -> NonEmpty a
 buildSafeNonempty xs def = if null xs then def :| [] else NE.fromList xs
+
+ifNullElse :: [a] -> NonEmpty a -> NonEmpty a
+ifNullElse tested def = fromMaybe def (NE.nonEmpty tested)
+
+mapFromFun :: Ord a => (a -> b) -> [a] ->  Map a b
+mapFromFun f xs = M.fromSet f (S.fromList xs)
+
+inhabitantsSet :: (Finitary a, Ord a) => S.Set a
+inhabitantsSet = S.fromList inhabitants
 
 cartesianProduct :: [a] -> [b] -> [(a,b)]
 cartesianProduct as bs = [(a,b) | a <- as, b <- bs]
@@ -101,3 +120,50 @@ shuffleRNG elements
         rseqM :: RNG :> es => Int -> Eff es [Int]
         rseqM 0 = return []
         rseqM i = liftA2 (:) (randomR (0,i)) (rseqM (i-1))
+
+-- TODO: inefficient, see M.mapMaybeWithKey
+mapKeysMaybeWith :: Ord k' => (v -> v -> v) -> (k -> Maybe k') -> Map k v -> Map k' v
+mapKeysMaybeWith aggv f = M.mapKeys fromJust . M.filterWithKey (\maybeK _ -> isJust maybeK) . M.mapKeysWith aggv f
+
+mapKeysMaybe :: (Ord k', Ord v) => (k -> Maybe k') -> Map k v -> Map k' v
+mapKeysMaybe = mapKeysMaybeWith min
+
+groupBy :: (Semigroup v, Ord k') => (k -> k') -> Map k v  -> Map k' v
+groupBy = M.mapKeysWith (<>)
+
+groupByMaybe :: (Ord k', Semigroup v) => (k -> Maybe k') -> Map k v -> Map k' v
+groupByMaybe = mapKeysMaybeWith (<>)
+
+uncurryMap :: Ord k => Map (k,k') v -> Map k (Map k' v)
+uncurryMap = M.mapKeys fst . M.mapWithKey (\(_,k') v -> M.singleton k' v)
+
+curryMap :: (Ord k, Ord k') => Map k (Map k' v) -> Map (k,k') v
+curryMap = M.unions . fmap snd . M.toList . M.mapWithKey (\k mapk' -> M.mapKeys (k,) mapk')
+
+invertNestedMaps :: (Ord k, Ord k') => Map k (Map k' v) -> Map k' (Map k v)
+invertNestedMaps = uncurryMap . M.mapKeys swap . curryMap
+
+foldMapNE :: Semigroup t1 => (t2 -> t1) -> NonEmpty t2 -> t1
+foldMapNE f (x :| xs) = go (f x) xs where
+    go y [] = y
+    go y (z : zs) = y <> go (f z) zs
+
+foldrNE :: (t2 -> a -> a) -> a -> NonEmpty t2 -> a
+foldrNE f z xs = appEndo (foldMapNE (Endo . f) xs) z
+
+concatNE :: NonEmpty (NonEmpty a) -> NonEmpty a
+concatNE = foldMapNE id
+
+-- repeatUntilStable :: Eq a => (a -> a) -> a -> a
+-- repeatUntilStable f x = fst . head $ dropWhile (uncurry (/=)) (zip (iterate f (f x)) (iterate f x))
+
+
+-- posetMaxima :: Foldable f => (a -> a -> Bool) -> f a -> [a]
+-- posetMaxima comp fs = undefined comp fs [] where
+--     go :: (a -> a -> Bool) -> (f a, [a]) -> [a]
+--     go comp' fs' maxes = F.foldl' (\(maxes', newElem) -> case partition (comp newElem) maxes' of
+
+
+--     )
+                                                           
+

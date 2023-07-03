@@ -21,7 +21,7 @@ library
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
-                brick, effectful-plugin, haskBoard, vty, safe, finitary
+                brick, effectful-plugin, haskBoard, vty, safe, finitary, lattices
     exposed-modules: CantStop, Tui, Dice, Objects, Draw, Agent
     -- , Tui, Dice
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses

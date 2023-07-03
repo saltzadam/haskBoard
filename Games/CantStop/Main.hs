@@ -4,13 +4,13 @@
 module Main where
 import CantStop (initGameState, csRunPlay, cantStop)
 import Brick (defaultMain, customMain)
-import Tui (app, drawBoardView, TUIState (..), TUIMode (..))
+import Tui (app)
 import Brick.Main (simpleMain)
 import Brick.BChan (newBChan, writeBChan, BChan, readBChan)
 import Game.View ( viewGameStateAs', buildView')
 import Game.Player (Player(..))
 import Game.Visibility (allVisible)
-import Control.Concurrent (forkIO, newChan, readChan, writeChan)
+import Control.Concurrent (forkIO, newChan, readChan, writeChan, killThread)
 import Control.Monad (forever, void)
 import qualified Graphics.Vty as V
 import GHC.Conc (threadDelay)
@@ -28,6 +28,7 @@ import Game.Agent (runAgentIO, runFromAgentIO)
 import Agent (CSEvent)
 import Game.Controller (agentToInterface, GameController (..))
 import qualified Data.Set as S
+import Brick.Game.Tui (TUIState(..), TUIMode (..))
 
 parsePayload :: GameToInterfacePayload CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue -> CSEvent
 parsePayload (SendState csv) = Receive csv
@@ -62,14 +63,14 @@ main = do
 
     let ai1 = uncurry randomAgent (playChannels M.! Player 2)
     let ai2 = uncurry randomAgent (playChannels M.! Player 3)
-    forkIO (runFromAgentIO ai1)
-    forkIO (runFromAgentIO ai2)
-    forkIO (runFromAgentIO playerAgent)
+    ai1thread <- forkIO (runFromAgentIO ai1)
+    ai2thread <- forkIO (runFromAgentIO ai2)
+    playerthread <- forkIO (runFromAgentIO playerAgent)
 
     let controller = agentToInterface <$> M.fromList [(Player 1, playerAgent), (Player 2, ai1), (Player 3, ai2)]
 
     initVty <- V.mkVty V.defaultConfig
-    forkIO $
+    gameThread <- forkIO $
         void $ runGameFromInterfaces 
             (initGameState 3)
             cantStop 
@@ -78,5 +79,9 @@ main = do
     let gsv = viewGameStateAs'  gs (Player 1)
     let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True
     void $ customMain initVty (V.mkVty V.defaultConfig) (Just gameToBrickBChan) app initTUI
+    killThread ai1thread
+    killThread ai2thread
+    killThread playerthread
+    killThread gameThread
 
 

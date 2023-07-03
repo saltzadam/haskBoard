@@ -193,6 +193,9 @@ listAll n locs = listAllF n locs (const True)
 listAllShapeF :: Ord a => LocationShape a -> (a -> Bool) -> [a]
 listAllShapeF locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs
 
+listAllShapeMapF :: Ord t => LocationShape t -> (t -> Bool) -> Map t Int
+listAllShapeMapF locs filt = M.filterWithKey (\k _ -> filt k) . M.filter (>0) . inventory $ locs
+
 listAllShape :: Ord a => LocationShape a -> [a]
 listAllShape locs = listAllShapeF locs (const True)
 

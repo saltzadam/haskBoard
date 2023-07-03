@@ -32,6 +32,8 @@ newtype GameNode l cn r ph pl i = GameNode
 
 action :: GameAction l cn r ph -> GameNode l cn r ph pl i
 action = GameNode . Left
+
+
 choice :: Options pl i -> GameNode l cn r ph pl i
 choice = GameNode . Right
 
