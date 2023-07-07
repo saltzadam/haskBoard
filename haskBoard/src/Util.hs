@@ -165,5 +165,15 @@ concatNE = foldMapNE id
 
 
 --     )
-                                                           
+mapMaybeMap :: Ord a => (a -> Maybe b) -> [a] -> Map a b
+mapMaybeMap f = M.fromList . mapMaybe (sequence . graph f)
 
+mapMaybeMapM :: (Ord a, Applicative f) => (a -> f (Maybe b)) -> [a] -> f (Map a b)
+mapMaybeMapM fm xs = fmap (M.fromList . mapMaybe sequence) (traverse (graphM fm) xs)
+
+mapKeysCatMaybes :: Ord k' => (k -> Maybe k') -> Map k a -> Map k' a
+mapKeysCatMaybes fm = M.mapKeys fromJust . M.filterWithKey (\k _ -> isJust k) . M.mapKeys fm
+
+boolToInt :: Num a => Bool -> a
+boolToInt True = 1
+boolToInt False = 0

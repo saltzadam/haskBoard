@@ -7,7 +7,7 @@ import Game.Player
 import Game.GameNode
 import Game.Location (howMany',has', LocationShape, Counter, listAllShapeF, inventory, peek', Locations)
 import Game.Monad (  GameEff(..), askEff, hoistGameEff, LookerType(..))
-import Util (graphM, graph, inhabitantsSet, invertNestedMaps, ifNullElse, concatNE, buildSafeNonempty, compose, kleisliCompose)
+import Util (graphM, graph, inhabitantsSet, invertNestedMaps, ifNullElse, concatNE, buildSafeNonempty, compose, kleisliCompose, mapMaybeMap, mapMaybeMapM)
 import Game.Visibility (VisData (..), VisibilityMap (..), runVis)
 import Control.Lens (view, Getter, to, (^.))
 import FinitaryMap (ftAt, (!!!))
@@ -21,12 +21,9 @@ import qualified Data.Set as S
 import Data.List (nub, delete)
 import Game.Options
 import Data.List.NonEmpty (NonEmpty)
-import qualified Data.List.NonEmpty as NE
-import Data.Semigroup (Semigroup(..))
-import Control.Monad (filterM, join)
-import Data.Maybe (isJust, fromMaybe)
-import qualified Data.Foldable as F
-
+import GHC.Base (stimes, Applicative (..))
+import Data.Maybe (isJust)
+--
 -- look for gameeff
 
 lookPlayers :: GameEff l cn r ph pl i (Set Player)
@@ -53,7 +50,7 @@ lookCounter c = do
 lookCounterBounds :: (Eq cn) => cn -> GameEff l cn r ph pl i (Int, Int)
 lookCounterBounds cn = fmap (view #bounds) (lookCounter cn)
 
-lookCounterVal :: Eq cn => cn -> GameEff l cn r ph pl i Int
+lookCounterVal :: Eq cn => cn -> GameEff l cn r ph pl i (Maybe Int)
 lookCounterVal cn = fmap (view #val) (lookCounter cn)
 
 lookCurrentPhase :: GameEff l cn r ph pl i ph
@@ -63,8 +60,9 @@ lookCurrentPhase = view #currentPhase . fst <$> askEff
 viewLocation :: Eq l => GameStateView l cn r ph -> l -> Maybe (LocationShape r)
 viewLocation gsv l = gsv ^. #objectsView . #locationsView . ftAt l
 
+-- TODO: is this "Maybe blindness?" I.e. Nothing means either "can't see" or "not set"
 viewCounterVal :: Eq cn => GameStateView l cn r ph -> cn -> Maybe Int
-viewCounterVal gsv cn = fmap (view #val) $ gsv ^. #objectsView . #countersView . ftAt cn
+viewCounterVal gsv cn = view #val =<< gsv ^. #objectsView . #countersView . ftAt cn
 
 viewCurrentPlayer ::  GameStateView l cn r ph -> Player
 viewCurrentPlayer gsv = gsv ^. #currPlayer
@@ -86,7 +84,7 @@ useCounterVal ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Ma
 useCounterVal p c = to $ \gs -> let
             VisibilityMap vis = gs ^. #visibility
             in
-            runVis (vis p (VisCounter c)) (gs ^. #objects . #counters . ftAt c . #val)
+            runVis (vis p (VisCounter c)) =<< (gs ^. #objects . #counters . ftAt c . #val)
 
 useCounterBounds ::  Eq cn => Player -> cn -> Getter (GameState l cn r ph pl i) (Maybe (Int, Int))
 useCounterBounds p c = to $ \gs -> let
@@ -220,3 +218,20 @@ baseOptions :: Player -> NonEmpty pl -> Options pl i
 baseOptions p legals = Options legals M.empty p
 
 
+advanceTrack :: Applicative f => cn -> f [GameNode l cn r ph pl i]
+advanceTrack cn = pure [action $ IncrementCounter cn]
+
+advanceTrackTimes :: (Semigroup (f [GameNode l cn r ph pl i]), Applicative f) => cn -> Int -> f [GameNode l cn r ph pl i]
+advanceTrackTimes cn i = stimes i (advanceTrack cn)
+
+removeFromTrack :: Applicative f => cn -> f [GameNode l cn r ph pl i]
+removeFromTrack cn = pure [action $ RemoveCounter cn]
+
+valueMap :: Ord cn => [cn] -> GameEff l cn r ph pl i (Map cn Int)
+valueMap = mapMaybeMapM lookCounterVal
+
+counterAtMax :: Eq cn => cn -> GameEff l cn r ph pl i Bool
+counterAtMax cname = liftA2 (==) (lookCounterVal cname) (Just . fst <$> lookCounterBounds cname)
+
+counterHasVal :: Eq cn => cn -> GameEff l cn r ph pl i Bool
+counterHasVal = fmap isJust . lookCounterVal

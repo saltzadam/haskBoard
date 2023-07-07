@@ -21,11 +21,10 @@ import GHC.Generics (Generic)
 import Game.Choose
 import Game.GameNode (GameAction (..), GameNode)
 import Game.GameState
-import Game.Location (LocationShape (..), decrement, increment, inventory, setCounter, transfer, swap)
+import Game.Location (LocationShape (..), decrement, increment, inventory, setCounter, transfer, swap, transferCounter)
 import Game.Options
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
-import System.Random.Shuffle (shuffle, shuffleM)
 import Game.Player (Player)
 import Util (shuffleRNG)
 -- TODO: (fun) some kind of history besides log
@@ -38,6 +37,9 @@ logAction2 (IncrementCounter cn) val = logComponent (T.pack $ "Incremented " ++ 
 logAction2 (DecrementCounter cn) val = logComponent (T.pack $ "Decremented " ++ show cn ++ " to " ++ show val)
 logAction2 (SetCounter cn i) _ = logComponent (T.pack $ "Set " ++ show cn ++ " to " ++ show i)
 logAction2 (RollCounter cn) val = logComponent (T.pack $ "Rolled " ++ show cn ++ " to " ++ show val)
+logAction2 (AddCounter cn) _ = logComponent (T.pack $ "Added counter " ++ show cn)
+logAction2 (RemoveCounter cn) _ = logComponent (T.pack $ "Removed counter " ++ show cn)
+logAction2 (TransferCounter cn cn') _ = logComponent (T.pack $ "Moved one from " ++ show cn ++ " to " ++ show cn')
 logAction2 (Shuffle l) _ = logComponent (T.pack $ "Shuffled " ++ show l)
 -- logAction2 (ChangePhase ph) _ = logComponent (T.pack $ "Changed phase to " ++ show ph)
 logAction2 (MakeVisibleTo l p) _ = logComponent (T.pack $ "Made " ++ show l ++ "visible to " ++ show p)
@@ -94,6 +96,7 @@ logAction2 (MkSwap l l' r r') _ = do
 -- update
 -- log
 -- continue (or other control)
+-- TODO: code repetition!!!
 act :: forall l r cn ph pl i es. (Ord l, Ord r, RNG :> es, GameInteract l cn r ph pl i :> es, Eq cn, Show ph, Show cn, Show l, Show r, Log2 :> es, Eq ph, Interface l cn r ph pl i :> es) => GameAction l cn r ph -> Eff es PhaseControl
 act DoNothing = continueGame
 act a@(MkTransfer l l' r) =
@@ -124,10 +127,26 @@ act a@(SetCounter c v) =
 act a@(RollCounter c) = do
   (bl, bu) <- useGameState (counter c . #bounds)
   newVal <- randomR (bl, bu)
-  assignGameState (counterVal c) newVal
+  assignGameState (counterVal c) (Just newVal)
   useGameState (counterVal c) >>= logAction2 a
   updateGS
   continueGame
+act a@(AddCounter c) = do
+    (bl, _) <- useGameState (counter c . #bounds)
+    modifyingGameState (counter c) (`setCounter` bl)
+    updateGS
+    useGameState (counter c . #val) >>= logAction2 a
+    continueGame
+act a@(RemoveCounter c) = do
+    assignGameState (counter c . #val) Nothing
+    updateGS
+    useGameState (counter c . #val) >>= logAction2 a
+    continueGame
+act a@(TransferCounter cnfrom cnto) = do
+    modifyingGameState (#objects . #counters) (transferCounter cnfrom cnto)
+    updateGS
+    logAction2 a ' '
+    continueGame
 act a@(Shuffle l) = do
   loc <- useGameState (#objects . #locations . ftAt l)
   case loc of

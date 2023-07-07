@@ -25,20 +25,23 @@ module Game.Location
      GameObjects(..),
      howMany, -- TODO: needed?
      dummyCounter,
-     howManyF
+     howManyF,
+     transferCounter',
+     transferCounter
     )
  where
-import Control.Lens (makeFields, set)
+import Control.Lens (makeFields, set, view, to)
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (listToMaybe, fromMaybe)
+import Data.Maybe (listToMaybe, fromMaybe, isNothing)
 import Data.Sequence (Seq ((:<|), Empty), (<|))
 import qualified Data.Sequence as Seq
 import GHC.Generics (Generic)
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
 import Data.Foldable (foldl')
+import Control.Applicative
 
 ---- Definitions and instances
 
@@ -193,8 +196,8 @@ listAll n locs = listAllF n locs (const True)
 listAllShapeF :: Ord a => LocationShape a -> (a -> Bool) -> [a]
 listAllShapeF locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs
 
-listAllShapeMapF :: Ord t => LocationShape t -> (t -> Bool) -> Map t Int
-listAllShapeMapF locs filt = M.filterWithKey (\k _ -> filt k) . M.filter (>0) . inventory $ locs
+-- listAllShapeMapF :: Ord t => LocationShape t -> (t -> Bool) -> Map t Int
+-- listAllShapeMapF locs filt = M.filterWithKey (\k _ -> filt k) . M.filter (>0) . inventory $ locs
 
 listAllShape :: Ord a => LocationShape a -> [a]
 listAllShape locs = listAllShapeF locs (const True)
@@ -213,7 +216,7 @@ peek' (Infinite r) = Just r
 
 ---- Counters
 
-data Counter = Counter {val :: Int,
+data Counter = Counter {val :: Maybe Int,
                         bounds :: (Int, Int)} deriving (Eq, Show, Generic)
 
 makeFields ''Counter
@@ -221,21 +224,22 @@ makeFields ''Counter
 type Counters name = FTMap name Counter
 
 makeCounter :: (Int, Int) -> Counter
-makeCounter (a, b) = Counter a (a, b)
+makeCounter (a, b) = Counter Nothing (a, b)
 
 dummyCounter :: Counter
-dummyCounter = Counter 0 (0,0)
+dummyCounter = Counter Nothing (0,0)
 
 d6 :: Counter
 d6 = makeCounter (1, 6)
 
+
 mapCounter :: (Int -> Int) -> Counter -> (Counter, Maybe Int)
-mapCounter f c@(Counter a (bl, bu)) = if f a >= bl && f a <= bl
-                                    then (Counter (f a) (bl, bu), Just (f a))
+mapCounter f c@(Counter a (bl, bu)) = if fmap f a >= Just bl && fmap f a <= Just bl
+                                    then (Counter (fmap f a) (bl, bu), fmap f a)
                                     else (c, Nothing)
 
 setCounter :: Counter -> Int -> Counter
-setCounter c a = set #val a c
+setCounter c a = set #val (Just a) c
 
 increment' :: Counter -> (Counter, Maybe Int)
 increment' = mapCounter (+1)
@@ -249,6 +253,20 @@ decrement' = mapCounter (subtract 1)
 decrement :: Counter -> Counter
 decrement = fst . decrement'
 
+transferCounter' :: Counter -> Counter -> (Counter, Counter, TransferStatus)
+transferCounter' fromc toc = case (decrement' fromc, increment' toc) of
+                               ((_, Nothing), _) -> (fromc, toc, Failure)
+                               (_, (_, Nothing)) -> (fromc, toc, Failure)
+                               ((fromc', _), (toc', _)) -> (fromc', toc', Success)
+
+transferCounter :: Eq cn => cn -> cn -> Counters cn -> Counters cn 
+transferCounter fromcn tocn counters = let
+    fromc = counters !!! fromcn
+    toc = counters !!! tocn
+    in case transferCounter' fromc toc of
+      (_,_,Failure) -> counters
+      (fromc', toc', Success) -> FT.update (fromcn, fromc') . FT.update (tocn, toc') $ counters
+    
 
 data GameObjects n cn r = GameObjects {
     locations :: Locations n r,

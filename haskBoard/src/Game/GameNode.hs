@@ -4,7 +4,6 @@ import GHC.Generics (Generic)
 import Game.Options
 import Game.Player
 import Game.Visibility (VisData)
-import Control.Lens ((^.))
  
 -- These are the fundamental actions in a game. All the "verbs" of a game (besides the observations, e.g. "check" and "count") can be phrased in terms of these.
 data GameAction l cn r ph
@@ -13,8 +12,11 @@ data GameAction l cn r ph
   | MkSwap l l r r
   | IncrementCounter cn
   | DecrementCounter cn
+  | TransferCounter cn cn
   | SetCounter cn Int
   | RollCounter cn
+  | AddCounter cn
+  | RemoveCounter cn
   | Shuffle l
   -- | ChangePhase ph
   | EndPhase

@@ -2,7 +2,7 @@
 {-# HLINT ignore "Use head" #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Tui 
+module Tui
     (app)
     where
 
@@ -22,6 +22,9 @@ import Draw
 import Game.Helpers
 import Game.Location (listAllShape)
 import Objects
+import Game.Player (mkPlayers)
+import qualified Data.Map as M
+import qualified Data.Set as S
 
 type CSTUIState = TUIState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
@@ -83,20 +86,20 @@ drawPiece :: CantStopResource -> Widget Name
 drawPiece (PlayerMarker p) = padTop (Pad 1) . withAttr (playerToColor p) $ square
 drawPiece TemporaryMarker = padTop (Pad 1) . withAttr tempMarkAttr $ square
 
-drawSlot :: CSView -> CantStopLocation -> Widget Name
-drawSlot csv t@(TrackSpot _ _) =
-  let pieces = listAllShape <$> viewLocation csv t
-      numPieces = maybe 0 length pieces
-   in case pieces of
-        Nothing -> padTop (Pad 1) (square <+> emptySpace 4)
-        (Just []) -> padTop (Pad 1) (square <+> emptySpace 4)
-        Just pieces' -> hBox (fmap drawPiece (sort pieces') ++ [emptySpace (4 - numPieces)])
-drawSlot _ _ = error "can only draw TrackSpot"
+-- drawSlot :: CSView -> CantStopLocation -> Widget Name
+-- drawSlot csv t@(TrackSpot _ _) =
+--   let pieces = listAllShape <$> viewLocation csv t
+--       numPieces = maybe 0 length pieces
+--    in case pieces of
+--         Nothing -> padTop (Pad 1) (square <+> emptySpace 4)
+--         (Just []) -> padTop (Pad 1) (square <+> emptySpace 4)
+--         Just pieces' -> hBox (fmap drawPiece (sort pieces') ++ [emptySpace (4 - numPieces)])
+-- drawSlot _ _ = error "can only draw TrackSpot"
 
 drawVerticalTrack :: CSView -> TrackName -> Widget Name
-drawVerticalTrack csv track =
-  formatTrack $
-    fmap (drawSlot csv) <$> spots
+drawVerticalTrack csv trackName = let
+      vals = M.fromSet (viewCounterVal csv . (`PlayerTrack` trackName)) (S.fromList (mkPlayers 4))
+    in undefined
   where
     formatTrack = renderTable . boxTable
-    spots = reverse [[TrackSpot track i] | i <- [HOne .. maxSlot track]]
+    -- spots = reverse [[TrackSpot track i] | i <- [HOne .. maxSlot track]]

@@ -77,7 +77,7 @@ data GameRules l cn r ph pl i = GameRules
 counter :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Counter
 counter c = #objects . #counters . ftAt c
 
-counterVal :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Int
+counterVal :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) (Maybe Int)
 counterVal c = counter c . #val
 
 location :: Eq l => l -> Lens' (GameState l cn r ph pl i) (LocationShape r)
