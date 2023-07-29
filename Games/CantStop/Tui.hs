@@ -2,9 +2,7 @@
 {-# HLINT ignore "Use head" #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Tui
-    (app)
-    where
+module Tui (app) where
 
 import Agent (CSEvent)
 import Brick
@@ -14,17 +12,19 @@ import Brick.Widgets.Center
 import Brick.Widgets.Table
 import Control.Lens
 import Data.Finitary (inhabitants)
+import qualified Data.Foldable as F
 import Data.List (sort)
-import Data.Maybe (fromJust)
+import qualified Data.Map as M
+import Data.Maybe (fromJust, listToMaybe, mapMaybe, maybeToList)
+import qualified Data.Set as S
 import qualified Data.Text as T
 import Dice (renderDice)
 import Draw
-import Game.Helpers
-import Game.Location (listAllShape)
-import Objects
+import Game.Location (inventory, listAllShape)
 import Game.Player (mkPlayers)
-import qualified Data.Map as M
-import qualified Data.Set as S
+import Helpers
+import Objects
+import Track
 
 type CSTUIState = TUIState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
@@ -86,7 +86,7 @@ drawPiece :: CantStopResource -> Widget Name
 drawPiece (PlayerMarker p) = padTop (Pad 1) . withAttr (playerToColor p) $ square
 drawPiece TemporaryMarker = padTop (Pad 1) . withAttr tempMarkAttr $ square
 
--- drawSlot :: CSView -> CantStopLocation -> Widget Name
+-- drawSlot :: LocationShape CantStopResource -> Widget Name
 -- drawSlot csv t@(TrackSpot _ _) =
 --   let pieces = listAllShape <$> viewLocation csv t
 --       numPieces = maybe 0 length pieces
@@ -97,9 +97,14 @@ drawPiece TemporaryMarker = padTop (Pad 1) . withAttr tempMarkAttr $ square
 -- drawSlot _ _ = error "can only draw TrackSpot"
 
 drawVerticalTrack :: CSView -> TrackName -> Widget Name
-drawVerticalTrack csv trackName = let
-      vals = M.fromSet (viewCounterVal csv . (`PlayerTrack` trackName)) (S.fromList (mkPlayers 4))
-    in undefined
-  where
-    formatTrack = renderTable . boxTable
-    -- spots = reverse [[TrackSpot track i] | i <- [HOne .. maxSlot track]]
+drawVerticalTrack csv trackName =
+  let vals = mapMaybe (fmap (M.keys . M.filter (> 0) . inventory) . viewLocation csv) $ F.toList $ getTrack (track trackName)
+      drawSlot val = case val of
+        [] -> padTop (Pad 1) (square <+> emptySpace 4)
+        xs -> hBox (fmap drawPiece (sort xs) ++ [emptySpace (4 - length xs)])
+   in renderTable . boxTable $ [[slot] | slot <- drawSlot <$> reverse vals]
+
+-- where
+-- formatTrack = renderTable . boxTable
+
+-- spots = reverse [[TrackSpot track i] | i <- [HOne .. maxSlot track]]

@@ -1,23 +1,22 @@
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedLists #-}
 
 module Game.Options where
 
-import Control.Lens (makeFields, view)
-import Control.Monad (join)
+import Control.Applicative (liftA3)
+import Control.Lens (makeFields)
 import qualified Data.Foldable as F
 import Data.Generics.Labels ()
-import Data.List.NonEmpty (NonEmpty(..))
+import Data.List (delete, partition)
+import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import GHC.Generics (Generic)
 import Game.Player
-import Util (buildSafeNonempty, graph, graphM, compose)
-import Data.List (delete, partition)
-import Control.Applicative (liftA3)
+import Util (buildSafeNonempty, compose, graphM)
 
 -- A move may have lots of illegality.
 -- Concatenate where possible.
@@ -61,20 +60,16 @@ data Options pl i = Options
   }
   deriving (Eq, Ord, Show, Generic)
 
-
 makeFields ''Options
-
-t :: Options pl i -> Player
-t = view #owner
 
 -- opts0 <> opts1 is opts0 overridden w/ opts1
 instance (Ord pl, Eq i) => Semigroup (Options pl i) where
-  (Options legal illegal owner) <> (Options legal' illegal' _) = let
-    asMap  = M.fromList [(play, Legal) | play <- NE.toList legal] <> illegal
-    asMap' = M.fromList [(play, Legal) | play <- NE.toList legal'] <> illegal'
-    newMap = asMap <> asMap'
-    (newLegal, newIllegal) = M.partition (== Legal) newMap
-    in Options (NE.fromList (M.keys newLegal)) newIllegal owner -- unsafe NE.fromList but newLegal is nonempty
+  (Options legal illegal owner) <> (Options legal' illegal' _) =
+    let asMap = M.fromList [(play, Legal) | play <- NE.toList legal] <> illegal
+        asMap' = M.fromList [(play, Legal) | play <- NE.toList legal'] <> illegal'
+        newMap = asMap <> asMap'
+        (newLegal, newIllegal) = M.partition (== Legal) newMap
+     in Options (NE.fromList (M.keys newLegal)) newIllegal owner -- unsafe NE.fromList but newLegal is nonempty
 
 raiseIssueIf :: issue -> Bool -> Legality issue
 raiseIssueIf = flip mustNotElse
@@ -119,8 +114,6 @@ displayOptions (Options legalO illegalO p) =
     showMapAsList :: (Show pl, Show i) => Map pl (Legality i) -> String
     showMapAsList = show . M.toList
 
-
-
 youMay' :: Player -> NonEmpty pl -> Options pl i
 youMay' p basePlays = Options basePlays M.empty p
 
@@ -128,55 +121,54 @@ youMay :: Functor f => Player -> f (NonEmpty pl) -> f (Options pl i)
 youMay p mBasePlays = youMay' p <$> mBasePlays
 
 makeIllegal' :: Ord pl => pl -> Legality i -> pl -> Options pl i -> Options pl i
-makeIllegal' play issue def (Options legal illegal p) = Options
+makeIllegal' play issue def (Options legal illegal p) =
+  Options
     (buildSafeNonempty (delete play (NE.toList legal)) def)
     (M.insert play issue illegal)
     p
 
 exceptIfMap' :: Ord pl => Map pl (Legality i) -> pl -> Options pl i -> Options pl i
-exceptIfMap' issueMap def opts = let
-    issueTuples = M.toList issueMap
-    makeAllIllegal = compose (($ def) . uncurry makeIllegal' <$> issueTuples)
-    in
-        makeAllIllegal opts
+exceptIfMap' issueMap def opts =
+  let issueTuples = M.toList issueMap
+      makeAllIllegal = compose (($ def) . uncurry makeIllegal' <$> issueTuples)
+   in makeAllIllegal opts
 
-exceptIfMap :: (Applicative m, Ord pl) => m(Map pl (Legality i)) -> m pl -> m (Options pl i) -> m (Options pl i)
-exceptIfMap  = liftA3 exceptIfMap'
+exceptIfMap :: (Applicative m, Ord pl) => m (Map pl (Legality i)) -> m pl -> m (Options pl i) -> m (Options pl i)
+exceptIfMap = liftA3 exceptIfMap'
 
 exceptIf' :: (Ord pl, Eq i) => (pl -> Legality i) -> pl -> Options pl i -> Options pl i
-exceptIf' issuef def (Options legal illegal p) = let
-    (stillLegal, newlyIllegal) = partition ((== Legal) . issuef) (NE.toList legal)
-                                                  in Options
-                                                  (buildSafeNonempty stillLegal def)
-                                                  (M.fromSet issuef (S.fromList newlyIllegal) <> illegal)
-                                                  p
+exceptIf' issuef def (Options legal illegal p) =
+  let (stillLegal, newlyIllegal) = partition ((== Legal) . issuef) (NE.toList legal)
+   in Options
+        (buildSafeNonempty stillLegal def)
+        (M.fromSet issuef (S.fromList newlyIllegal) <> illegal)
+        p
 
 exceptIf :: (Ord pl, Eq i, Monad m) => (pl -> m (Legality i)) -> m pl -> m (Options pl i) -> m (Options pl i)
 exceptIf issuefm mdef mopts = do
-    def <- mdef
-    (Options legal illegal p) <- mopts
-    legalEval <- traverse (graphM issuefm) legal
-    let (stillLegal, newlyIllegal) = partition ((== Legal) . snd) (NE.toList legalEval)
-    return $ Options
-        (buildSafeNonempty (fmap fst stillLegal) def)
-        (M.fromList newlyIllegal <> illegal)
-        p
+  def <- mdef
+  (Options legal illegal p) <- mopts
+  legalEval <- traverse (graphM issuefm) legal
+  let (stillLegal, newlyIllegal) = partition ((== Legal) . snd) (NE.toList legalEval)
+  return $
+    Options
+      (buildSafeNonempty (fmap fst stillLegal) def)
+      (M.fromList newlyIllegal <> illegal)
+      p
 
 -- THIS IS UNSAFE!
 unlessYouCould' :: (Eq i, Ord pl) => (pl -> pl -> Legality i) -> Options pl i -> Options pl i
-unlessYouCould' comparer (Options legal illegal p) = let
-    legal' = NE.toList legal
-    new = [(play, mconcat (fmap (comparer play) legal')) | play <- legal']
-    (newLegalMap, newIllegal) = M.partition (== Legal) (M.fromList new)
-    in Options (NE.fromList (M.keys newLegalMap)) (newIllegal <> illegal) p
+unlessYouCould' comparer (Options legal illegal p) =
+  let legal' = NE.toList legal
+      new = [(play, mconcat (fmap (comparer play) legal')) | play <- legal']
+      (newLegalMap, newIllegal) = M.partition (== Legal) (M.fromList new)
+   in Options (NE.fromList (M.keys newLegalMap)) (newIllegal <> illegal) p
 
 unlessYouCould :: (Ord pl, Eq i, Monad m) => (pl -> pl -> m (Legality i)) -> m (Options pl i) -> m (Options pl i)
 unlessYouCould mcomparer mopts = do
-    (Options legal illegal p) <- mopts
-    let legal' = NE.toList legal
-    new' <- traverse sequence $ [(play, traverse (mcomparer play) legal') | play <- legal']
-    let new = fmap (fmap mconcat) new'
-    let (newLegalMap, newIllegal) = M.partition (== Legal) (M.fromList new)
-    return (Options (NE.fromList (M.keys newLegalMap)) (newIllegal <> illegal) p)
-
--- unlessBetterMove' :: 
+  (Options legal illegal p) <- mopts
+  let legal' = NE.toList legal
+  new' <- traverse sequence $ [(play, traverse (mcomparer play) legal') | play <- legal']
+  let new = fmap (fmap mconcat) new'
+  let (newLegalMap, newIllegal) = M.partition (== Legal) (M.fromList new)
+  return (Options (NE.fromList (M.keys newLegalMap)) (newIllegal <> illegal) p)

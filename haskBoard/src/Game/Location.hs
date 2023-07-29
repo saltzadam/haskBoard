@@ -30,7 +30,7 @@ module Game.Location
      transferCounter
     )
  where
-import Control.Lens (makeFields, set, view, to)
+import Control.Lens (makeFields, set)
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -41,7 +41,6 @@ import GHC.Generics (Generic)
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
 import Data.Foldable (foldl')
-import Control.Applicative
 
 ---- Definitions and instances
 
@@ -216,7 +215,7 @@ peek' (Infinite r) = Just r
 
 ---- Counters
 
-data Counter = Counter {val :: Maybe Int,
+data Counter = Counter {val :: Int,
                         bounds :: (Int, Int)} deriving (Eq, Show, Generic)
 
 makeFields ''Counter
@@ -224,22 +223,22 @@ makeFields ''Counter
 type Counters name = FTMap name Counter
 
 makeCounter :: (Int, Int) -> Counter
-makeCounter (a, b) = Counter Nothing (a, b)
+makeCounter (a, b) = Counter a (a, b)
 
 dummyCounter :: Counter
-dummyCounter = Counter Nothing (0,0)
+dummyCounter = Counter 0 (0,0)
 
 d6 :: Counter
 d6 = makeCounter (1, 6)
 
 
 mapCounter :: (Int -> Int) -> Counter -> (Counter, Maybe Int)
-mapCounter f c@(Counter a (bl, bu)) = if fmap f a >= Just bl && fmap f a <= Just bl
-                                    then (Counter (fmap f a) (bl, bu), fmap f a)
+mapCounter f c@(Counter a (bl, bu)) = if f a >= bl && f a <= bl
+                                    then (Counter (f a) (bl, bu), Just (f a))
                                     else (c, Nothing)
 
 setCounter :: Counter -> Int -> Counter
-setCounter c a = set #val (Just a) c
+setCounter c a = set #val a c
 
 increment' :: Counter -> (Counter, Maybe Int)
 increment' = mapCounter (+1)

@@ -1,0 +1,21 @@
+import Control.Monad ()
+import Distribution.PackageDescription ()
+import Distribution.Simple
+    ( defaultMainWithHooks, simpleUserHooks, UserHooks(buildHook) )
+import Distribution.Simple.LocalBuildInfo
+    ( LocalBuildInfo(withPrograms) )
+import Distribution.Simple.Program
+    ( ConfiguredProgram(programLocation),
+      ghcProgram,
+      lookupProgram,
+      userSpecifyArgs,
+      ProgramLocation(locationPath) )
+import Distribution.Simple.Setup ()
+import Distribution.Simple.Utils
+    ( notice, rawSystemExitCode, withTempDirectory )
+import Distribution.Verbosity ( Verbosity, normal )
+import System.Directory ()
+import System.Exit ( ExitCode(ExitSuccess) )
+import System.FilePath ( (</>) )
+import System.IO ()
+import System.Process ()

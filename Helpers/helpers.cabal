@@ -27,14 +27,14 @@ extra-source-files: CHANGELOG.md
 
 
 library
-    hs-source-dirs: src
+    hs-source-dirs: .
     build-depends: base, containers,lens, generic-lens,
                 transformers, text,  MonadRandom, random, 
                 effectful, effectful-core, mtl, mmorph,
                 crypto-rng-effectful, effectful-plugin,
                  random-shuffle, finitary, ghc-typelits-knownnat, brick, finite-typelits, vty, safe,
                  lattices, haskBoard
-    exposed-modules: Helpers
+    exposed-modules: Helpers, Track
     default-language: Haskell2010
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
     ghc-options:  -Wall -fplugin=Effectful.Plugin -fplugin=GHC.TypeLits.KnownNat.Solver

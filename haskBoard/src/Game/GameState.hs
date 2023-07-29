@@ -46,12 +46,14 @@ data GameState l cn r ph pl i = GameState
   { players :: Set Player,
     objects :: GameObjects l cn r,
     currentPhase :: ph,
-    turns :: NonEmpty (Turn ph),
+    -- owner :: l -> Maybe Player,
     currentTurn :: Turn ph,
-    nextTurn :: Turn ph -> NonEmpty (Turn ph) -> Turn ph,
+    nextTurn :: GameState l cn r ph pl i -> Turn ph,
     visibility :: VisibilityMap l cn ph
   }
   deriving (Generic)
+
+
 
 -- data GameStateShow l cn r ph = GameStateShow
 --     { players :: Set Player,
@@ -77,7 +79,7 @@ data GameRules l cn r ph pl i = GameRules
 counter :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Counter
 counter c = #objects . #counters . ftAt c
 
-counterVal :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) (Maybe Int)
+counterVal :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Int
 counterVal c = counter c . #val
 
 location :: Eq l => l -> Lens' (GameState l cn r ph pl i) (LocationShape r)
