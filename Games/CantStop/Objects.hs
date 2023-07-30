@@ -16,6 +16,7 @@ import Game.Location
 import Game.Monad
 import Game.Options (Legality (..), Options, oneIssue)
 import Game.Player
+import Game.Rules
 import Game.View (GameStateView)
 import Track (Track (..))
 
@@ -128,7 +129,8 @@ type CantStopGameRules = GameRules CantStopLocation CantStopCounterName CantStop
 
 type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
-type CSM a = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a
+-- type CSM a = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a
+type CSM a = GameRule CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a
 
 type CSView = GameStateView CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 

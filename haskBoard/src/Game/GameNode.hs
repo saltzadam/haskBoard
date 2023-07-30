@@ -37,8 +37,8 @@ action = GameNode . Left
 choice :: Options pl i -> GameNode l cn r ph pl i
 choice = GameNode . Right
 
-mkChoice :: Options pl i -> [GameNode l cn r ph pl i]
-mkChoice opts = [choice opts]
+-- mkChoice :: Options pl i -> [GameNode l cn r ph pl i]
+-- mkChoice opts = [choice opts]
 
-mkAction :: GameAction l cn r ph -> [GameNode l cn r ph pl i]
-mkAction act = [action act]
+-- mkAction :: GameAction l cn r ph -> [GameNode l cn r ph pl i]
+-- mkAction act = [action act]

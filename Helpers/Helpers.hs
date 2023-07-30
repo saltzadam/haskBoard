@@ -5,6 +5,7 @@
 module Helpers where
 
 import Control.Lens (Getter, to, view, (^.))
+import Control.Monad.Free (Free (..), liftF)
 import Data.Finitary
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map (Map)
@@ -19,6 +20,7 @@ import Game.Location (Counter, LocationShape, Locations, has', howMany', invento
 import Game.Monad (GameEff (..), LookerType (..), askEff, hoistGameEff)
 import Game.Options
 import Game.Player
+import Game.Rules (GameRule, GameRuleF (..), act')
 import Game.View (GameStateView)
 import Game.Visibility (VisData (..), VisibilityMap (..), runVis)
 import Util (buildSafeNonempty, compose, concatNE, graph, graphM, ifNullElse, inhabitantsSet, invertNestedMaps, kleisliCompose, mapMaybeMap, mapMaybeMapM)
@@ -26,32 +28,44 @@ import Util (buildSafeNonempty, compose, concatNE, graph, graphM, ifNullElse, in
 --
 -- look for gameeff
 
-lookPlayers :: GameEff l cn r ph pl i (Set Player)
-lookPlayers = view #players . fst <$> askEff
+-- lookPlayers :: GameEff l cn r ph pl i (Set Player)
+-- lookPlayers = view #players . fst <$> askEff
 
-lookLocation :: Eq l => l -> GameEff l cn r ph pl i (LocationShape r)
-lookLocation l = do
-  (g, looker) <- askEff
-  let VisibilityMap vis = g ^. #visibility
-  let value = g ^. #objects . #locations . ftAt l
-  case looker of
-    LookAs p -> hoistGameEff $ runVis (vis p (VisLocation l)) value
-    LookFull -> hoistGameEff . Just $ value
+lookPlayers :: GameRule l cn r ph pl i (Set Player)
+lookPlayers = liftF (LookPlayers id)
 
-lookCounter :: (Eq cn) => cn -> GameEff l cn r ph pl i Counter
-lookCounter c = do
-  (g, looker) <- askEff
-  let VisibilityMap vis = g ^. #visibility
-  let value = g ^. #objects . #counters . ftAt c
-  case looker of
-    LookAs p -> hoistGameEff $ runVis (vis p (VisCounter c)) value
-    LookFull -> hoistGameEff . Just $ value
+lookLocation :: Eq l => l -> GameRule l cn r ph pl i (LocationShape r)
+lookLocation l = liftF (LookLocation l id)
 
-lookCounterBounds :: (Eq cn) => cn -> GameEff l cn r ph pl i (Int, Int)
-lookCounterBounds cn = fmap (view #bounds) (lookCounter cn)
+-- do
+-- (g, looker) <- askEff
+-- let VisibilityMap vis = g ^. #visibility
+-- let value = g ^. #objects . #locations . ftAt l
+-- case looker of
+-- LookAs p -> hoistGameEff $ runVis (vis p (VisLocation l)) value
+-- LookFull -> hoistGameEff . Just $ value
 
-lookCounterVal :: Eq cn => cn -> GameEff l cn r ph pl i Int
-lookCounterVal cn = fmap (view #val) (lookCounter cn)
+-- lookCounter :: (Eq cn) => cn -> GameEff l cn r ph pl i Counter
+-- lookCounter c = do
+--   (g, looker) <- askEff
+--   let VisibilityMap vis = g ^. #visibility
+--   let value = g ^. #objects . #counters . ftAt c
+--   case looker of
+--     LookAs p -> hoistGameEff $ runVis (vis p (VisCounter c)) value
+--     LookFull -> hoistGameEff . Just $ value
+lookCounter :: cn -> GameRule l cn r ph pl i Counter
+lookCounter c = liftF (LookCounter c id)
+
+-- lookCounterBounds :: (Eq cn) => cn -> GameEff l cn r ph pl i (Int, Int)
+-- lookCounterBounds cn = fmap (view #bounds) (lookCounter cn)
+lookCounterVal :: cn -> GameRule l cn r ph pl i Int
+lookCounterVal c = liftF (LookCounter c (view #val))
+
+lookCounterBounds :: cn -> GameRule l cn r ph pl i (Int, Int)
+lookCounterBounds c = liftF (LookCounter c (view #bounds))
+
+-- lookCounterVal :: Eq cn => cn -> GameEff l cn r ph pl i Int
+-- lookCounterVal cn = fmap (view #val) (lookCounter cn)
 
 lookCurrentPhase :: GameEff l cn r ph pl i ph
 lookCurrentPhase = view #currentPhase . fst <$> askEff
@@ -72,8 +86,8 @@ viewCurrentPlayer gsv = gsv ^. #currPlayer
 viewHowManyAt :: (Ord r, Eq l) => GameStateView l cn r ph -> l -> r -> Maybe Int
 viewHowManyAt g l r = flip howMany' r <$> viewLocation g l
 
-roll :: cn -> [GameNode l cn r ph pl i]
-roll l = [action . RollCounter $ l]
+roll :: cn -> GameRule l cn r ph pl i ()
+roll l = liftF (Act (RollCounter l) ())
 
 -- viewCounterBounds
 
@@ -105,57 +119,54 @@ useTurnOwner p = to $ \gs ->
 
 --- functions
 
-queryLocations :: (Eq l, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameEff l cn r ph pl i (Map l (Map r Int))
+queryLocations :: (Eq l, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl i (Map l (Map r Int))
 queryLocations lfilt rfilt =
   fmap (M.filter (not . null) . fmap (M.filterWithKey (\r _ -> rfilt r) . inventory)) . sequence $
     M.fromSet lookLocation (S.filter lfilt inhabitantsSet)
 
-queryLocationsHas :: (Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameEff l cn r ph pl i (Map l [r])
+queryLocationsHas :: (Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl i (Map l [r])
 queryLocationsHas lfilt rfilt = fmap M.keys <$> queryLocations lfilt rfilt
 
-queryResources :: (Eq l, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameEff l cn r ph pl i (Map r (Map l Int))
+queryResources :: (Eq l, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl i (Map r (Map l Int))
 queryResources lfilt rfilt = invertNestedMaps <$> queryLocations lfilt rfilt
 
-queryResourcesAt :: (Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameEff l cn r ph pl i (Map r [l])
+queryResourcesAt :: (Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl i (Map r [l])
 queryResourcesAt lfilt rfilt = fmap M.keys <$> queryResources lfilt rfilt
 
-listResAtF :: (Ord r, Eq l, Finitary l, Ord l) => l -> (r -> Bool) -> GameEff l cn r ph pl i [r]
+listResAtF :: (Ord r, Eq l, Finitary l, Ord l) => l -> (r -> Bool) -> GameRule l cn r ph pl i [r]
 listResAtF l filt = M.keys <$> queryResourcesAt (== l) filt
 
-listResAt :: (Ord r, Eq l, Finitary l, Ord l) => l -> GameEff l cn r ph pl i [r]
+listResAt :: (Ord r, Eq l, Finitary l, Ord l) => l -> GameRule l cn r ph pl i [r]
 listResAt l = listResAtF l (const True)
 
-findResourceWithin' :: (Ord r, Eq l, Finitary l, Ord l) => r -> [l] -> GameEff l cn r ph pl i [l]
+findResourceWithin' :: (Ord r, Eq l, Finitary l, Ord l) => r -> [l] -> GameRule l cn r ph pl i [l]
 findResourceWithin' r locationNames = M.keys <$> queryLocations (`elem` locationNames) (== r)
 
-notWithin :: (Ord r, Eq l, Finitary l, Ord l) => r -> [l] -> GameEff l cn r ph pl i Bool
+notWithin :: (Ord r, Eq l, Finitary l, Ord l) => r -> [l] -> GameRule l cn r ph pl i Bool
 notWithin r locNames = null <$> findResourceWithin' r locNames
 
-howManyAt :: (Ord r, Eq l) => l -> r -> GameEff l cn r ph pl i Int
+howManyAt :: (Ord r, Eq l) => l -> r -> GameRule l cn r ph pl i Int
 howManyAt l r = flip howMany' r <$> lookLocation l
 
 howManyAt' :: Ord r => Locations l r -> l -> r -> Int
 howManyAt' locs l = howMany' (locs !!! l)
 
-howManyAtF :: (Ord r, Eq l) => l -> r -> (Int -> Bool) -> GameEff l cn r ph pl i Bool
+howManyAtF :: (Ord r, Eq l) => l -> r -> (Int -> Bool) -> GameRule l cn r ph pl i Bool
 howManyAtF l r pred = pred <$> howManyAt l r
 
-howManyWithin :: (Ord r, Eq l) => [l] -> r -> GameEff l cn r ph pl i Int
-howManyWithin ls r = sum ((`howManyAt` r) <$> ls)
+howManyWithin :: (Ord r, Eq l) => [l] -> r -> GameRule l cn r ph pl i Int
+howManyWithin ls r = sum <$> traverse (`howManyAt` r) ls
 
-howManyWithinF :: (Ord r, Eq l) => l -> [r] -> (Int -> Bool) -> GameEff l cn r ph pl i Bool
-howManyWithinF l rs pred = pred <$> sum (howManyAt l <$> rs)
-
-peek :: Eq l => l -> GameEff l cn r ph pl i (Maybe r)
+peek :: Eq l => l -> GameRule l cn r ph pl i (Maybe r)
 peek l = peek' <$> lookLocation l
 
-has :: (Ord r, Eq l) => l -> r -> GameEff l cn r ph pl i Bool
+has :: (Ord r, Eq l) => l -> r -> GameRule l cn r ph pl i Bool
 has l r = (> 0) <$> howManyAt l r
 
 has'' :: Ord r => l -> r -> Locations l r -> Bool
 has'' l r locs = howManyAt' locs l r > 0
 
-hasMaybe :: (Ord a, Eq l) => l -> a -> GameEff l cn a ph pl i (Maybe a)
+hasMaybe :: (Ord a, Eq l) => l -> a -> GameRule l cn a ph pl i (Maybe a)
 hasMaybe l r = do
   i <- howManyAt l r
   return $
@@ -163,7 +174,7 @@ hasMaybe l r = do
       then Just r
       else Nothing
 
-doesNotHave :: (Ord r, Eq l) => l -> r -> GameEff l cn r ph pl i Bool
+doesNotHave :: (Ord r, Eq l) => l -> r -> GameRule l cn r ph pl i Bool
 doesNotHave l r = not <$> has l r
 
 doesNotHave' :: Ord r => l -> r -> Locations l r -> Bool
@@ -172,8 +183,8 @@ doesNotHave' l r locs = not (has'' l r locs)
 mkTransfer :: l -> l -> r -> GameNode l cn r ph pl i
 mkTransfer l l' r = action (MkTransfer l l' r)
 
-justTransfer :: Applicative f => l -> l -> r -> f [GameNode l cn r ph pl i]
-justTransfer l l' r = pure [mkTransfer l l' r]
+justTransfer :: l -> l -> r -> GameRule l cn r ph pl i ()
+justTransfer l l' r = act' (MkTransfer l l' r)
 
 mkSwap :: l -> l -> r -> r -> GameNode l cn r ph pl i
 mkSwap l l' r r' = action (MkSwap l l' r r')
@@ -181,24 +192,25 @@ mkSwap l l' r r' = action (MkSwap l l' r r')
 nodeMaybe :: (a -> GameNode l cn r ph pl i) -> Maybe a -> [GameNode l cn r ph pl i]
 nodeMaybe f = maybe [action DoNothing] ((: []) . f)
 
-justDoNothing = [action DoNothing]
+justDoNothing = act' DoNothing
 
-anyHas :: (Ord r, Eq l) => l -> [r] -> GameEff l cn r ph pl i Bool
+anyHas :: (Ord r, Eq l) => l -> [r] -> GameRule l cn r ph pl i Bool
 anyHas l = fmap or . traverse (has l)
 
-transferAll :: (Ord r, Eq l) => l -> l -> r -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+transferAll :: (Ord r, Eq l) => l -> l -> r -> GameRule l cn r ph pl i [GameNode l cn r ph pl i]
 transferAll source target res = replicate <$> howManyAt source res <*> pure (mkTransfer source target res)
 
-whatsAt :: (Ord r, Eq l) => l -> GameEff l cn r ph pl i (Set r)
+whatsAt :: (Ord r, Eq l) => l -> GameRule l cn r ph pl i (Set r)
 whatsAt loc = M.keysSet . M.filter (> 0) . inventory <$> lookLocation loc
 
 -- unsafeSwapAll :: l -> l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
-unsafeSwapAll :: (Eq l, Ord r, Finitary l, Ord l) => l -> l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+unsafeSwapAll :: (Eq l, Ord r, Finitary l, Ord l) => l -> l -> GameRule l cn r ph pl i [GameNode l cn r ph pl i]
 unsafeSwapAll l0 l1 =
-  (fmap (mkTransfer l0 l1) <$> listResAt l0)
-    <> (fmap (mkTransfer l1 l0) <$> listResAt l1)
+  mappend
+    <$> (fmap (mkTransfer l0 l1) <$> listResAt l0)
+    <*> (fmap (mkTransfer l1 l0) <$> listResAt l1)
 
-revealTo :: l -> Player -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+revealTo :: l -> Player -> GameRule l cn r ph pl i [GameNode l cn r ph pl i]
 revealTo loc p = pure [action $ MakeVisibleTo p (VisLocation loc)]
 
 unrevealTo :: Applicative f => l -> Player -> f [GameNode l cn r ph pl i]
@@ -215,5 +227,5 @@ a <+ i
 baseOptions :: Player -> NonEmpty pl -> Options pl i
 baseOptions p legals = Options legals M.empty p
 
-counterAtMax :: Eq cn => cn -> GameEff l cn r ph pl i Bool
-counterAtMax cname = liftA2 (==) (lookCounterVal cname) (fst <$> lookCounterBounds cname)
+counterAtMax :: Eq cn => cn -> GameRule l cn r ph pl i Bool
+counterAtMax cname = liftA2 (==) (lookCounterVal cname) (snd <$> lookCounterBounds cname)

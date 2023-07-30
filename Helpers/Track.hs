@@ -8,7 +8,7 @@ module Track where
 import Control.Monad
 import Data.Bifunctor (Bifunctor (..))
 import Data.Finitary (Finitary)
-import Data.Foldable (find)
+import Data.Foldable (find, traverse_)
 import qualified Data.Foldable as F
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
@@ -16,8 +16,8 @@ import Data.Semigroup (Semigroup (..), mtimesDefault)
 import GHC.Generics (Generic)
 import Game.GameNode (GameAction (..), GameNode)
 import Game.Location (LocationShape)
-import Game.Monad (GameEff)
 import Game.Player (Player)
+import Game.Rules (GameRule, act')
 import Helpers
 import Util (ifM, pureIfM)
 
@@ -38,13 +38,13 @@ start (Track slots) = NE.head slots
 end :: Track a -> a
 end (Track slots) = NE.last slots
 
-startTrack :: r -> l -> Track l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
-startTrack piece currLoc (Track slots) = return [mkTransfer currLoc (NE.head slots) piece]
+startTrack :: r -> l -> Track l -> GameRule l cn r ph pl i ()
+startTrack piece currLoc (Track slots) = act' (MkTransfer currLoc (NE.head slots) piece)
 
-lookSlot :: (Ord r, Finitary l, Ord l) => Track l -> l -> Maybe (GameEff l cn r ph pl i (LocationShape r))
+lookSlot :: (Ord r, Finitary l, Ord l) => Track l -> l -> Maybe (GameRule l cn r ph pl i (LocationShape r))
 lookSlot (Track slots) l = fmap lookLocation (find (== l) slots)
 
-lookPosition :: Eq l => Track l -> Int -> Maybe (GameEff l cn r ph pl i (LocationShape r))
+lookPosition :: Eq l => Track l -> Int -> Maybe (GameRule l cn r ph pl i (LocationShape r))
 lookPosition (Track slots) i =
   let enumSlots = zip [1 ..] (NE.toList slots)
    in fmap lookLocation (lookup i enumSlots)
@@ -57,69 +57,79 @@ slotHeight (Track slots) loc = go loc slots 1
     go loc (slot :| (next : rest)) i = if loc == slot then Just i else go loc (next :| rest) (i + 1)
     go loc (slot :| []) i = if loc == slot then Just i else Nothing
 
-transferTo :: l -> Track l -> r -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+transferTo :: l -> Track l -> r -> GameRule l cn r ph pl i ()
 transferTo source targetTrack = justTransfer source (start targetTrack)
 
 -- removes the highest instance of the resource
-transferFrom :: (Ord r, Eq l) => Track l -> l -> r -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+transferFrom :: (Ord r, Eq l) => Track l -> l -> r -> GameRule l cn r ph pl i ()
 transferFrom sourceTrack target res = do
   sourceSlot <- resMaxSlot res sourceTrack
   case sourceSlot of
-    Nothing -> return justDoNothing
+    Nothing -> return ()
     Just sourceSlot' -> justTransfer sourceSlot' target res
 
 data AdvanceException = AtTop | NotOnTrack | AtBottom deriving (Eq, Ord, Show, Generic)
 
 -- advances bottommost
-advance' :: forall r l cn ph pl i. (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i (Either AdvanceException (GameNode l cn r ph pl i))
+advance' :: forall r l cn ph pl i. (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i (Either AdvanceException (GameAction l cn r ph))
 advance' res (Track slots) = go res slots
   where
-    go :: r -> NonEmpty l -> GameEff l cn r ph pl i (Either AdvanceException (GameNode l cn r ph pl i))
+    go :: r -> NonEmpty l -> GameRule l cn r ph pl i (Either AdvanceException (GameAction l cn r ph))
     go res (top :| []) = pureIfM (top `has` res) (Left AtTop) (Left NotOnTrack)
-    go res (slot :| (next : rest)) = ifM (slot `has` res) (pure . Right $ mkTransfer slot next res) (go res (next :| rest))
+    go res (slot :| (next : rest)) = ifM (slot `has` res) (pure . Right $ MkTransfer slot next res) (go res (next :| rest))
 
-advance :: (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
-advance res track = F.toList <$> advance' res track
+advance :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i ()
+advance res track = do
+  result <- advance' res track
+  case result of
+    Left _ -> return ()
+    Right action -> act' action
 
-advanceOrInsert :: (Ord r, Eq l) => r -> l -> Track l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
+advanceOrInsert :: (Ord r, Eq l) => r -> l -> Track l -> GameRule l cn r ph pl i ()
 advanceOrInsert res source track' = ifM (holds res track') (advance res track') (startTrack res source track')
 
-recede' :: forall r l cn ph pl i. (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i (Either AdvanceException (GameNode l cn r ph pl i))
+recede' :: forall r l cn ph pl i. (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i (Either AdvanceException (GameAction l cn r ph))
 recede' res (Track slots) = first reverseExceptions <$> advance' res (Track (NE.reverse slots))
   where
     reverseExceptions AtTop = AtBottom
     reverseExceptions AtBottom = AtTop
     reverseExceptions NotOnTrack = NotOnTrack
 
-recede :: (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
-recede res track = F.toList <$> recede' res track
+recede :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i ()
+recede res track = do
+  result <- recede' res track
+  case result of
+    Left _ -> return ()
+    Right action -> act' action
 
-count :: (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i Int
+count :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i Int
 count res (Track slots) = sum <$> traverse (`howManyAt` res) slots
 
-holds :: (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i Bool
+holds :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i Bool
 holds res track' = (> 0) <$> count res track'
 
-resMinSlot :: forall r l cn ph pl i. (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i (Maybe l)
+resMinSlot :: forall r l cn ph pl i. (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i (Maybe l)
 resMinSlot res (Track slots) = go res slots
   where
-    go :: r -> NonEmpty l -> GameEff l cn r ph pl i (Maybe l)
+    go :: r -> NonEmpty l -> GameRule l cn r ph pl i (Maybe l)
     go r (slot :| []) = ifM (slot `has` r) (pure $ Just slot) (pure Nothing)
     go r (slot :| (next : rest)) = ifM (slot `has` r) (pure $ Just slot) (go r (next :| rest))
 
-resMaxSlot :: (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i (Maybe l)
+resMaxSlot :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i (Maybe l)
 resMaxSlot res (Track slots) = resMinSlot res (Track (NE.reverse slots))
 
-resMinHeight :: (Ord r, Eq a) => r -> Track a -> GameEff a cn r ph pl i (Maybe Int)
+resMinHeight :: (Ord r, Eq a) => r -> Track a -> GameRule a cn r ph pl i (Maybe Int)
 resMinHeight res track = (slotHeight track =<<) <$> resMinSlot res track
 
-resMaxHeight :: (Ord r, Eq a) => r -> Track a -> GameEff a cn r ph pl i (Maybe Int)
+resMaxHeight :: (Ord r, Eq a) => r -> Track a -> GameRule a cn r ph pl i (Maybe Int)
 resMaxHeight res track = (slotHeight track =<<) <$> resMaxSlot res track
 
-removeAll :: (Ord r, Eq l) => r -> Track l -> l -> GameEff l cn r ph pl i [GameNode l cn r ph pl i]
-removeAll res track target = mtimesDefault <$> count res track <*> transferFrom track target res
+removeAll :: (Ord r, Eq l) => r -> Track l -> l -> GameRule l cn r ph pl i ()
+removeAll res track target = do
+  num <- count res track
+  replicateM_ num (transferFrom track target res)
 
-resAtTop :: (Ord r, Eq l) => r -> Track l -> GameEff l cn r ph pl i Bool
+resAtTop :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i Bool
 resAtTop r track = do
   rSlot <- resMaxSlot r track
   let height = slotHeight track =<< rSlot

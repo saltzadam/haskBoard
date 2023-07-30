@@ -3,30 +3,35 @@
 
 module Game.GameE (playGameTurns) where
 
-import Control.Lens (to, view, (^.))
-import Control.Monad (join, replicateM, void)
+import Control.Lens (to, (^.))
+import Control.Monad (void)
+import Control.Monad.Free
+import Data.Bifunctor (second)
 import Data.Bitraversable
 import Data.Finitary (Finitary)
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Sequence as Seq
+import qualified Data.Set as S
 import qualified Data.Text as T
+import qualified Debug.Trace as Debug
 import Effectful
 import Effectful.Crypto.RNG
   ( CryptoRNG (..),
     RNG (..),
   )
+import Effectful.State.Static.Shared as State
 import FinitaryMap (ftAt)
-import GHC.Generics (Generic)
 import Game.Choose
 import Game.GameNode (GameAction (..), GameNode)
 import Game.GameState
 import Game.Location (LocationShape (..), decrement, increment, inventory, setCounter, swap, transfer, transferCounter)
 import Game.Options
 import Game.Player (Player)
+import Game.Rules
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
-import Util (shuffleRNG)
+import Util (graphM, shuffleRNG)
 
 -- TODO: (fun) some kind of history besides log
 
@@ -132,17 +137,6 @@ act a@(RollCounter c) = do
   useGameState (counterVal c) >>= logAction2 a
   updateGS
   continueGame
--- act a@(AddCounter c) = do
---     (bl, _) <- useGameState (counter c . #bounds)
---     modifyingGameState (counter c) (`setCounter` bl)
---     updateGS
---     useGameState (counter c . #val) >>= logAction2 a
---     continueGame
--- act a@(RemoveCounter c) = do
---     assignGameState (counter c . #val) Nothing
---     updateGS
---     useGameState (counter c . #val) >>= logAction2 a
---     continueGame
 act a@(TransferCounter cnfrom cnto) = do
   modifyingGameState (#objects . #counters) (transferCounter cnfrom cnto)
   updateGS
@@ -184,61 +178,63 @@ act a@(EndGame winners) = do
   logAction2 a ' '
   return PCEndGame
 
-chooseNode :: forall l cn r ph pl i es. (Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show pl, Show i, Show l, Show r, Show cn, Show ph, Log2 :> es, GameRun l cn r ph pl i :> es) => Eff es (Options pl i) -> Eff es [Eff es [GameNode l cn r ph pl i]]
-chooseNode cs = do
-  options <- cs
-  gs <- getGameState
-  logGame (T.pack ("Choosing from " ++ displayOptions options))
-  c <- choose gs options
-  logGame (T.pack ("Chose " ++ show c))
-  runner <- getRunner
-  return (inject <$> runner c)
+-- chooseNode :: forall l cn r ph pl i es. (Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show pl, Show i, Show l, Show r, Show cn, Show ph, Log2 :> es, GameRun l cn r ph pl i :> es) => Eff es (Options pl i) -> Eff es (GameRule l cn r ph pl i ())
+-- chooseNode cs = do
+--   options <- cs
+--   gs <- getGameState
+--   logGame (T.pack ("Choosing from " ++ displayOptions options))
+--   c <- choose gs options
+--   logGame (T.pack ("Chose " ++ show c))
+--   runner <- getRunner
+--   return (runner c)
 
-runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => GameNode l cn r ph pl i -> Eff es (Either PhaseControl [Eff es [GameNode l cn r ph pl i]])
-runNode aNode = bitraverse act (chooseNode . pure) (aNode ^. #node)
+-- runNode :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => GameNode l cn r ph pl i -> Eff es (Either PhaseControl [Eff es [GameNode l cn r ph pl i]])
+-- runNode aNode = bitraverse act (chooseNode . pure) (aNode ^. #node)
 
-runPhaseNodes :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [Eff es [GameNode l cn r ph pl i]] -> Eff es PhaseControl
-runPhaseNodes [] = return PCEndPhase
-runPhaseNodes (node : nodes) = do
-  result <- unfoldNodes node
-  downResult <- handleResult result
-  case downResult of
-    PCContinue -> runPhaseNodes nodes
-    i -> return i
-  where
-    handleResult ::
-      Either
-        PhaseControl
-        [Eff es [GameNode l cn r ph pl i]] ->
-      Eff es PhaseControl
-    handleResult result = case result of
-      Left control -> return control
-      Right nextLevelnodes ->
-        if null nextLevelnodes
-          then return PCContinue
-          else runPhaseNodes nextLevelnodes
+runPhaseNodes' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [GameRule l cn r ph pl i a] -> Eff es PhaseControl
+runPhaseNodes' [] = return PCEndPhase
+runPhaseNodes' (rule : rules) = do
+  result <- runRuleControl rule
+  case result of
+    PCContinue -> runPhaseNodes' rules
+    _ -> return result
 
-    unfoldNodes :: Eff es [GameNode l cn r ph pl i] -> (Eff es) (Either PhaseControl [Eff es [GameNode l cn r ph pl i]])
-    unfoldNodes effNodes = do
-      nodes <- effNodes
-      fmap (fmap join . sequence) (traverse runNode nodes)
+-- runPhaseNodes :: forall l r cn ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [Eff es [GameNode l cn r ph pl i]] -> Eff es PhaseControl
+-- runPhaseNodes [] = return PCEndPhase
+-- runPhaseNodes (node : nodes) = do
+--   result <- unfoldNodes node
+--   downResult <- handleResult result
+--   case downResult of
+--     PCContinue -> runPhaseNodes nodes
+--     i -> return i
+--   where
+--     handleResult ::
+--       Either
+--         PhaseControl
+--         [Eff es [GameNode l cn r ph pl i]] ->
+--       Eff es PhaseControl
+--     handleResult result = case result of
+--       Left control -> return control
+--       Right nextLevelnodes ->
+--         if null nextLevelnodes
+--           then return PCContinue
+--           else runPhaseNodes nextLevelnodes
+
+--     unfoldNodes :: Eff es [GameNode l cn r ph pl i] -> (Eff es) (Either PhaseControl [Eff es [GameNode l cn r ph pl i]])
+--     unfoldNodes effNodes = do
+--       nodes <- effNodes
+--       fmap (fmap join . sequence) (traverse runNode nodes)
 
 continueGame :: Eff es PhaseControl
 continueGame = return PCContinue
 
 -- all control stuff
 
-data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame deriving (Eq, Ord, Show, Generic)
-
--- data GameControl ph = CutoffPhase | CutoffTurn | End deriving (Eq, Ord, Show, Generic)
-data TurnControl = TEndTurn | TEndGame deriving (Eq, Ord, Show, Generic)
-
 runFromPhases :: (GameInteract l cn r ph pl i :> es, Ord l, Finitary cn, Show ph, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Ord r, Eq ph, Show cn, Ord cn, Show l, Show r, Show pl, Show i, GameRun l cn r ph pl i :> es) => [ph] -> Eff es TurnControl
 runFromPhases (phase : theRest) = do
   assignGameState #currentPhase phase
-  phases <- getPhases
-  let newNodes = getPhaseNodes (phases phase)
-  result <- runPhaseNodes newNodes
+  Phase _ newNodes <- getPhases <*> pure phase
+  result <- runPhaseNodes' newNodes
   case result of
     PCEndTurn -> return TEndTurn
     PCEndGame -> return TEndGame
@@ -254,9 +250,9 @@ runTurns turn = do
 playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => Maybe ph -> Eff es (GameState l cn r ph pl i, [Player])
 playGameTurns setupPhaseName = do
   phases <- getPhases
-  maybe (return ()) (void . runPhaseNodes . getPhaseNodes . phases) setupPhaseName
+  maybe (return ()) (void . runPhaseNodes' . (\(Phase _ nodes) -> nodes) . phases) setupPhaseName
   void playGameTurns'
-  (,) <$> getGameState <*> winner
+  (,) <$> getGameState <*> winnerBy id
   where
     playGameTurns' = do
       gs <- getGameState
@@ -269,3 +265,94 @@ playGameTurns setupPhaseName = do
           assignGameState #currentTurn nextTurn
           updateGS
           playGameTurns'
+
+runRuleControl :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => GameRule l cn r ph pl i a -> Eff es PhaseControl
+runRuleControl (Free (Act action next)) = act action >> runRuleControl next
+runRuleControl (Free (MakeChoice opts next)) = do
+  gs <- getGameState
+  pl <- choose gs opts
+  runner <- getRunner
+  runRuleControl (runner pl)
+runRuleControl (Free (LookLocation l next)) = do
+  shape <- useGameState (#objects . #locations . ftAt l)
+  runRuleControl (next shape)
+runRuleControl (Free (LookCounter cn next)) = do
+  counter <- useGameState (#objects . #counters . ftAt cn)
+  runRuleControl (next counter)
+runRuleControl (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleControl . next
+runRuleControl (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleControl . next
+runRuleControl (Free (LookPlayers next)) = useGameState #players >>= runRuleControl . next
+runRuleControl (Pure a) = return PCContinue
+
+runRuleS ::
+  ( Ord l,
+    Ord r,
+    Ord cn,
+    Finitary cn,
+    Show ph,
+    Show cn,
+    Show l,
+    Show r,
+    Show pl,
+    Show i,
+    Interface l cn r ph pl i :> es,
+    GameRun l cn r ph pl i :> es,
+    RNG :> es,
+    Log2 :> es,
+    Eq ph,
+    GameInteract l cn r ph pl i :> es
+  ) =>
+  GameRule l cn r ph pl i a ->
+  Eff es a
+runRuleS (Free (Act action next)) = act action >> runRuleS next
+runRuleS (Free (MakeChoice opts next)) = do
+  gs <- getGameState
+  pl <- choose gs opts
+  -- TODO: what to do here
+  runRuleS (next pl)
+runRuleS (Free (LookLocation l next)) = do
+  shape <- useGameState (#objects . #locations . ftAt l)
+  runRuleS (next shape)
+runRuleS (Free (LookCounter cn next)) = do
+  counter <- useGameState (#objects . #counters . ftAt cn)
+  runRuleS (next counter)
+runRuleS (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleS . next
+runRuleS (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleS . next
+runRuleS (Free (LookPlayers next)) = useGameState #players >>= runRuleS . next
+runRuleS (Pure a) = return a
+
+runRuleNoAct ::
+  ( Ord l,
+    Ord r,
+    Ord cn,
+    Finitary cn,
+    Show ph,
+    Show cn,
+    Show l,
+    Show r,
+    Show pl,
+    Show i,
+    Interface l cn r ph pl i :> es,
+    GameRun l cn r ph pl i :> es,
+    RNG :> es,
+    Log2 :> es,
+    Eq ph
+  ) =>
+  GameState l cn r ph pl i ->
+  GameRule l cn r ph pl i a ->
+  Eff es (a, GameState l cn r ph pl i)
+runRuleNoAct gs rule = State.runState gs (runRuleS rule)
+
+winnerBy :: (Ord a, GameInteract l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => (Int -> a) -> Eff es [Player]
+winnerBy f = do
+  players <- S.toList <$> useGameState #players
+  score <- getScore
+  gs <- getGameState
+  let scorePlayer pl = fst <$> runRuleNoAct gs (score pl)
+  scoredPlayers <- traverse (graphM scorePlayer) players
+  let fScoredPlayers = fmap (second f) scoredPlayers
+  let maxScore = snd . head $ fScoredPlayers
+  return $ fmap fst . takeWhile (\(_, s) -> s == maxScore) $ fScoredPlayers
+
+winner :: (GameInteract l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => Eff es [Player]
+winner = winnerBy id

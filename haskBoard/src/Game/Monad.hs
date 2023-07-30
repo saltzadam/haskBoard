@@ -22,10 +22,7 @@ import qualified Effectful.State.Static.Shared as EffS
 import qualified Effectful.State.Static.Shared as State
 import GHC.Generics (Generic)
 import Game.GameState (GameInteract, GameRules, GameState (..), getGameState)
-import Game.Player (Player)
-
--- how many consumers of this would benefit from Maybe-ish typeclasses?
-data LookerType = LookAs Player | LookFull deriving (Generic, Eq, Ord, Show)
+import Game.Visibility (LookerType (..))
 
 newtype GameEff l cn r ph pl i a = GameEff {unEff :: MaybeT (Eff '[GameInteract l cn r ph pl i, Reader LookerType]) a}
   deriving (Generic, Functor, Applicative, Monad)
