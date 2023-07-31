@@ -3,8 +3,8 @@
 
 module CantStop where
 
-import Control.Lens (both, each, over, preview, sequenceOf, traverseOf, (^.))
-import Control.Monad (filterM, forM, join, replicateM, replicateM_, void)
+import Control.Lens ((^.))
+import Control.Monad (filterM, replicateM_, void)
 import Data.Foldable (traverse_)
 import Data.Function ((&))
 import Data.List.NonEmpty (NonEmpty (..))
@@ -12,12 +12,11 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust, fromMaybe, listToMaybe)
 import qualified Data.Set as S
-import Game.GameNode
+import Game.GameAction
 import Game.GameState
-import Game.Location (histogram, inventory)
+import Game.Location (histogram)
 import Game.Options (Legality (..), Options (..), exceptIf, oneIssue, raiseIssueIf, unlessYouCould, youMay, youMay')
 import Game.Player
-import Game.Rules (GameRuleF (..), act', makeChoice)
 import Game.Visibility (allVisible)
 import Helpers
 import Objects
@@ -127,15 +126,15 @@ clearWonTracks = do
         Nothing -> pure ()
 
 advancePlayer :: CSM ()
-advancePlayer = act' AdvanceTurn
+advancePlayer = act AdvanceTurn
 
 checkWinner :: CSM ()
 checkWinner = do
   trackWinners <- catMaybes <$> traverse trackWinner [Two .. Twelve]
   let winners = M.keys . M.filter (>= 3) $ histogram trackWinners
   if not (null winners)
-    then act' (EndGame winners)
-    else act' DoNothing
+    then act (EndGame winners)
+    else act DoNothing
 
 trackWinner :: TrackName -> CSM (Maybe Player)
 trackWinner trackName = do
@@ -189,8 +188,6 @@ csRunPlay' (DontStop p) = rollNodes >> chooseMove p
 csRunPlay' (ForceStop p) =
   traverse_ (clearMarkers Nothing) [Two .. Twelve]
     >> advancePlayer
-
--- csRunPlay = fmap injectGame' . csRunPlay'
 
 cantStop :: CantStopGameRules
 cantStop = GameRules csRunPlay' cantStopPhases score Nothing

@@ -10,10 +10,9 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import FinitaryMap (FTMap (..))
 import GHC.Generics (Generic)
-import Game.GameNode (GameAction, GameNode)
+import Game.GameAction
 import Game.GameState
 import Game.Location
-import Game.Monad
 import Game.Options (Legality (..), Options, oneIssue)
 import Game.Player
 import Game.Rules
@@ -127,7 +126,7 @@ type CantStopOptions = Options CantStopPlayName CantStopIssue
 
 type CantStopGameRules = GameRules CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
-type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
+-- type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
 -- type CSM a = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a
 type CSM a = GameRule CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a

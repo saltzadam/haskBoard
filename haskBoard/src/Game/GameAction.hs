@@ -1,7 +1,6 @@
-module Game.GameNode where
+module Game.GameAction (GameAction (..)) where
 
 import GHC.Generics (Generic)
-import Game.Options
 import Game.Player
 import Game.Visibility (VisData)
 
@@ -26,19 +25,19 @@ data GameAction l cn r ph
   | EndGame [Player]
   deriving (Eq, Ord, Show, Generic)
 
-newtype GameNode l cn r ph pl i = GameNode
-  { node :: Either (GameAction l cn r ph) (Options pl i)
-  }
-  deriving (Generic, Show)
+-- newtype GameNode l cn r ph pl i = GameNode
+--   { node :: Either (GameAction l cn r ph) (Options pl i)
+--   }
+--   deriving (Generic, Show)
 
-action :: GameAction l cn r ph -> GameNode l cn r ph pl i
-action = GameNode . Left
+-- action :: GameAction l cn r ph -> GameNode l cn r ph pl i
+-- action = GameNode . Left
 
-choice :: Options pl i -> GameNode l cn r ph pl i
-choice = GameNode . Right
+-- choice :: Options pl i -> GameNode l cn r ph pl i
+-- choice = GameNode . Right
 
--- mkChoice :: Options pl i -> [GameNode l cn r ph pl i]
--- mkChoice opts = [choice opts]
+-- -- mkChoice :: Options pl i -> [GameNode l cn r ph pl i]
+-- -- mkChoice opts = [choice opts]
 
--- mkAction :: GameAction l cn r ph -> [GameNode l cn r ph pl i]
--- mkAction act = [action act]
+-- -- mkAction :: GameAction l cn r ph -> [GameNode l cn r ph pl i]
+-- -- mkAction act = [action act]
