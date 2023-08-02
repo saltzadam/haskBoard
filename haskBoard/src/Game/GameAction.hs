@@ -24,20 +24,3 @@ data GameAction l cn r ph
   | MakeInvisibleTo Player (VisData l cn ph)
   | EndGame [Player]
   deriving (Eq, Ord, Show, Generic)
-
--- newtype GameNode l cn r ph pl i = GameNode
---   { node :: Either (GameAction l cn r ph) (Options pl i)
---   }
---   deriving (Generic, Show)
-
--- action :: GameAction l cn r ph -> GameNode l cn r ph pl i
--- action = GameNode . Left
-
--- choice :: Options pl i -> GameNode l cn r ph pl i
--- choice = GameNode . Right
-
--- -- mkChoice :: Options pl i -> [GameNode l cn r ph pl i]
--- -- mkChoice opts = [choice opts]
-
--- -- mkAction :: GameAction l cn r ph -> [GameNode l cn r ph pl i]
--- -- mkAction act = [action act]

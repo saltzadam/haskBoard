@@ -1,14 +1,14 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE DeriveAnyClass #-}
 
 module Game.Player where
 
-import GHC.Generics (Generic)
 import Data.Finitary (Finitary)
+import GHC.Generics (Generic)
 
 data PlayerNum = PlayerOne | PlayerTwo | PlayerThree | PlayerFour | PlayerFive | PlayerSix
-    deriving (Eq, Ord, Generic, Finitary, Show, Read, Bounded, Enum)
+  deriving (Eq, Ord, Generic, Finitary, Show, Read, Bounded, Enum)
 
 displayPlayerNum :: PlayerNum -> String
 displayPlayerNum PlayerOne = "Player One"
@@ -23,8 +23,9 @@ displayPlayer (Player pnum) = displayPlayerNum pnum
 
 newtype Player = Player {num :: PlayerNum} deriving (Eq, Ord, Show, Generic, Read, Bounded, Finitary, Enum)
 
+-- for convenience
 instance Num PlayerNum where
-    fromInteger = toEnum . (subtract 1) . fromIntegral
+  fromInteger = toEnum . subtract 1 . fromIntegral
 
 mkPlayers :: Int -> [Player]
-mkPlayers i = Player <$> [toEnum 0..toEnum i]
+mkPlayers i = Player <$> [toEnum 0 .. toEnum i]

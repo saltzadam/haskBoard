@@ -1,0 +1,68 @@
+module Interface.Agent where
+
+import Brick.BChan (BChan, readBChan, writeBChan)
+import Control.Concurrent (Chan, readChan, writeChan)
+import Control.Lens (use, view, (^.))
+import Control.Monad.Random (forever, randomRIO)
+import Control.Monad.State (evalStateT)
+import Control.Monad.Trans (lift)
+import qualified Data.List.NonEmpty as NE
+import Game.Agent
+import Game.Choose
+import Game.Options
+
+-- Start an agent
+-- wait for a payload from fromChan
+-- depending on the type, pull the appropriate handler
+-- runAgentIO :: AgentM l cn r ph pl i IO IO ()
+runAgentIO :: Agent l cn r ph pl i IO -> IO ()
+runAgentIO agent = forever $ do
+  let fromChan = agent ^. #fromGameChannel
+  payload <- readChan fromChan
+  -- let parsed = parsePayload payload
+  case payload of
+    SendState csv -> (agent ^. #stateHandler) csv
+    SendWinners winners -> (agent ^. #winnersHandler) winners
+    SendOptions gsv options -> do
+      let chooser = agent ^. #playChooser
+      let toChan = agent ^. #toGameChannel
+      writeChan toChan =<< chooser gsv options
+
+brickAgent ::
+  Chan (GameToInterfacePayload l cn r ph pl i) ->
+  BChan (BEvent l cn r ph pl i) ->
+  Chan pl ->
+  BChan pl ->
+  Agent l cn r ph pl i IO
+brickAgent fromGameChan toBrickBChan toGameChan fromBrickBChan =
+  Agent
+    { playChooser = \_ options -> do
+        writeBChan toBrickBChan (Request options)
+        readBChan fromBrickBChan,
+      stateHandler = writeBChan toBrickBChan . Receive,
+      winnersHandler = writeBChan toBrickBChan . AnnounceWinner,
+      fromGameChannel = fromGameChan,
+      toGameChannel = toGameChan
+    }
+
+--
+-- chooses moves at random
+randomAgent ::
+  Chan (GameToInterfacePayload l cn r ph pl i) ->
+  Chan pl ->
+  Agent l cn r ph pl i IO
+randomAgent fromGameChan toGameChan =
+  Agent
+    { playChooser = chooseRandom,
+      stateHandler = \_ -> return (),
+      winnersHandler = \_ -> return (),
+      fromGameChannel = fromGameChan,
+      toGameChannel = toGameChan
+    }
+  where
+    chooseRandom :: p -> Options b i -> IO b
+    chooseRandom _ (Options legal _ _) =
+      let numOptions = length legal
+       in do
+            choice <- randomRIO (1, numOptions)
+            return (legal NE.!! (choice - 1))

@@ -2,9 +2,7 @@
 
 module Game.Choose where
 
-import Control.Concurrent (Chan, readChan, writeChan)
 import Control.Monad.Free (liftF)
-import Data.Finitary (Finitary)
 import Effectful
 import Effectful.Dispatch.Dynamic
 import GHC.Generics (Generic)
@@ -12,6 +10,7 @@ import Game.GameState
 import Game.Options (Options)
 import Game.Player
 import Game.Rules (GameRule, GameRuleF (..))
+import Game.View (GameStateView)
 
 data Interface l cn r ph pl i :: Effect where
   Choose :: GameState l cn r ph pl i -> Options pl i -> (Interface l cn r ph pl i) m pl
@@ -19,6 +18,12 @@ data Interface l cn r ph pl i :: Effect where
   AnnounceWinners :: [Player] -> (Interface l cn r ph pl i) m ()
 
 type instance DispatchOf (Interface l cn r ph pl i) = 'Dynamic
+
+data GameToInterfacePayload l cn r ph pl i
+  = SendState (GameStateView l cn r ph)
+  | SendOptions (GameStateView l cn r ph) (Options pl i)
+  | SendWinners [Player]
+  deriving (Generic)
 
 -- TODO: should this include GameState???
 choose :: (Interface l cn r ph pl i :> es) => GameState l cn r ph pl i -> Options pl i -> Eff es pl

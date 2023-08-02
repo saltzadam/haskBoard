@@ -18,7 +18,6 @@ import GHC.Base (Applicative (..))
 import Game.GameAction
 import Game.GameState
 import Game.Location (Counter, LocationShape, Locations, has', howMany', inventory, listAllShapeF, peek')
-import Game.Monad (GameEff (..), LookerType (..), askEff, hoistGameEff)
 import Game.Options
 import Game.Player
 import Game.Rules (GameRule, GameRuleF (..))

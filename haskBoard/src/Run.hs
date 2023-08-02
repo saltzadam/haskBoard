@@ -1,4 +1,4 @@
-module Game.Run where
+module Run where
 
 import Control.Concurrent (Chan)
 import Control.Lens (to, (^.))
@@ -9,30 +9,15 @@ import Effectful.Crypto.RNG
 import Effectful.Reader.Static (runReader)
 import Effectful.State.Static.Shared (evalState)
 import Game.Choose
-import Game.Controller (GameController, PlayerInterface, chooseInterface, commonInterface)
 import Game.GameE
 import Game.GameState
 import Game.Player (Player)
-import Interface.Choose (GameToInterfacePayload)
+import Interface.Controller (GameController, chooseInterface, commonInterface)
 import Log
 import System.IO (IOMode (..), withFile)
 
 runGameCommonChannels ::
-  ( Ord l,
-    Ord r,
-    Ord cn,
-    Enum cn,
-    Bounded cn,
-    Show ph,
-    Show cn,
-    Show l,
-    Show r,
-    Show pl,
-    Show i,
-    Eq ph,
-    Finitary cn,
-    Finitary l
-  ) =>
+  (Ord l, Ord r, Ord cn, Enum cn, Bounded cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph, Finitary cn, Finitary l) =>
   Player ->
   GameState l cn r ph pl i ->
   GameRules l cn r ph pl i ->

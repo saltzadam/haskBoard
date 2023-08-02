@@ -71,7 +71,7 @@ advance' :: forall r l cn ph pl i. (Ord r, Eq l) => r -> Track l -> GameRule l c
 advance' res (Track slots) = go res slots
   where
     go :: r -> NonEmpty l -> GameRule l cn r ph pl i (Either AdvanceException (GameAction l cn r ph))
-    go res (top :| []) = pureIfM (top `has` res) (Left AtTop) (Left NotOnTrack)
+    go res (top :| []) = ifM (top `has` res) (pure $ Left AtTop) (pure $ Left NotOnTrack)
     go res (slot :| (next : rest)) = ifM (slot `has` res) (pure . Right $ MkTransfer slot next res) (go res (next :| rest))
 
 advance :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i ()

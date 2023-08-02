@@ -19,7 +19,7 @@ import qualified Debug.Trace as Debug
 import Effectful (Eff, IOE, liftIO, (:>))
 import Effectful.Dispatch.Dynamic (interpret)
 import GHC.Conc (threadDelay)
-import Game.Agent (BEvent (..), brickAgent, randomAgent, runAgentIO, runFromAgentIO)
+import Game.Agent (BEvent (..), brickAgent, randomAgent)
 import Game.Controller (GameController (..), agentToInterface)
 import Game.Player (Player (..))
 import Game.Run (runGameCommonChannels, runGameFromInterfaces)
@@ -62,9 +62,9 @@ main = do
 
   let ai1 = uncurry randomAgent (playChannels M.! Player 2)
   let ai2 = uncurry randomAgent (playChannels M.! Player 3)
-  ai1thread <- forkIO (runFromAgentIO ai1)
-  ai2thread <- forkIO (runFromAgentIO ai2)
-  playerthread <- forkIO (runFromAgentIO playerAgent)
+  ai1thread <- forkIO (runAgentIO ai1)
+  ai2thread <- forkIO (runAgentIO ai2)
+  playerthread <- forkIO (runAgentIO playerAgent)
 
   let controller = agentToInterface <$> M.fromList [(Player 1, playerAgent), (Player 2, ai1), (Player 3, ai2)]
 

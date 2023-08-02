@@ -3,7 +3,7 @@
 
 module Game.GameE (playGameTurns) where
 
-import Control.Applicative (asum)
+import Control.Applicative (asum, liftA2)
 import Control.Lens (to, (^.))
 import Control.Monad (foldM, void)
 import Control.Monad.Free
@@ -16,10 +16,7 @@ import qualified Data.Sequence as Seq
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Effectful
-import Effectful.Crypto.RNG
-  ( CryptoRNG (..),
-    RNG (..),
-  )
+import Effectful.Crypto.RNG (CryptoRNG (..), RNG (..))
 import Effectful.State.Static.Shared as State
 import FinitaryMap (ftAt)
 import Game.Choose
@@ -30,71 +27,45 @@ import Game.Player (Player)
 import Game.Rules
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
-import Util (graphM, shuffleRNG)
+import ShuffleRNG
+import Util (graphM)
 
--- TODO: (fun) some kind of history besides log
+-- TODO: some kind of history besides log
+-- TODO: consider modifying/assign w/ built-in updateGS
 
 updateGS :: (GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es) => Eff es ()
 updateGS = getGameState >>= update
 
--- TODO: remove weird extra argument
-logAction2 :: (GameInteract l cn r ph pl i :> es, Log2 :> es, Show cn, Show ph, Show val, Ord r, Eq l, Show r, Show l) => GameAction l cn r ph -> val -> Eff es ()
-logAction2 (IncrementCounter cn) val = logComponent (T.pack $ "Incremented " ++ show cn ++ " to " ++ show val)
-logAction2 (DecrementCounter cn) val = logComponent (T.pack $ "Decremented " ++ show cn ++ " to " ++ show val)
-logAction2 (SetCounter cn i) _ = logComponent (T.pack $ "Set " ++ show cn ++ " to " ++ show i)
-logAction2 (RollCounter cn) val = logComponent (T.pack $ "Rolled " ++ show cn ++ " to " ++ show val)
--- logAction2 (AddCounter cn) _ = logComponent (T.pack $ "Added counter " ++ show cn)
--- logAction2 (RemoveCounter cn) _ = logComponent (T.pack $ "Removed counter " ++ show cn)
-logAction2 (TransferCounter cn cn') _ = logComponent (T.pack $ "Moved one from " ++ show cn ++ " to " ++ show cn')
-logAction2 (Shuffle l) _ = logComponent (T.pack $ "Shuffled " ++ show l)
--- logAction2 (ChangePhase ph) _ = logComponent (T.pack $ "Changed phase to " ++ show ph)
-logAction2 (MakeVisibleTo l p) _ = logComponent (T.pack $ "Made " ++ show l ++ "visible to " ++ show p)
-logAction2 (MakeInvisibleTo l p) _ = logComponent (T.pack $ "Made " ++ show l ++ "invisible to " ++ show p)
-logAction2 EndPhase _ = logComponent (T.pack "Ended phase")
-logAction2 DoNothing _ = pure ()
-logAction2 AdvanceTurn _ = logComponent "Advanced turn"
-logAction2 (EndGame winners) _ = logComponent (T.pack ("Game over! Winners: " ++ show winners))
-logAction2 (MkTransfer l l' r) _ = do
+logAction2 :: (GameInteract l cn r ph pl i :> es, Log2 :> es, Show cn, Show ph, Ord r, Eq l, Show r, Show l, Eq cn) => GameAction l cn r ph -> Eff es ()
+logAction2 (IncrementCounter cn) = do
+  val <- useGameState (counter cn . #val)
+  logComponent (T.pack $ "Incremented " ++ show cn ++ " to " ++ show val)
+logAction2 (DecrementCounter cn) = do
+  val <- useGameState (counter cn . #val)
+  logComponent (T.pack $ "Decremented " ++ show cn ++ " to " ++ show val)
+logAction2 (SetCounter cn i) = logComponent (T.pack $ "Set " ++ show cn ++ " to " ++ show i)
+logAction2 (RollCounter cn) = do
+  val <- useGameState (counter cn . #val)
+  logComponent (T.pack $ "Rolled " ++ show cn ++ " to " ++ show val)
+logAction2 (TransferCounter cn cn') = logComponent (T.pack $ "Moved one from " ++ show cn ++ " to " ++ show cn')
+logAction2 (Shuffle l) = logComponent (T.pack $ "Shuffled " ++ show l)
+logAction2 (MakeVisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ "visible to " ++ show p)
+logAction2 (MakeInvisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ "invisible to " ++ show p)
+logAction2 EndPhase = logComponent (T.pack "Ended phase")
+logAction2 DoNothing = pure ()
+logAction2 AdvanceTurn = logComponent "Advanced turn"
+logAction2 (EndGame winners) = logComponent (T.pack ("Game over! Winners: " ++ show winners))
+logAction2 (MkTransfer l l' r) = do
   invl <- show . inventory <$> useGameState (location l)
   invl' <- show . inventory <$> useGameState (location l')
   logComponent
-    ( T.pack $
-        "Transfered "
-          ++ show r
-          ++ " from "
-          ++ show l
-          ++ " to "
-          ++ show l'
-          ++ "\n Contents of "
-          ++ show l
-          ++ ": "
-          ++ invl
-          ++ "\n Contents of "
-          ++ show l'
-          ++ ": "
-          ++ invl'
+    ( T.pack $ "Transfered " ++ show r ++ " from " ++ show l ++ " to " ++ show l' ++ "\n Contents of " ++ show l ++ ": " ++ invl ++ "\n Contents of " ++ show l' ++ ": " ++ invl'
     )
-logAction2 (MkSwap l l' r r') _ = do
+logAction2 (MkSwap l l' r r') = do
   invl <- show . inventory <$> useGameState (location l)
   invl' <- show . inventory <$> useGameState (location l')
   logComponent
-    ( T.pack $
-        "Swapped "
-          ++ show r
-          ++ " and "
-          ++ show r'
-          ++ " between "
-          ++ show l
-          ++ " and "
-          ++ show l'
-          ++ "\n Contents of "
-          ++ show l
-          ++ ": "
-          ++ invl
-          ++ "\n Contents of "
-          ++ show l'
-          ++ ": "
-          ++ invl'
+    ( T.pack $ "Swapped " ++ show r ++ " and " ++ show r' ++ " between " ++ show l ++ " and " ++ show l' ++ "\n Contents of " ++ show l ++ ": " ++ invl ++ "\n Contents of " ++ show l' ++ ": " ++ invl'
     )
 
 -- order:
@@ -103,45 +74,37 @@ logAction2 (MkSwap l l' r r') _ = do
 -- log
 -- continue (or other control)
 -- TODO: code repetition!!!
+logAndContinue :: (Log2 :> es, GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es, Ord r, Eq l, Show cn, Show ph, Show r, Show l, Eq cn) => GameAction l cn r ph -> Eff es PhaseControl
+logAndContinue a = do
+  updateGS
+  logAction2 a
+  continueGame
+
 runGameAction :: forall l r cn ph pl i es. (Ord l, Ord r, RNG :> es, GameInteract l cn r ph pl i :> es, Eq cn, Show ph, Show cn, Show l, Show r, Log2 :> es, Eq ph, Interface l cn r ph pl i :> es) => GameAction l cn r ph -> Eff es PhaseControl
 runGameAction DoNothing = continueGame
-runGameAction a@(MkTransfer l l' r) =
+runGameAction a@(MkTransfer l l' r) = do
   modifyingGameState (#objects . #locations) (transfer r l l')
-    >> updateGS
-    >> logAction2 a ' '
-    >> continueGame
-runGameAction a@(MkSwap l l' r r') =
+  logAndContinue a
+runGameAction a@(MkSwap l l' r r') = do
   modifyingGameState (#objects . #locations) (swap r r' l l')
-    >> updateGS
-    >> logAction2 a ' '
-    >> continueGame
-runGameAction a@(IncrementCounter c) =
+  logAndContinue a
+runGameAction a@(IncrementCounter c) = do
   modifyingGameState (counter c) increment
-    >> updateGS
-    >> (useGameState (counter c . #val) >>= logAction2 a)
-    >> continueGame
-runGameAction a@(DecrementCounter c) =
+  logAndContinue a
+runGameAction a@(DecrementCounter c) = do
   modifyingGameState (counter c) decrement
-    >> updateGS
-    >> (useGameState (counter c . #val) >>= logAction2 a)
-    >> continueGame
-runGameAction a@(SetCounter c v) =
+  logAndContinue a
+runGameAction a@(SetCounter c v) = do
   modifyingGameState (counter c) (`setCounter` v)
-    >> updateGS
-    >> (useGameState (counter c . #val) >>= logAction2 a)
-    >> continueGame
+  logAndContinue a
 runGameAction a@(RollCounter c) = do
   (bl, bu) <- useGameState (counter c . #bounds)
   newVal <- randomR (bl, bu)
   assignGameState (counterVal c) newVal
-  useGameState (counterVal c) >>= logAction2 a
-  updateGS
-  continueGame
+  logAndContinue a
 runGameAction a@(TransferCounter cnfrom cnto) = do
   modifyingGameState (#objects . #counters) (transferCounter cnfrom cnto)
-  updateGS
-  logAction2 a ' '
-  continueGame
+  logAndContinue a
 runGameAction a@(Shuffle l) = do
   loc <- useGameState (#objects . #locations . ftAt l)
   case loc of
@@ -154,45 +117,34 @@ runGameAction a@(Shuffle l) = do
       shuffled <- Seq.fromList <$> shuffleRNG (F.toList cards)
       assignGameState (#objects . #locations . ftAt l) (Deck shuffled)
     _ -> pure ()
-  logAction2 a ' '
-  updateGS
-  continueGame
-runGameAction a@(MakeVisibleTo p lc) =
+  logAndContinue a
+runGameAction a@(MakeVisibleTo p lc) = do
   modifyVisibility (\vis -> makeVisible vis p lc)
-    >> logAction2 a ' '
-    >> updateGS
-    >> continueGame
-runGameAction a@(MakeInvisibleTo p lc) =
+  logAndContinue a
+runGameAction a@(MakeInvisibleTo p lc) = do
   modifyVisibility (\vis -> makeInvisible vis p lc)
-    >> logAction2 a ' '
-    >> updateGS
-    >> continueGame
+  logAndContinue a
 runGameAction a@EndPhase = do
-  logAction2 a ' '
+  logAction2 a
   return PCEndPhase
 runGameAction a@AdvanceTurn = do
-  logAction2 a ' '
+  logAction2 a
   return PCEndTurn
 runGameAction a@(EndGame winners) = do
   announceWinners winners
-  logAction2 a ' '
+  logAction2 a
   return PCEndGame
 
 runPhaseNodes' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [GameRule l cn r ph pl i a] -> Eff es PhaseControl
 runPhaseNodes' rules = fromMaybe PCContinue <$> foldM go Nothing rules
   where
+    -- run until you reach a PhaseControl besides PCContinue
+    go :: Maybe PhaseControl -> GameRule l cn r ph pl i a1 -> Eff es (Maybe PhaseControl)
     go acc rule = do
       result <- runRuleControl rule
       if result == PCContinue
         then return acc
         else return (Just result)
-
--- runPhaseNodes' [] = return PCEndPhase
--- runPhaseNodes' (rule : rules) = do
---   result <- runRuleControl rule
---   case result of
---     PCContinue -> runPhaseNodes' rules
---     _ -> return result
 
 continueGame :: Eff es PhaseControl
 continueGame = return PCContinue
@@ -213,22 +165,18 @@ runFromPhases phases = fromMaybe TEndTurn . asum <$> traverse handlePhase phases
         PCEndPhase -> Nothing
         PCContinue -> Nothing
 
-runTurns :: (GameInteract l cn r ph pl i :> es, Finitary cn, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Ord l, Ord r, Eq ph, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, GameRun l cn r ph pl i :> es) => Turn ph -> Eff es TurnControl
-runTurns turn = do
-  let phases = NE.toList (turn ^. #turnPhases)
-  runFromPhases phases
-
 playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => Maybe ph -> Eff es (GameState l cn r ph pl i, [Player])
 playGameTurns setupPhaseName = do
   phases <- getPhases
-  maybe (return ()) (void . runPhaseNodes' . (\(Phase _ nodes) -> nodes) . phases) setupPhaseName
+  case phases <$> setupPhaseName of
+    Just (Phase _ nodes) -> void . runPhaseNodes' $ nodes
+    Nothing -> return ()
   void playGameTurns'
-  (,) <$> getGameState <*> winnerBy id
+  liftA2 (,) getGameState (winnerBy id)
   where
     playGameTurns' = do
       gs <- getGameState
-      let currentTurn = gs ^. #currentTurn
-      result <- runTurns currentTurn
+      result <- runFromPhases (gs ^. #currentTurn . #turnPhases . to NE.toList)
       case result of
         TEndGame -> return TEndGame
         TEndTurn -> do
@@ -237,9 +185,10 @@ playGameTurns setupPhaseName = do
           updateGS
           playGameTurns'
 
+-- Run rule and return appropriate PhaseControl
 runRuleControl :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => GameRule l cn r ph pl i a -> Eff es PhaseControl
 runRuleControl (Free (Act action next)) = runGameAction action >> runRuleControl next
-runRuleControl (Free (MakeChoice opts next)) = do
+runRuleControl (Free (MakeChoice opts _)) = do
   gs <- getGameState
   pl <- choose gs opts
   runner <- getRunner
@@ -253,26 +202,11 @@ runRuleControl (Free (LookCounter cn next)) = do
 runRuleControl (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleControl . next
 runRuleControl (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleControl . next
 runRuleControl (Free (LookPlayers next)) = useGameState #players >>= runRuleControl . next
-runRuleControl (Pure a) = return PCContinue
+runRuleControl (Pure _) = return PCContinue
 
+-- runRule as separate stateful computation
 runRuleS ::
-  ( Ord l,
-    Ord r,
-    Ord cn,
-    Finitary cn,
-    Show ph,
-    Show cn,
-    Show l,
-    Show r,
-    Show pl,
-    Show i,
-    Interface l cn r ph pl i :> es,
-    GameRun l cn r ph pl i :> es,
-    RNG :> es,
-    Log2 :> es,
-    Eq ph,
-    GameInteract l cn r ph pl i :> es
-  ) =>
+  (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph, GameInteract l cn r ph pl i :> es) =>
   GameRule l cn r ph pl i a ->
   Eff es a
 runRuleS (Free (Act action next)) = runGameAction action >> runRuleS next
@@ -292,28 +226,15 @@ runRuleS (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\
 runRuleS (Free (LookPlayers next)) = useGameState #players >>= runRuleS . next
 runRuleS (Pure a) = return a
 
+-- above plus runState
 runRuleNoAct ::
-  ( Ord l,
-    Ord r,
-    Ord cn,
-    Finitary cn,
-    Show ph,
-    Show cn,
-    Show l,
-    Show r,
-    Show pl,
-    Show i,
-    Interface l cn r ph pl i :> es,
-    GameRun l cn r ph pl i :> es,
-    RNG :> es,
-    Log2 :> es,
-    Eq ph
-  ) =>
+  (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) =>
   GameState l cn r ph pl i ->
   GameRule l cn r ph pl i a ->
   Eff es (a, GameState l cn r ph pl i)
 runRuleNoAct gs rule = State.runState gs (runRuleS rule)
 
+-- converts scores to winners
 winnerBy :: (Ord a, GameInteract l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => (Int -> a) -> Eff es [Player]
 winnerBy f = do
   players <- S.toList <$> useGameState #players
@@ -324,6 +245,3 @@ winnerBy f = do
   let fScoredPlayers = fmap (second f) scoredPlayers
   let maxScore = snd . head $ fScoredPlayers
   return $ fmap fst . takeWhile (\(_, s) -> s == maxScore) $ fScoredPlayers
-
-winner :: (GameInteract l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => Eff es [Player]
-winner = winnerBy id

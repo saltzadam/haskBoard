@@ -12,6 +12,8 @@ import Game.Location (Counter, GameObjects, LocationShape)
 import Game.Player (Player)
 import Game.Visibility (LookerType (..), VisData (..), VisibilityMap (..), runVis)
 
+-- TODO: rewrite as interpreter on Rule
+
 data GameStateView l cn r ph = GameStateView
   { playersView :: Set Player,
     objectsView :: GameObjectsView l cn r,

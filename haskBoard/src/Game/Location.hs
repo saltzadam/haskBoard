@@ -1,57 +1,58 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Game.Location
-    (LocationShape(..),
-     Locations,
-     transfer,
-     swap,
-     inventory,
-     howMany',
-     has',
-     findResourceWithin,
-     histogram,
-     listAll,
-     listAllF,
-     listAllShape,
-     listAllShapeF,
-     peek',
-     Counter(..),
-     Counters,
-     makeCounter,
-     d6,
-     setCounter,
-     increment,
-     decrement,
-     GameObjects(..),
-     howMany, -- TODO: needed?
-     dummyCounter,
-     howManyF,
-     transferCounter',
-     transferCounter
-    )
- where
+  ( LocationShape (..),
+    Locations,
+    transfer,
+    swap,
+    inventory,
+    howMany',
+    has',
+    findResourceWithin,
+    histogram,
+    listAll,
+    listAllF,
+    listAllShape,
+    listAllShapeF,
+    peek',
+    Counter (..),
+    Counters,
+    makeCounter,
+    d6,
+    setCounter,
+    increment,
+    decrement,
+    GameObjects (..),
+    howMany, -- TODO: needed?
+    dummyCounter,
+    howManyF,
+    transferCounter',
+    transferCounter,
+  )
+where
+
 import Control.Lens (makeFields, set)
+import Data.Foldable (foldl')
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (listToMaybe, fromMaybe, isNothing)
-import Data.Sequence (Seq ((:<|), Empty), (<|))
+import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Sequence (Seq (Empty, (:<|)), (<|))
 import qualified Data.Sequence as Seq
-import GHC.Generics (Generic)
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
-import Data.Foldable (foldl')
+import GHC.Generics (Generic)
 
 ---- Definitions and instances
+-- TODO: consider defaultable map for Pile and histogram
 
-data LocationShape r = Deck (Seq r) -- Ordered items. Transfers from the topmost, transfers to the top.
-                     | Pile (Map r Int) -- Unordered items
-                     | Slot (Maybe r) -- Single slot
-                     | Infinite r -- infinite pile
-                     | Dummy -- No space
- deriving (Eq, Ord, Show, Generic)
-
-
+data LocationShape r
+  = Deck (Seq r) -- Ordered items. Transfers from the topmost, transfers to the top.
+  | Pile (Map r Int) -- Unordered items
+  | Slot (Maybe r) -- Single slot
+  | Infinite r -- infinite pile
+  | Dummy -- No space
+  deriving (Eq, Ord, Show, Generic)
 
 type Locations names r = FTMap names (LocationShape r)
 
@@ -61,47 +62,44 @@ type Locations names r = FTMap names (LocationShape r)
 --
 data TransferStatus = Success | Failure deriving (Eq, Ord, Show, Generic)
 
--- maybeToSuccess :: Maybe r -> TransferStatus
--- maybeToSuccess (Just _) = Success
--- maybeToSuccess Nothing = Failure
-
 -- TODO: should be abstractable
-
-
 moveFromL :: Ord r => r -> LocationShape r -> (LocationShape r, TransferStatus)
 moveFromL r (Deck s) = case Seq.elemIndexL r s of -- search from left (i.e. "top")
-                        Nothing -> (Deck s, Failure)
-                        Just i -> (Deck (Seq.deleteAt i s), Success)
+  Nothing -> (Deck s, Failure)
+  Just i -> (Deck (Seq.deleteAt i s), Success)
 moveFromL r (Pile pileMap) = case M.lookup r pileMap of
-                              Nothing -> (Pile pileMap, Failure)
-                              Just i -> if i > 0
-                                        then (Pile $ M.adjust (subtract 1) r pileMap, Success)
-                                        else (Pile pileMap, Failure)
+  Nothing -> (Pile pileMap, Failure)
+  Just i ->
+    if i > 0
+      then (Pile $ M.adjust (subtract 1) r pileMap, Success)
+      else (Pile pileMap, Failure)
 moveFromL _ (Slot Nothing) = (Slot Nothing, Failure)
-moveFromL r (Slot (Just r')) = if r' == r
-                              then (Slot Nothing, Success)
-                              else (Slot (Just r'), Failure)
-moveFromL r (Infinite r') = if r' == r
-                            then (Infinite r, Success)
-                            else (Infinite r, Failure)
+moveFromL r (Slot (Just r')) =
+  if r' == r
+    then (Slot Nothing, Success)
+    else (Slot (Just r'), Failure)
+moveFromL r (Infinite r') =
+  if r' == r
+    then (Infinite r, Success)
+    else (Infinite r, Failure)
 moveFromL _ Dummy = (Dummy, Failure)
-
 
 moveToL :: Ord r => r -> LocationShape r -> (LocationShape r, TransferStatus)
 moveToL r (Deck s) = (Deck (r <| s), Success) -- add to left (i.e. "top")
-moveToL r (Pile pileMap) = (Pile (M.alter addOneWithDefault r pileMap), Success) where
+moveToL r (Pile pileMap) = (Pile (M.alter addOneWithDefault r pileMap), Success)
+  where
     addOneWithDefault Nothing = Just 1
-    addOneWithDefault (Just i) = Just (i+1)
-                           -- if r `M.member` pileMap
-                           -- then (Pile (M.adjust (+1) r pileMap), Success)
-                           -- else (Pile pileMap, Failure)
+    addOneWithDefault (Just i) = Just (i + 1)
+-- if r `M.member` pileMap
+-- then (Pile (M.adjust (+1) r pileMap), Success)
+-- else (Pile pileMap, Failure)
 moveToL r (Slot Nothing) = (Slot (Just r), Success)
 moveToL _ (Slot (Just r')) = (Slot (Just r'), Failure)
 moveToL _ Dummy = (Dummy, Failure)
-moveToL r (Infinite r') = if r == r'
-                          then (Infinite r', Success)
-                          else (Infinite r', Failure)
-
+moveToL r (Infinite r') =
+  if r == r'
+    then (Infinite r', Success)
+    else (Infinite r', Failure)
 
 -- laws!
 -- The difficulty with source == target comes from thinking imperatively: "Move from here and to here"
@@ -114,14 +112,11 @@ moveToL r (Infinite r') = if r == r'
 -- happen below.
 transfer' :: Ord r => r -> LocationShape r -> LocationShape r -> (LocationShape r -> LocationShape r, LocationShape r -> LocationShape r, TransferStatus)
 transfer' r source target =
-    let
-        (_, sourceStatus) = moveFromL r source
-        (_, targetStatus) = moveToL r target
-    in
-        if sourceStatus == Failure || targetStatus == Failure
-                then (id,id, Failure)
-                else (fst . moveFromL r , fst . moveToL r, Success)
-
+  let (_, sourceStatus) = moveFromL r source
+      (_, targetStatus) = moveToL r target
+   in if sourceStatus == Failure || targetStatus == Failure
+        then (id, id, Failure)
+        else (fst . moveFromL r, fst . moveToL r, Success)
 
 -- if name0 == name1 then loc0 == loc1
 -- I think this works if we just swap the order of the two `update`s.
@@ -131,39 +126,35 @@ transfer' r source target =
 -- before adding it.
 
 transferSafelyByName :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> (Locations name r, TransferStatus)
-transferSafelyByName r name0 name1 locs = let
-    loc0 = locs !!! name0
-    loc1 = locs !!! name1
-    (sourceF,targetF, mayber) = transfer' r loc0 loc1
-    in
-        case mayber of
-          Failure-> (locs, Failure)
-          Success -> (FT.applyAt name1 targetF . FT.applyAt name0 sourceF $ locs, Success)
+transferSafelyByName r name0 name1 locs =
+  let loc0 = locs !!! name0
+      loc1 = locs !!! name1
+      (sourceF, targetF, mayber) = transfer' r loc0 loc1
+   in case mayber of
+        Failure -> (locs, Failure)
+        Success -> (FT.applyAt name1 targetF . FT.applyAt name0 sourceF $ locs, Success)
 
 transfer :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> Locations name r
 transfer r n0 n1 l = fst (transferSafelyByName r n0 n1 l)
-
 
 -- Some games have a "swap" action in which r0 and r1 trade places
 -- Suppose r0 is in slot0 and r1 is in slot1 -- how can they swap?
 -- Swap always succeeds at least
 -- TODO: is there a good way to do "swap all"?
 swap :: (Ord r, Eq name) => r -> r -> name -> name -> Locations name r -> Locations name r
-swap r0 r1 l0 l1 locs = let
-    loc0 = locs !!! l0
-    loc1 = locs !!! l1
+swap r0 r1 l0 l1 locs =
+  let loc0 = locs !!! l0
+      loc1 = locs !!! l1
 
-    loc0' = fst . moveToL r1 . fst . moveFromL r0 $ loc0
-    loc1' = fst . moveToL r0 . fst . moveFromL r1 $ loc1
-    in
-        FT.update (l0, loc0') . FT.update (l1, loc1') $ locs
+      loc0' = fst . moveToL r1 . fst . moveFromL r0 $ loc0
+      loc1' = fst . moveToL r0 . fst . moveFromL r1 $ loc1
+   in FT.update (l0, loc0') . FT.update (l1, loc1') $ locs
 
 ----- Querying
 histogram :: (Foldable f, Ord a) => f a -> (Map a) Int
 histogram = foldl' (flip (M.alter plusOrInsertOne)) mempty
   where
     plusOrInsertOne = Just . maybe 1 (+ 1)
-
 
 -- why not inventory = histogramF :(
 inventory :: Ord r => LocationShape r -> (Map r) Int
@@ -193,7 +184,7 @@ listAll :: Ord r => n -> Locations n r -> [r]
 listAll n locs = listAllF n locs (const True)
 
 listAllShapeF :: Ord a => LocationShape a -> (a -> Bool) -> [a]
-listAllShapeF locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs
+listAllShapeF locs filt = filter filt . M.keys . M.filter (> 0) . inventory $ locs
 
 -- listAllShapeMapF :: Ord t => LocationShape t -> (t -> Bool) -> Map t Int
 -- listAllShapeMapF locs filt = M.filterWithKey (\k _ -> filt k) . M.filter (>0) . inventory $ locs
@@ -203,10 +194,11 @@ listAllShape locs = listAllShapeF locs (const True)
 
 listAllF :: Ord r => n -> Locations n r -> (r -> Bool) -> [r]
 listAllF n locs = listAllShapeF (locs !!! n)
+
 -- listAllF n locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs !!! n
 
 peek' :: LocationShape r -> Maybe r
-peek' (Pile s) = listToMaybe (M.keys . M.filter (>0) $ s)
+peek' (Pile s) = listToMaybe (M.keys . M.filter (> 0) $ s)
 peek' (Deck (x :<| _)) = Just x
 peek' (Deck Empty) = Nothing
 peek' (Slot s) = s
@@ -215,8 +207,11 @@ peek' (Infinite r) = Just r
 
 ---- Counters
 
-data Counter = Counter {val :: Int,
-                        bounds :: (Int, Int)} deriving (Eq, Show, Generic)
+data Counter = Counter
+  { val :: Int,
+    bounds :: (Int, Int)
+  }
+  deriving (Eq, Show, Generic)
 
 makeFields ''Counter
 
@@ -226,22 +221,22 @@ makeCounter :: (Int, Int) -> Counter
 makeCounter (a, b) = Counter a (a, b)
 
 dummyCounter :: Counter
-dummyCounter = Counter 0 (0,0)
+dummyCounter = Counter 0 (0, 0)
 
 d6 :: Counter
 d6 = makeCounter (1, 6)
 
-
 mapCounter :: (Int -> Int) -> Counter -> (Counter, Maybe Int)
-mapCounter f c@(Counter a (bl, bu)) = if f a >= bl && f a <= bl
-                                    then (Counter (f a) (bl, bu), Just (f a))
-                                    else (c, Nothing)
+mapCounter f c@(Counter a (bl, bu)) =
+  if f a >= bl && f a <= bl
+    then (Counter (f a) (bl, bu), Just (f a))
+    else (c, Nothing)
 
 setCounter :: Counter -> Int -> Counter
 setCounter c a = set #val a c
 
 increment' :: Counter -> (Counter, Maybe Int)
-increment' = mapCounter (+1)
+increment' = mapCounter (+ 1)
 
 increment :: Counter -> Counter
 increment = fst . increment'
@@ -254,23 +249,22 @@ decrement = fst . decrement'
 
 transferCounter' :: Counter -> Counter -> (Counter, Counter, TransferStatus)
 transferCounter' fromc toc = case (decrement' fromc, increment' toc) of
-                               ((_, Nothing), _) -> (fromc, toc, Failure)
-                               (_, (_, Nothing)) -> (fromc, toc, Failure)
-                               ((fromc', _), (toc', _)) -> (fromc', toc', Success)
+  ((_, Nothing), _) -> (fromc, toc, Failure)
+  (_, (_, Nothing)) -> (fromc, toc, Failure)
+  ((fromc', _), (toc', _)) -> (fromc', toc', Success)
 
-transferCounter :: Eq cn => cn -> cn -> Counters cn -> Counters cn 
-transferCounter fromcn tocn counters = let
-    fromc = counters !!! fromcn
-    toc = counters !!! tocn
-    in case transferCounter' fromc toc of
-      (_,_,Failure) -> counters
-      (fromc', toc', Success) -> FT.update (fromcn, fromc') . FT.update (tocn, toc') $ counters
-    
+transferCounter :: Eq cn => cn -> cn -> Counters cn -> Counters cn
+transferCounter fromcn tocn counters =
+  let fromc = counters !!! fromcn
+      toc = counters !!! tocn
+   in case transferCounter' fromc toc of
+        (_, _, Failure) -> counters
+        (fromc', toc', Success) -> FT.update (fromcn, fromc') . FT.update (tocn, toc') $ counters
 
-data GameObjects n cn r = GameObjects {
-    locations :: Locations n r,
-    counters :: Counters cn} deriving (Generic)
+data GameObjects n cn r = GameObjects
+  { locations :: Locations n r,
+    counters :: Counters cn
+  }
+  deriving (Generic)
 
 makeFields ''GameObjects
-
-

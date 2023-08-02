@@ -34,7 +34,6 @@ data Turn phaseName = Turn
 
 data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame deriving (Eq, Ord, Show, Generic)
 
--- data GameControl ph = CutoffPhase | CutoffTurn | End deriving (Eq, Ord, Show, Generic)
 data TurnControl = TEndTurn | TEndGame deriving (Eq, Ord, Show, Generic)
 
 data Phase phaseName l cn r playName i = Phase
@@ -56,18 +55,6 @@ data GameState l cn r ph pl i = GameState
   }
   deriving (Generic)
 
--- data GameStateShow l cn r ph = GameStateShow
---     { players :: Set Player,
---       objects :: GameObjects l cn r,
---       currentPhase :: ph
---     } deriving (Generic, Show)
-
--- projectShow :: GameState l cn r ph pl i -> GameStateShow l cn r ph
--- projectShow (GameState pl obj curr _ _ _ _) = GameStateShow pl obj curr
-
--- instance (Finitary l, Finitary cn, Show l, Show r, Show cn, Show ph) => Show (GameState l cn r ph pl i) where
---     show = show . projectShow
-
 data GameRules l cn r ph pl i = GameRules
   { playRunner :: PlayRunner l cn r ph pl i,
     phases :: ph -> Phase ph l cn r pl i,
@@ -76,6 +63,8 @@ data GameRules l cn r ph pl i = GameRules
   }
   deriving (Generic)
 
+-- These lenses basically exist for GameE
+-- They shouldn't be used for writing games.
 counter :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Counter
 counter c = #objects . #counters . ftAt c
 

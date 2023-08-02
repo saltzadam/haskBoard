@@ -6,18 +6,9 @@ import Control.Concurrent (Chan, readChan, writeChan)
 import Data.Finitary (Finitary)
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)
-import GHC.Generics (Generic)
 import Game.Choose
-import Game.Options (Options)
-import Game.Player
 import Game.View
 import Game.Visibility (LookerType)
-
-data GameToInterfacePayload l cn r ph pl i
-  = SendState (GameStateView l cn r ph)
-  | SendOptions (GameStateView l cn r ph) (Options pl i)
-  | SendWinners [Player]
-  deriving (Generic)
 
 chooseChan ::
   (IOE :> es, Show pl, Show i, Finitary l, Finitary cn, Show l, Show r, Show cn, Show ph) =>
