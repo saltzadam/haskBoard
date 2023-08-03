@@ -32,12 +32,16 @@ import Game.Player (Player)
 import Game.View
 import Game.Visibility (LookerType (..))
 
+-- Defines interaces and controllers.
+
+-- A player consists of two channels: one to send info, the other to get plays.
 data PlayerInterface l cn r ph pl i = PlayerInterface
   { fromGameChannel :: Chan (GameToInterfacePayload l cn r ph pl i),
     toGameChannel :: Chan pl
   }
   deriving (Generic)
 
+-- A game controller is just a mapping from players to interfaces.
 newtype GameController l cn r ph pl i = GameController
   { playerInterfaces :: Map Player (PlayerInterface l cn r ph pl i)
   }
@@ -46,6 +50,7 @@ newtype GameController l cn r ph pl i = GameController
 makeLenses ''PlayerInterface
 makeLenses ''GameController
 
+-- Interpret the Interface effect using a controller
 chooseInterface ::
   (IOE :> es) =>
   GameController l cn r ph pl i ->
@@ -95,6 +100,7 @@ sendWinners gc winners = liftIO $ traverse_ (sendWinners' winners) (gc ^. #playe
     sendWinners' :: [Player] -> PlayerInterface l cn r ph pl i -> IO ()
     sendWinners' ps interface = writeChan (interface ^. #fromGameChannel) (SendWinners ps)
 
+-- Use the same interface for all players (e.g. a multi-player TUI or testing)
 commonInterface ::
   [Player] ->
   Chan (GameToInterfacePayload l cn r ph pl i) ->

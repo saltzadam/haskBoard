@@ -10,6 +10,8 @@ import Game.Choose
 import Game.View
 import Game.Visibility (LookerType)
 
+-- A chooser.
+
 chooseChan ::
   (IOE :> es, Show pl, Show i, Finitary l, Finitary cn, Show l, Show r, Show cn, Show ph) =>
   LookerType -> -- could be a list of clients or something in the future
