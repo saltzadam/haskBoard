@@ -54,6 +54,7 @@ advanceTurn = act AdvanceTurn
 shuffle :: l -> GameRule l cn r ph pl i ()
 shuffle = act . Shuffle
 
+endGame :: act EndGame
 -- bulk operations
 unsafeSwapAll :: (Finitary l, Ord r, Ord l) => l -> l -> GameRule l cn r ph pl i ()
 unsafeSwapAll l0 l1 = do
@@ -169,3 +170,8 @@ viewCurrentPlayer gsv = gsv ^. #currPlayer
 
 viewHowManyAt :: (Ord r, Eq l) => GameStateView l cn r ph -> l -> r -> Maybe Int
 viewHowManyAt g l r = flip howMany' r <$> viewLocation g l
+
+-- for actions
+
+activePlayer :: (Player -> GameRule l cn r ph pl i ()) -> GameRule l cn r ph pl i ()
+activePlayer action = lookCurrentTurnOwner >>= action

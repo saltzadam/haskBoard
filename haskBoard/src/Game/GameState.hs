@@ -32,9 +32,9 @@ data Turn phaseName = Turn
   }
   deriving (Eq, Ord, Show, Generic)
 
-data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame deriving (Eq, Ord, Show, Generic)
+data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame [Player] deriving (Eq, Ord, Show, Generic)
 
-data TurnControl = TEndTurn | TEndGame deriving (Eq, Ord, Show, Generic)
+data TurnControl = TEndTurn | TEndGame [Player] deriving (Eq, Ord, Show, Generic)
 
 data Phase phaseName l cn r playName i = Phase
   { name :: phaseName,

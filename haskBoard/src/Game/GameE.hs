@@ -133,7 +133,7 @@ runGameAction a@AdvanceTurn = do
 runGameAction a@(EndGame winners) = do
   announceWinners winners
   logAction2 a
-  return PCEndGame
+  return (PCEndGame winners)
 
 runPhaseNodes' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [GameRule l cn r ph pl i a] -> Eff es PhaseControl
 runPhaseNodes' rules = fromMaybe PCContinue <$> foldM go Nothing rules
@@ -161,7 +161,7 @@ runFromPhases phases = fromMaybe TEndTurn . asum <$> traverse handlePhase phases
       result <- runPhaseNodes' newNodes
       return $ case result of
         PCEndTurn -> Just TEndTurn
-        PCEndGame -> Just TEndGame
+        PCEndGame winners -> Just (TEndGame winners)
         PCEndPhase -> Nothing
         PCContinue -> Nothing
 
@@ -171,14 +171,14 @@ playGameTurns setupPhaseName = do
   case phases <$> setupPhaseName of
     Just (Phase _ nodes) -> void . runPhaseNodes' $ nodes
     Nothing -> return ()
-  void playGameTurns'
-  liftA2 (,) getGameState (winnerBy id)
+  winners <- playGameTurns'
+  liftA2 (,) getGameState (pure winners)
   where
     playGameTurns' = do
       gs <- getGameState
       result <- runFromPhases (gs ^. #currentTurn . #turnPhases . to NE.toList)
       case result of
-        TEndGame -> return TEndGame
+        TEndGame winners -> return winners
         TEndTurn -> do
           nextTurn <- useGameState #nextTurn <*> pure gs
           assignGameState #currentTurn nextTurn
@@ -207,48 +207,3 @@ runRuleControl' (Pure _) = return PCContinue
 
 runRuleControl :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => GameRule l cn r ph pl i a -> Eff es PhaseControl
 runRuleControl (GameRule rule) = runRuleControl' rule
-
--- runRule as separate stateful computation
-runRuleS' ::
-  (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph, GameInteract l cn r ph pl i :> es) =>
-  Free (GameRuleF l cn r ph pl i) a ->
-  Eff es a
-runRuleS' (Free (Act action next)) = runGameAction action >> runRuleS' next
-runRuleS' (Free (MakeChoice opts next)) = do
-  gs <- getGameState
-  pl <- choose gs opts
-  -- TODO: what to do here
-  runRuleS' (next pl)
-runRuleS' (Free (LookLocation l next)) = do
-  shape <- useGameState (#objects . #locations . ftAt l)
-  runRuleS' (next shape)
-runRuleS' (Free (LookCounter cn next)) = do
-  counter <- useGameState (#objects . #counters . ftAt cn)
-  runRuleS' (next counter)
-runRuleS' (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleS' . next
-runRuleS' (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleS' . next
-runRuleS' (Free (LookPlayers next)) = useGameState #players >>= runRuleS' . next
-runRuleS' (Pure a) = return a
-
-runRuleS :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => GameRule l cn r ph pl i a -> Eff es a
-runRuleS (GameRule rule) = runRuleS' rule
-
--- above plus runState
-runRuleNoAct ::
-  (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) =>
-  GameState l cn r ph pl i ->
-  GameRule l cn r ph pl i a ->
-  Eff es (a, GameState l cn r ph pl i)
-runRuleNoAct gs rule = State.runState gs (runRuleS rule)
-
--- converts scores to winners
-winnerBy :: (Ord a, GameInteract l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => (Int -> a) -> Eff es [Player]
-winnerBy f = do
-  players <- S.toList <$> useGameState #players
-  score <- getScore
-  gs <- getGameState
-  let scorePlayer pl = fst <$> runRuleNoAct gs (score pl)
-  scoredPlayers <- traverse (graphM scorePlayer) players
-  let fScoredPlayers = fmap (second f) scoredPlayers
-  let maxScore = snd . head $ fScoredPlayers
-  return $ fmap fst . takeWhile (\(_, s) -> s == maxScore) $ fScoredPlayers

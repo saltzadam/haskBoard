@@ -1,6 +1,4 @@
-{-# HLINT ignore "Use list comprehension" #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module NoMerci where
 
@@ -10,13 +8,14 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Game.GameAction (GameAction (..))
-import Game.GameState (GameInteract, GameRules (..), GameState (..), Phase (..), Turn (..))
-import Game.Options (Legality (..), Options (..), oneIssue)
+import Game.GameState (GameRules (..), GameState (..), Phase (..))
+import Game.Options (Options (..), oneIssue)
 import Game.Player (Player (..), mkPlayers)
+import Game.Rules
 import Game.Visibility (allVisible)
 import Helpers
 import Objects
-import Util (ifM)
+import Util (ifM, maximaByScoreM)
 
 -- Plays --
 
@@ -53,9 +52,10 @@ score p =
       chipScore = fromEnum <$> howManyAt (PlayerStuff p) Chip
    in cardScore - chipScore
 
--- getWinners :: NMM [Player]
--- getWinners = maximaByScore score' . S.toList =<< lookPlayers
-getWinners = undefined
+getWinners :: NMM [Player]
+getWinners = do
+  players <- lookPlayers
+  maximaByScoreM score (S.toList players)
 
 checkEnd :: NMM ()
 checkEnd =
@@ -63,9 +63,6 @@ checkEnd =
     (anyHas CardDeck cards)
     justDoNothing
     (getWinners >>= act . EndGame) -- TODO: why not just EndGame as a trigger to compute score?
-
-activePlayer :: (Player -> NMM ()) -> NMM () -- TODO: use turnOwner, add to Helpers
-activePlayer action = lookCurrentTurnOwner >>= action
 
 nmRunPlay :: NMPlayName -> NMM ()
 nmRunPlay Take = do

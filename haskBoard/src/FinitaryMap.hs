@@ -1,6 +1,12 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
 
+-- TODO: remove this module
+-- the finitary interface is not really what we want. The issue is that
+-- data Card = Card Int
+-- is finitary, but in context it has like 35 inhabitants instead of MAX_BOUND + MIN_BOUND
+-- Use defaultable-map or something like that, it's still a finite interface
+
 module FinitaryMap
   ( FTMap (..),
     (!!!),

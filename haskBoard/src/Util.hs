@@ -4,7 +4,7 @@
 
 module Util where
 
-import Control.Monad ((>=>))
+import Control.Monad (foldM, (>=>))
 import Data.Finitary (Finitary, inhabitants)
 import qualified Data.Foldable as F
 import Data.List.NonEmpty (NonEmpty (..))
@@ -13,6 +13,7 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Semigroup.Foldable (foldMap1)
+import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Tuple (swap)
 
@@ -53,8 +54,8 @@ ifNullElse tested def = fromMaybe def (NE.nonEmpty tested)
 buildSafeNonempty :: [a] -> a -> NonEmpty a
 buildSafeNonempty xs def = if null xs then NE.singleton def else NE.fromList xs
 
-inhabitantsSet :: (Finitary a, Ord a) => S.Set a
-inhabitantsSet = S.fromList inhabitants
+inhabitantsSet :: Finitary a => Set a
+inhabitantsSet = S.fromAscList inhabitants
 
 maximaBy :: forall a. (a -> a -> Ordering) -> [a] -> [a]
 maximaBy cmp = foldr (go cmp) []
@@ -72,6 +73,28 @@ maximaBy cmp = foldr (go cmp) []
 -- fun EQ a = (a :)
 -- fun GT a = const [a]
 -}
+
+maximaByScore :: Ord b => (a -> b) -> [a] -> [a]
+maximaByScore score =
+  let cmp x y = compare (score x) (score y)
+   in maximaBy cmp
+
+maximaByM :: forall m a. (Monad m) => (a -> a -> m Ordering) -> [a] -> m [a]
+maximaByM cmp = foldM (flip (goM cmp)) []
+  where
+    goM :: (a -> a -> m Ordering) -> a -> [a] -> m [a]
+    goM _ a [] = pure [a]
+    goM cmp a currMaxes@(m : _) = do
+      comparison <- cmp a m
+      case comparison of
+        LT -> pure currMaxes
+        EQ -> pure (a : currMaxes)
+        GT -> pure [a]
+
+maximaByScoreM :: (Ord b, Applicative m, Monad m) => (a -> m b) -> [a] -> m [a]
+maximaByScoreM scorem =
+  let cmp x y = compare <$> scorem x <*> scorem y
+   in maximaByM cmp
 
 ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM mbool mtrue mfalse = do
