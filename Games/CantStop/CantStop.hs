@@ -15,7 +15,7 @@ import qualified Data.Set as S
 import Game.GameAction
 import Game.GameState
 import Game.Location (histogram)
-import Game.Options (Legality (..), Options (..), exceptIf, oneIssue, raiseIssueIf, unlessYouCould, youMay, youMay')
+import Game.Options (Legality (..), exceptIf, oneIssue, unlessYouCould, youMay, youMay')
 import Game.Player
 import Game.Visibility (allVisible)
 import Helpers
@@ -23,9 +23,54 @@ import Objects
 import qualified Track
 import Util
 
--- Plays --
-rollNodes :: CSM ()
-rollNodes = traverse_ roll theDice
+-- === Actions ===
+rollDice :: CSM ()
+rollDice = traverse_ roll theDice
+
+moveMarkerBy :: CantStopResource -> TrackName -> Int -> CSM ()
+moveMarkerBy marker s amt = replicateM_ amt (Track.advanceOrInsert marker BoxTop (track s))
+
+returnMarker :: Maybe Player -> TrackName -> CSM ()
+returnMarker maybep trackName = Track.transferFrom (track trackName) BoxTop (maybe TemporaryMarker PlayerMarker maybep)
+
+resolveMarkers :: Player -> CSM ()
+resolveMarkers p = traverse_ (resolveTrack p) [Two .. Twelve]
+  where
+    resolveTrack :: Player -> TrackName -> CSM ()
+    resolveTrack p trackName = do
+      tempHeight <- Track.resMaxHeight TemporaryMarker (track trackName)
+      playerHeight <- Track.resMaxHeight (PlayerMarker p) (track trackName)
+      case tempHeight of
+        Nothing -> return ()
+        Just i ->
+          let diff = i - fromMaybe 0 playerHeight
+           in returnMarker Nothing trackName
+                >> replicateM_ diff (Track.advanceOrInsert (PlayerMarker p) BoxTop (track trackName))
+
+clearMarkers :: Maybe Player -> TrackName -> CSM ()
+clearMarkers mp trackName = Track.removeAll (marker mp) (track trackName) BoxTop
+
+clearWonTracks :: CSM ()
+clearWonTracks = do
+  players <- S.toList <$> lookPlayers
+  traverse_ (clearTrackIfWon players) [Two .. Twelve]
+  where
+    clearTrackIfWon :: [Player] -> TrackName -> CSM ()
+    clearTrackIfWon players trackName = do
+      maybeWinner <- trackWinner trackName
+      case maybeWinner of
+        Just p -> sequence_ [clearMarkers (Just p') trackName | p' <- players, p' /= p]
+        Nothing -> pure ()
+
+checkWinner :: CSM ()
+checkWinner = do
+  trackWinners <- catMaybes <$> traverse trackWinner [Two .. Twelve]
+  let winners = M.keys . M.filter (>= 3) $ histogram trackWinners
+  if not (null winners)
+    then act (EndGame winners)
+    else act DoNothing
+
+-- === Plays ===
 
 -- Three steps:
 -- 1) enumerate possible moves (what p rolled)
@@ -52,89 +97,44 @@ getOptions p =
     & exceptIf onWonTrack (pure (ForceStop p))
     & exceptIf atTop (pure (ForceStop p))
     & unlessYouCould (\pl0 pl1 -> return (thereIsBiggerMove pl0 pl1))
+  where
+    notEnoughMarkers :: CantStopPlayName -> CSM (Legality CantStopIssue)
+    notEnoughMarkers (TwoMove _ track0 track1) = do
+      onBoard0 <- Track.count TemporaryMarker (track track0)
+      onBoard1 <- Track.count TemporaryMarker (track track1)
+      let needed = (if track0 == track1 then 1 else 2) - (onBoard0 + onBoard1)
+      inBox <- howManyAt BoxTop TemporaryMarker
+      return (if needed > inBox then oneIssue NotEnoughMarkers else Legal)
+    notEnoughMarkers (OneMove _ track0) = do
+      onBoard <- Track.count TemporaryMarker (track track0)
+      let needed = 1 - onBoard
+      inBox <- howManyAt BoxTop TemporaryMarker
+      return (if needed > inBox then oneIssue NotEnoughMarkers else Legal)
+    notEnoughMarkers _ = return Legal
+
+    onWonTrack :: CantStopPlayName -> CSM (Legality CantStopIssue)
+    onWonTrack (OneMove _ s) = do
+      maybeWinner <- trackWinner s
+      case maybeWinner of
+        Just _ -> return (oneIssue TrackCompleted)
+        Nothing -> return Legal
+    onWonTrack (TwoMove p s t) = onWonTrack (OneMove p s) >> onWonTrack (OneMove p t)
+    onWonTrack _ = return Legal
+
+    atTop :: CantStopPlayName -> CSM (Legality CantStopIssue)
+    atTop (OneMove p s) = do
+      maxSlot <- Track.resAtTop (PlayerMarker p) (track s)
+      return (if maxSlot then oneIssue AtTop else Legal)
+    atTop (TwoMove p s t) = atTop (OneMove p s) >> atTop (OneMove p t)
+    atTop _ = return Legal
 
 chooseMove :: Player -> CSM ()
 chooseMove p = do
   opts <- getOptions p
   void $ makeChoice opts
 
-notEnoughMarkers :: CantStopPlayName -> CSM (Legality CantStopIssue)
-notEnoughMarkers (TwoMove _ track0 track1) = do
-  onBoard0 <- Track.count TemporaryMarker (track track0)
-  onBoard1 <- Track.count TemporaryMarker (track track1)
-  let needed = (if track0 == track1 then 1 else 2) - (onBoard0 + onBoard1)
-  inBox <- howManyAt BoxTop TemporaryMarker
-  return (if needed > inBox then oneIssue NotEnoughMarkers else Legal)
-notEnoughMarkers (OneMove _ track0) = do
-  onBoard <- Track.count TemporaryMarker (track track0)
-  let needed = 1 - onBoard
-  inBox <- howManyAt BoxTop TemporaryMarker
-  return (if needed > inBox then oneIssue NotEnoughMarkers else Legal)
-notEnoughMarkers _ = return Legal
-
-onWonTrack :: CantStopPlayName -> CSM (Legality CantStopIssue)
-onWonTrack (OneMove _ s) = do
-  maybeWinner <- trackWinner s
-  case maybeWinner of
-    Just _ -> return (oneIssue TrackCompleted)
-    Nothing -> return Legal
-onWonTrack (TwoMove p s t) = onWonTrack (OneMove p s) >> onWonTrack (OneMove p t)
-onWonTrack _ = return Legal
-
-atTop :: CantStopPlayName -> CSM (Legality CantStopIssue)
-atTop (OneMove p s) = do
-  maxSlot <- Track.resAtTop (PlayerMarker p) (track s)
-  return (if maxSlot then oneIssue AtTop else Legal)
-atTop (TwoMove p s t) = atTop (OneMove p s) >> atTop (OneMove p t)
-atTop _ = return Legal
-
 stopOrGoNode :: Player -> CSM ()
 stopOrGoNode p = void $ makeChoice (youMay' p (NE.fromList [Stop p, DontStop p]))
-
-moveMarkerBy :: CantStopResource -> TrackName -> Int -> CSM ()
-moveMarkerBy marker s amt = replicateM_ amt (Track.advanceOrInsert marker BoxTop (track s))
-
-returnMarker :: Maybe Player -> TrackName -> CSM ()
-returnMarker maybep trackName = Track.transferFrom (track trackName) BoxTop (maybe TemporaryMarker PlayerMarker maybep)
-
-resolveMarkers :: Player -> CSM ()
-resolveMarkers p = traverse_ (resolveTrack p) [Two .. Twelve]
-  where
-    resolveTrack :: Player -> TrackName -> CSM ()
-    resolveTrack p trackName = do
-      tempHeight <- Track.resMaxHeight TemporaryMarker (track trackName)
-      playerHeight <- Track.resMaxHeight (PlayerMarker p) (track trackName)
-      case tempHeight of
-        Nothing -> return ()
-        Just i ->
-          let diff = i - fromMaybe 0 playerHeight
-           in returnMarker Nothing trackName >> replicateM_ diff (Track.advanceOrInsert (PlayerMarker p) BoxTop (track trackName))
-
-clearMarkers :: Maybe Player -> TrackName -> CSM ()
-clearMarkers mp trackName = Track.removeAll (marker mp) (track trackName) BoxTop
-
-clearWonTracks :: CSM ()
-clearWonTracks = do
-  players <- S.toList <$> lookPlayers
-  traverse_ (clearTrackIfWon players) [Two .. Twelve]
-  where
-    clearTrackIfWon :: [Player] -> TrackName -> CSM ()
-    clearTrackIfWon players trackName = do
-      maybeWinner <- trackWinner trackName
-      case maybeWinner of
-        Just p -> sequence_ [clearMarkers (Just p') trackName | p' <- players, p' /= p]
-        Nothing -> pure ()
-
-advancePlayer :: CSM ()
-advancePlayer = act AdvanceTurn
-
-checkWinner :: CSM ()
-checkWinner = do
-  trackWinners <- catMaybes <$> traverse trackWinner [Two .. Twelve]
-  let winners = M.keys . M.filter (>= 3) $ histogram trackWinners
-  if not (null winners)
-    then act (EndGame winners)
-    else act DoNothing
 
 trackWinner :: TrackName -> CSM (Maybe Player)
 trackWinner trackName = do
@@ -142,15 +142,12 @@ trackWinner trackName = do
   winners <- filterM (\p -> Track.resAtTop (PlayerMarker p) (track trackName)) players
   return (listToMaybe winners) -- should only be one but not guaranteed by types
 
-score :: Player -> CSM Int
-score p = length . filter (== Just p) <$> traverse trackWinner [Two .. Twelve]
-
 -- Initialization --
 cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (CSTurn p) =
   Phase
     { name = CSTurn p,
-      seedNodes = [rollNodes, chooseMove p]
+      seedNodes = [rollDice, chooseMove p]
     }
 
 getNextTurn :: CantStopGameState -> CantStopTurn
@@ -183,11 +180,14 @@ csRunPlay' (Stop pl) = do
   resolveMarkers pl
   clearWonTracks
   checkWinner
-  advancePlayer
-csRunPlay' (DontStop p) = rollNodes >> chooseMove p
-csRunPlay' (ForceStop p) =
+  advanceTurn
+csRunPlay' (DontStop p) = rollDice >> chooseMove p
+csRunPlay' (ForceStop _) =
   traverse_ (clearMarkers Nothing) [Two .. Twelve]
-    >> advancePlayer
+    >> advanceTurn
+
+score :: Player -> CSM Int
+score p = length . filter (== Just p) <$> traverse trackWinner [Two .. Twelve]
 
 cantStop :: CantStopGameRules
 cantStop = GameRules csRunPlay' cantStopPhases score Nothing

@@ -21,12 +21,12 @@ library
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
-                brick, effectful-plugin, haskBoard, vty, finitary, safe, finite-typelits
+                brick, effectful-plugin, haskBoard, vty, finitary, safe, finite-typelits, Helpers
     exposed-modules: NoMerci, Objects, Tui, Agent
     -- , Tui, Dice
     default-language: Haskell2010
     ghc-options:  -Wall -fplugin=Effectful.Plugin -threaded
-    default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
+    default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses, DeriveAnyClass
     -- Modules included in this executable, other than Main.
     -- other-modules:
 

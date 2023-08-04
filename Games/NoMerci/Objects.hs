@@ -1,27 +1,22 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
-{-# LANGUAGE DeriveAnyClass #-}
-module Objects 
-    where
-import GHC.Generics (Generic)
-import Game.Player
-import Game.Location
-import Data.Set (Set)
-import qualified Data.Map as M
-import qualified Data.Set as S
-import Game.GameNode (GameAction, GameNode)
-import FinitaryMap (FTMap(..))
-import qualified Data.Sequence as Seq
-import qualified Data.List.NonEmpty as NE
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+module Objects where
+
 import Data.Finitary
-import Game.GameState (Turn(..), Phase, GameState, GameRules)
-import Game.Monad (GameEff)
+import qualified Data.List.NonEmpty as NE
+import qualified Data.Map as M
+import Data.Maybe (fromJust, isJust)
+import qualified Data.Sequence as Seq
+import Data.Set (Set)
+import qualified Data.Set as S
+import FinitaryMap (FTMap (..))
+import GHC.Generics (Generic)
+import Game.GameState (GameRules, GameState, Phase, Turn (..))
+import Game.Location
 import Game.Options (Options)
-import Data.Maybe (isJust, fromJust)
+import Game.Player
+import Game.Rules
 import Game.View (GameStateView)
 
 -- don't derive Functor so it's not easy to modify card nums
@@ -30,26 +25,26 @@ data NMResource = Chip | Card Int deriving (Eq, Ord, Show, Generic, Finitary)
 cards :: [NMResource]
 cards = [Card i | i <- [3 .. 35]]
 
--- TODO: try lens
 extractCard :: NMResource -> Maybe Int
 extractCard (Card i) = Just i
 extractCard _ = Nothing
 
 isCard :: NMResource -> Bool
-isCard = isJust . extractCard 
--- TODO: ugly
+isCard = isJust . extractCard
+
 scoreCards :: Set NMResource -> Int
 scoreCards = scoreCards' . S.map fromJust . S.filter isJust . S.map extractCard
 
+-- could be fun to rewrite as a fold with accumulator like (sum, prev_element)
 scoreCards' :: Set Int -> Int
 scoreCards' cardValues = scoreSorted (S.toAscList cardValues) 0
-    where
-        scoreSorted (x:y:zs) currentScore = if y - x == 1
-                                            then scoreSorted (y:zs) currentScore
-                                            else scoreSorted (y:zs) (currentScore + x)
-        scoreSorted [y] currentScore = currentScore + y
-        scoreSorted [] currentScore = currentScore
-
+  where
+    scoreSorted (x : y : zs) currentScore =
+      if y - x == 1
+        then scoreSorted (y : zs) currentScore
+        else scoreSorted (y : zs) (currentScore + x)
+    scoreSorted [y] currentScore = currentScore + y
+    scoreSorted [] currentScore = currentScore
 
 data NMLocation
   = CenterOfTableCard
@@ -59,8 +54,8 @@ data NMLocation
   | BoxTop
   deriving (Eq, Ord, Show, Generic, Finitary)
 
-
 data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic, Enum, Bounded)
+
 instance Finitary NMCounters
 
 type NMGameObjects = GameObjects NMLocation NMCounters NMResource
@@ -70,8 +65,8 @@ initLocations' _ CenterOfTableCard = Slot Nothing
 initLocations' _ ChipPile = Pile M.empty
 initLocations' _ CardDeck = Deck (Seq.fromList cards)
 initLocations' players (PlayerStuff player)
-    | player `S.member` players = Pile (M.singleton Chip 11)
-    | otherwise = Dummy
+  | player `S.member` players = Pile (M.singleton Chip 11)
+  | otherwise = Dummy
 initLocations' _ BoxTop = Pile M.empty
 
 initLocations :: Set Player -> FTMap NMLocation (LocationShape NMResource)
@@ -85,20 +80,24 @@ initGameObjects ps =
     }
 
 data NMIssue = NoMoreChips deriving (Eq, Ord, Show, Generic)
+
 data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic)
+
 data NMPhaseName = Setup | NMTurn Player deriving (Eq, Ord, Show, Generic)
+
 type NMTurn = Turn NMPhaseName
+
 type NMPhase = Phase NMPhaseName NMLocation NMCounters NMResource NMPlayName NMIssue
+
 type NMGameState = GameState NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
 
 type NMOptions = Options NMPlayName NMIssue
 
-type NMGameRules = GameRules  NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
-type NMGameNode = GameNode NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
+type NMGameRules = GameRules NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
 
-type NMM a = GameEff NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue a
+type NMM a = GameRule NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue a
 
-type NMView  = GameStateView NMLocation NMCounters NMResource NMPhaseName 
+type NMView = GameStateView NMLocation NMCounters NMResource NMPhaseName
 
 currentPlayer :: NMPhaseName -> Maybe Player
 currentPlayer (NMTurn p) = Just p
@@ -106,4 +105,3 @@ currentPlayer _ = Nothing
 
 playerTurn :: Player -> NMTurn
 playerTurn p = Turn p (NE.singleton (NMTurn p))
-

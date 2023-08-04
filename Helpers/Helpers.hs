@@ -5,12 +5,15 @@
 module Helpers where
 
 import Control.Lens (Getter, to, view, (^.))
+import Control.Monad (replicateM_, void)
 import Control.Monad.Free (Free (..), liftF)
 import Data.Finitary
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Maybe (fromJust)
 import Data.Set (Set)
 import qualified Data.Set as S
 import FinitaryMap (ftAt, (!!!))
@@ -20,40 +23,10 @@ import Game.GameState
 import Game.Location (Counter, LocationShape, Locations, has', howMany', inventory, listAllShapeF, peek')
 import Game.Options
 import Game.Player
-import Game.Rules (GameRule, GameRuleF (..))
+import Game.Rules
 import Game.View (GameStateView)
 import Game.Visibility (VisData (..), VisibilityMap (..), runVis)
-import Util (buildSafeNonempty, compose, concatNE, graph, graphM, ifNullElse, inhabitantsSet, invertNestedMaps, kleisliCompose, mapMaybeMap, mapMaybeMapM)
-
--- Lifted Rules
-
-makeChoice :: Options pl i -> GameRule l cn r ph pl i pl
-makeChoice opts = liftF (MakeChoice opts id)
-
-act :: GameAction l cn r ph -> GameRule l cn r ph pl i ()
-act action = liftF (Act action ())
-
-lookPlayers :: GameRule l cn r ph pl i (Set Player)
-lookPlayers = liftF (LookPlayers id)
-
-lookLocation :: Eq l => l -> GameRule l cn r ph pl i (LocationShape r)
-lookLocation l = liftF (LookLocation l id)
-
-lookCounter :: cn -> GameRule l cn r ph pl i Counter
-lookCounter c = liftF (LookCounter c id)
-
-lookCounterVal :: cn -> GameRule l cn r ph pl i Int
-lookCounterVal c = liftF (LookCounter c (view #val))
-
-lookCounterBounds :: cn -> GameRule l cn r ph pl i (Int, Int)
-lookCounterBounds c = liftF (LookCounter c (view #bounds))
-
-lookCurrentPhase :: GameRule l cn r ph pl i ph
-lookCurrentPhase = liftF (LookCurrentPhase id)
-
-lookCurrentTurnOwner :: GameRule l cn r ph pl i Player
--- lookCurrentTurnOwner = (\(Turn p _) -> p) . view #currentTurn
-lookCurrentTurnOwner = liftF (LookCurrentTurnOwner id)
+import Util (buildSafeNonempty, compose, concatNE, getNextCyclic, graph, graphM, ifNullElse, inhabitantsSet, invertNestedMaps, kleisliCompose, mapMaybeMap, mapMaybeMapM)
 
 -- particular actions
 
@@ -75,13 +48,27 @@ revealTo loc p = act (MakeVisibleTo p (VisLocation loc))
 unrevealTo :: l -> Player -> GameRule l cn r ph pl i ()
 unrevealTo loc p = act (MakeInvisibleTo p (VisLocation loc))
 
+advanceTurn :: GameRule l cn r ph pl i ()
+advanceTurn = act AdvanceTurn
+
+shuffle :: l -> GameRule l cn r ph pl i ()
+shuffle = act . Shuffle
+
 -- bulk operations
-unsafeSwapAll :: (Finitary l, Ord r, Ord l) => l -> l -> Free (GameRuleF l cn r ph pl i) ()
+unsafeSwapAll :: (Finitary l, Ord r, Ord l) => l -> l -> GameRule l cn r ph pl i ()
 unsafeSwapAll l0 l1 = do
   atl0 <- listResAt l0
   atl1 <- listResAt l1
   traverse_ (transfer l0 l1) atl0
   traverse_ (transfer l1 l0) atl1
+
+-- control ops
+
+getNextTurn :: (Player -> Turn ph) -> GameState l cn r ph pl i -> Turn ph
+getNextTurn mkTurn gs =
+  let Turn p _ = (gs ^. #currentTurn)
+      players = NE.fromList (S.toList (gs ^. #players))
+   in mkTurn (fromJust (getNextCyclic p players))
 
 -- queries
 
@@ -149,8 +136,8 @@ doesNotHave' l r locs = not (has'' l r locs)
 anyHas :: (Ord r, Eq l) => l -> [r] -> GameRule l cn r ph pl i Bool
 anyHas l = fmap or . traverse (has l)
 
--- transferAll :: (Ord r, Eq l) => l -> l -> r -> GameRule l cn r ph pl i [GameNode l cn r ph pl i]
--- transferAll source target res = replicate <$> howManyAt source res <*> pure (mkTransfer source target res)
+transferAll :: (Ord r, Eq l) => l -> l -> r -> GameRule l cn r ph pl i ()
+transferAll source target res = howManyAt source res >>= (`replicateM_` transfer source target res)
 
 whatsAt :: (Ord r, Eq l) => l -> GameRule l cn r ph pl i (Set r)
 whatsAt loc = M.keysSet . M.filter (> 0) . inventory <$> lookLocation loc

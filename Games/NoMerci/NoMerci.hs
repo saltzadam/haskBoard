@@ -1,130 +1,108 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# HLINT ignore "Use list comprehension" #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use list comprehension" #-}
-{-# LANGUAGE TypeOperators #-}
 
 module NoMerci where
 
-import Objects
-import Game.GameNode (GameAction(..), mkActionNode, mkOptionsNode)
-import Game.Location (peek)
-import Game.Helpers (lookLocation, mkTransfer, nodeMaybe, transferAll, lookCurrentPhase, has, anyHas, lookPlayers, howManyAt, whatsAt)
-import Game.Player (Player(..))
-import qualified Data.Map as M
+import qualified Cards
+import Control.Monad (void)
 import qualified Data.List.NonEmpty as NE
-import Game.Options (Options(..), Legality (..))
+import qualified Data.Map as M
 import qualified Data.Set as S
-import Util (maximaByScore, getNextCyclic)
-import Game.GameState (Phase(..), GameState (..), GameInteract, GameRules (..))
-import Data.Maybe (fromJust)
+import Game.GameAction (GameAction (..))
+import Game.GameState (GameInteract, GameRules (..), GameState (..), Phase (..), Turn (..))
+import Game.Options (Legality (..), Options (..), oneIssue)
+import Game.Player (Player (..), mkPlayers)
 import Game.Visibility (allVisible)
-import Game.Monad (injectGame, runGameEff)
-import Effectful (Eff, (:>))
-import Debug.Trace 
+import Helpers
+import Objects
+import Util (ifM)
 
 -- Plays --
 
+discardCardFromDeck :: NMM ()
+discardCardFromDeck = Cards.draw CardDeck BoxTop
 
-drawCard ::  NMM [NMGameNode]
-drawCard = nodeMaybe (mkTransfer CardDeck CenterOfTableCard) . peek <$> lookLocation CardDeck
+takeCard :: Player -> NMM ()
+takeCard p = Cards.draw CenterOfTableCard (PlayerStuff p)
 
-discardCard :: NMM [NMGameNode]
-discardCard = nodeMaybe (mkTransfer CardDeck BoxTop) . peek <$> lookLocation CardDeck
-
-takeCard ::  Player -> NMM [NMGameNode]
-takeCard p = nodeMaybe (mkTransfer CenterOfTableCard (PlayerStuff p)) . peek <$> lookLocation CenterOfTableCard
-
-takeChips :: Player -> NMM [NMGameNode]
+takeChips :: Player -> NMM ()
 takeChips p = transferAll ChipPile (PlayerStuff p) Chip
 
+drawCard :: NMM ()
+drawCard = Cards.draw CardDeck CenterOfTableCard
 
 -- TODO: list is lame
-payChip :: NMM [NMGameNode]
-payChip = nodeMaybe (\p -> mkTransfer (PlayerStuff p) ChipPile Chip) . currentPlayer <$> lookCurrentPhase
+payChip :: NMM ()
+payChip = do
+  p <- lookCurrentTurnOwner
+  transfer (PlayerStuff p) ChipPile Chip
 
-chooseMove :: Player -> NMM [NMGameNode]
+chooseMove :: Player -> NMM ()
 chooseMove p = do
-    pHasChips <- has (PlayerStuff p) Chip
-    let options = if pHasChips
-                  then Options (Take NE.:| [Decline]) M.empty p
-                  else Options (NE.singleton Take) (M.singleton Decline (Illegal [NoMoreChips])) p
-    return [mkOptionsNode options]
+  pHasChips <- has (PlayerStuff p) Chip
+  let options =
+        if pHasChips -- TODO: improve
+          then Options (Take NE.:| [Decline]) M.empty p
+          else Options (NE.singleton Take) (M.singleton Decline (oneIssue NoMoreChips)) p
+  void $ makeChoice options -- TODO: no void
 
-checkGameOver :: NMM [NMGameNode]
-checkGameOver = do
-    keepGoing <- anyHas CardDeck cards
-    if keepGoing
-    then return [mkActionNode DoNothing]
-    else do
-        winners <- getWinners
-        return [mkActionNode (EndGame winners)]
+score :: Player -> NMM Int
+score p =
+  let cardScore = scoreCards <$> whatsAt (PlayerStuff p)
+      chipScore = fromEnum <$> howManyAt (PlayerStuff p) Chip
+   in cardScore - chipScore
 
-score' :: Player -> NMM Int
-score' p =  let
-    cardScore = scoreCards <$> whatsAt (PlayerStuff p)
-    chipScore = fromEnum <$> howManyAt (PlayerStuff p) Chip
-            in cardScore - chipScore
+-- getWinners :: NMM [Player]
+-- getWinners = maximaByScore score' . S.toList =<< lookPlayers
+getWinners = undefined
 
+checkEnd :: NMM ()
+checkEnd =
+  ifM
+    (anyHas CardDeck cards)
+    justDoNothing
+    (getWinners >>= act . EndGame) -- TODO: why not just EndGame as a trigger to compute score?
 
-getWinners :: NMM [Player]
-getWinners =  maximaByScore score' . S.toList =<< lookPlayers
+activePlayer :: (Player -> NMM ()) -> NMM () -- TODO: use turnOwner, add to Helpers
+activePlayer action = lookCurrentTurnOwner >>= action
 
-checkEnd :: NMM [NMGameNode]
-checkEnd = do
-    cardsLeft <- anyHas CardDeck cards
-    if cardsLeft
-    then return [mkActionNode DoNothing]
-    else (:[]) . mkActionNode . EndGame <$> getWinners
-
-
-activePlayer :: (Player -> NMM [a]) -> NMM [a]
-activePlayer action = maybe (pure []) action . currentPlayer =<< lookCurrentPhase
-
-nmRunPlay' ::  NMPlayName -> [NMM [NMGameNode]]
-nmRunPlay' Take = [ activePlayer takeCard,
-                  activePlayer takeChips,
-                  checkEnd,
-                  drawCard,
-                  activePlayer chooseMove]
-nmRunPlay' Decline = [payChip,
-                      pure [mkActionNode AdvanceTurn]]
-
-nmRunPlay :: (GameInteract NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue :> es0) => NMPlayName -> [Eff es0 [NMGameNode]]
-nmRunPlay = fmap injectGame . nmRunPlay'
+nmRunPlay :: NMPlayName -> NMM ()
+nmRunPlay Take = do
+  activePlayer takeCard
+  activePlayer takeChips
+  checkEnd
+  drawCard
+  activePlayer chooseMove
+nmRunPlay Decline = do
+  payChip
+  advanceTurn
 
 -- -- Initialization --
 nmPhases :: NMPhaseName -> NMPhase
-nmPhases (NMTurn p) = Phase
+nmPhases (NMTurn p) =
+  Phase
     { name = NMTurn p,
-      seedNodes = injectGame <$> [chooseMove p]
+      seedNodes = [chooseMove p]
     }
-    -- TODO: ugly
-nmPhases Setup = Phase {name = Setup,
-    seedNodes = injectGame <$> (pure [mkActionNode (Shuffle CardDeck)] : (replicate 9 discardCard ++ [drawCard]))}
-
-
+nmPhases Setup =
+  Phase
+    { name = Setup,
+      seedNodes = shuffle CardDeck : (replicate 9 discardCardFromDeck ++ [drawCard])
+    }
 
 initGameState :: Int -> NMGameState
 initGameState numPlayers =
-  let players = S.fromList (fmap (Player . fromIntegral) [1 .. numPlayers])
+  let players = S.fromList (mkPlayers numPlayers)
    in GameState
         { players = players,
           objects = initGameObjects players,
           currentPhase = NMTurn (head (S.toList players)),
-          turns = fmap playerTurn (NE.fromList . S.toList $ players),
+          -- turns = fmap playerTurn (NE.fromList . S.toList $ players),
           currentTurn = playerTurn (Player 1),
-          nextTurn = \t ts -> fromJust (getNextCyclic t ts), -- TODO: how to make this safe?
+          nextTurn = getNextTurn playerTurn, -- TODO: how to make this safe?
           visibility = allVisible -- TODO: no, BoxTop is invisible
         }
 
-
-score :: GameState
-  NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue -> Player -> Int
-score gs= runGameEff gs . score'
-
 noMerci :: Int -> (NMGameState, NMGameRules)
 noMerci numPlayers = (initGameState numPlayers, GameRules nmRunPlay nmPhases score (Just Setup))
-

@@ -15,7 +15,7 @@ import GHC.Generics (Generic)
 import Game.GameAction (GameAction (..))
 import Game.Location (LocationShape)
 import Game.Player (Player)
-import Game.Rules (GameRule)
+import Game.Rules
 import Helpers
 import Util (ifM, pureIfM)
 

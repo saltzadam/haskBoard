@@ -186,45 +186,52 @@ playGameTurns setupPhaseName = do
           playGameTurns'
 
 -- Run rule and return appropriate PhaseControl
-runRuleControl :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => GameRule l cn r ph pl i a -> Eff es PhaseControl
-runRuleControl (Free (Act action next)) = runGameAction action >> runRuleControl next
-runRuleControl (Free (MakeChoice opts _)) = do
+runRuleControl' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => Free (GameRuleF l cn r ph pl i) a -> Eff es PhaseControl
+runRuleControl' (Free (Act action next)) = runGameAction action >> runRuleControl' next
+runRuleControl' (Free (MakeChoice opts _)) = do
   gs <- getGameState
   pl <- choose gs opts
   runner <- getRunner
-  runRuleControl (runner pl)
-runRuleControl (Free (LookLocation l next)) = do
+  let GameRule run = runner pl
+  runRuleControl' run
+runRuleControl' (Free (LookLocation l next)) = do
   shape <- useGameState (#objects . #locations . ftAt l)
-  runRuleControl (next shape)
-runRuleControl (Free (LookCounter cn next)) = do
+  runRuleControl' (next shape)
+runRuleControl' (Free (LookCounter cn next)) = do
   counter <- useGameState (#objects . #counters . ftAt cn)
-  runRuleControl (next counter)
-runRuleControl (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleControl . next
-runRuleControl (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleControl . next
-runRuleControl (Free (LookPlayers next)) = useGameState #players >>= runRuleControl . next
-runRuleControl (Pure _) = return PCContinue
+  runRuleControl' (next counter)
+runRuleControl' (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleControl' . next
+runRuleControl' (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleControl' . next
+runRuleControl' (Free (LookPlayers next)) = useGameState #players >>= runRuleControl' . next
+runRuleControl' (Pure _) = return PCContinue
+
+runRuleControl :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => GameRule l cn r ph pl i a -> Eff es PhaseControl
+runRuleControl (GameRule rule) = runRuleControl' rule
 
 -- runRule as separate stateful computation
-runRuleS ::
+runRuleS' ::
   (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph, GameInteract l cn r ph pl i :> es) =>
-  GameRule l cn r ph pl i a ->
+  Free (GameRuleF l cn r ph pl i) a ->
   Eff es a
-runRuleS (Free (Act action next)) = runGameAction action >> runRuleS next
-runRuleS (Free (MakeChoice opts next)) = do
+runRuleS' (Free (Act action next)) = runGameAction action >> runRuleS' next
+runRuleS' (Free (MakeChoice opts next)) = do
   gs <- getGameState
   pl <- choose gs opts
   -- TODO: what to do here
-  runRuleS (next pl)
-runRuleS (Free (LookLocation l next)) = do
+  runRuleS' (next pl)
+runRuleS' (Free (LookLocation l next)) = do
   shape <- useGameState (#objects . #locations . ftAt l)
-  runRuleS (next shape)
-runRuleS (Free (LookCounter cn next)) = do
+  runRuleS' (next shape)
+runRuleS' (Free (LookCounter cn next)) = do
   counter <- useGameState (#objects . #counters . ftAt cn)
-  runRuleS (next counter)
-runRuleS (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleS . next
-runRuleS (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleS . next
-runRuleS (Free (LookPlayers next)) = useGameState #players >>= runRuleS . next
-runRuleS (Pure a) = return a
+  runRuleS' (next counter)
+runRuleS' (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleS' . next
+runRuleS' (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleS' . next
+runRuleS' (Free (LookPlayers next)) = useGameState #players >>= runRuleS' . next
+runRuleS' (Pure a) = return a
+
+runRuleS :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => GameRule l cn r ph pl i a -> Eff es a
+runRuleS (GameRule rule) = runRuleS' rule
 
 -- above plus runState
 runRuleNoAct ::
