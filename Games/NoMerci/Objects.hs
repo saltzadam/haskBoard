@@ -20,7 +20,7 @@ import Game.Rules
 import Game.View (GameStateView)
 
 -- don't derive Functor so it's not easy to modify card nums
-data NMResource = Chip | Card Int deriving (Eq, Ord, Show, Generic, Finitary)
+data NMResource = Chip | Card Int deriving (Eq, Ord, Show, Generic)
 
 cards :: [NMResource]
 cards = [Card i | i <- [3 .. 35]]
@@ -83,7 +83,7 @@ data NMIssue = NoMoreChips deriving (Eq, Ord, Show, Generic)
 
 data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic)
 
-data NMPhaseName = Setup | NMTurn Player deriving (Eq, Ord, Show, Generic)
+data NMPhaseName = Setup | NMTurnPhase Player deriving (Eq, Ord, Show, Generic)
 
 type NMTurn = Turn NMPhaseName
 
@@ -99,9 +99,5 @@ type NMM a = GameRule NMLocation NMCounters NMResource NMPhaseName NMPlayName NM
 
 type NMView = GameStateView NMLocation NMCounters NMResource NMPhaseName
 
-currentPlayer :: NMPhaseName -> Maybe Player
-currentPlayer (NMTurn p) = Just p
-currentPlayer _ = Nothing
-
 playerTurn :: Player -> NMTurn
-playerTurn p = Turn p (NE.singleton (NMTurn p))
+playerTurn p = Turn p (NE.singleton (NMTurnPhase p))

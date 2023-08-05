@@ -1,13 +1,12 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module NoMerci where
+module NoMerci (noMerci) where
 
 import qualified Cards
 import Control.Monad (void)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Game.GameAction (GameAction (..))
 import Game.GameState (GameRules (..), GameState (..), Phase (..))
 import Game.Options (Options (..), oneIssue)
 import Game.Player (Player (..), mkPlayers)
@@ -52,17 +51,15 @@ score p =
       chipScore = fromEnum <$> howManyAt (PlayerStuff p) Chip
    in cardScore - chipScore
 
-getWinners :: NMM [Player]
-getWinners = do
-  players <- lookPlayers
-  maximaByScoreM score (S.toList players)
-
 checkEnd :: NMM ()
 checkEnd =
   ifM
     (anyHas CardDeck cards)
     justDoNothing
-    (getWinners >>= act . EndGame) -- TODO: why not just EndGame as a trigger to compute score?
+    ( do
+        winners <- maximaByScoreM score . S.toList =<< lookPlayers
+        endGame winners
+    )
 
 nmRunPlay :: NMPlayName -> NMM ()
 nmRunPlay Take = do
@@ -71,15 +68,13 @@ nmRunPlay Take = do
   checkEnd
   drawCard
   activePlayer chooseMove
-nmRunPlay Decline = do
-  payChip
-  advanceTurn
+nmRunPlay Decline = payChip >> advanceTurn
 
 -- -- Initialization --
 nmPhases :: NMPhaseName -> NMPhase
-nmPhases (NMTurn p) =
+nmPhases (NMTurnPhase p) =
   Phase
-    { name = NMTurn p,
+    { name = NMTurnPhase p,
       seedNodes = [chooseMove p]
     }
 nmPhases Setup =
@@ -94,8 +89,7 @@ initGameState numPlayers =
    in GameState
         { players = players,
           objects = initGameObjects players,
-          currentPhase = NMTurn (head (S.toList players)),
-          -- turns = fmap playerTurn (NE.fromList . S.toList $ players),
+          currentPhase = NMTurnPhase (head (S.toList players)),
           currentTurn = playerTurn (Player 1),
           nextTurn = getNextTurn playerTurn, -- TODO: how to make this safe?
           visibility = allVisible -- TODO: no, BoxTop is invisible
