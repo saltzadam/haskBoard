@@ -1,9 +1,11 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module Objects where
 
 import Data.Finitary
+import Data.Finite (Finite)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust, isJust)
@@ -20,17 +22,17 @@ import Game.Rules
 import Game.View (GameStateView)
 
 -- don't derive Functor so it's not easy to modify card nums
-data NMResource = Chip | Card Int deriving (Eq, Ord, Show, Generic)
-
-cards :: [NMResource]
-cards = [Card i | i <- [3 .. 35]]
+data NMResource = Chip | Card (Finite 35) deriving (Eq, Ord, Show, Generic, Finitary)
 
 extractCard :: NMResource -> Maybe Int
-extractCard (Card i) = Just i
+extractCard (Card i) = Just (fromEnum i)
 extractCard _ = Nothing
 
 isCard :: NMResource -> Bool
 isCard = isJust . extractCard
+
+cards :: [NMResource]
+cards = filter isCard inhabitants
 
 scoreCards :: Set NMResource -> Int
 scoreCards = scoreCards' . S.map fromJust . S.filter isJust . S.map extractCard

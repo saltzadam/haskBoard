@@ -17,8 +17,9 @@ import Game.GameState
 import Game.Location (histogram)
 import Game.Options (Legality (..), exceptIf, oneIssue, unlessYouCould, youMay, youMay')
 import Game.Player
+import Game.Rules
 import Game.Visibility (allVisible)
-import Helpers
+import Helpers hiding (getNextTurn)
 import Objects
 import qualified Track
 import Util
@@ -147,7 +148,7 @@ cantStopPhases :: CantStopPhaseName -> CantStopPhase
 cantStopPhases (CSTurn p) =
   Phase
     { name = CSTurn p,
-      seedNodes = [rollDice, chooseMove p]
+      seedNodes = rollDice >> chooseMove p
     }
 
 getNextTurn :: CantStopGameState -> CantStopTurn

@@ -21,7 +21,7 @@ library
     build-depends: base, containers,lens, generic-lens, array, these,
                 transformers, text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
-                brick, effectful-plugin, haskBoard, vty, finitary, safe, finite-typelits
+                brick, effectful-plugin, haskBoard, vty, finitary, safe, finite-typelits, Helpers
     exposed-modules: LoveLetter, Objects, Tui, Agent
     -- , Tui, Dice
     default-language: Haskell2010

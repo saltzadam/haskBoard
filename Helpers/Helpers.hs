@@ -139,6 +139,9 @@ doesNotHave' l r locs = not (has'' l r locs)
 anyHas :: (Ord r, Eq l) => l -> [r] -> GameRule l cn r ph pl i Bool
 anyHas l = fmap or . traverse (has l)
 
+hasAny :: (Ord r, Eq l) => l -> [r] -> GameRule l cn r ph pl i Bool
+hasAny = anyHas
+
 transferAll :: (Ord r, Eq l) => l -> l -> r -> GameRule l cn r ph pl i ()
 transferAll source target res = howManyAt source res >>= (`replicateM_` transfer source target res)
 
@@ -175,5 +178,8 @@ viewHowManyAt g l r = flip howMany' r <$> viewLocation g l
 
 -- for actions
 
-activePlayer :: (Player -> GameRule l cn r ph pl i ()) -> GameRule l cn r ph pl i ()
+activePlayer :: (Player -> GameRule l cn r ph pl i a) -> GameRule l cn r ph pl i a
 activePlayer action = lookCurrentTurnOwner >>= action
+
+lookOtherPlayers :: Player -> GameRule l cn r ph pl i (Set Player)
+lookOtherPlayers p = S.filter (/= p) <$> lookPlayers

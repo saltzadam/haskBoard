@@ -1,5 +1,6 @@
 packages:   haskBoard/
             Helpers/
+            haskBoard-brick/
             Games/CantStop/
             Games/NoMerci/
             Games/LoveLetter/

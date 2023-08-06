@@ -45,7 +45,7 @@ getNextCyclic match items =
         (NE.toList . shift $ items)
     )
   where
-    shift (a :| as) = NE.appendList (NE.singleton a) as
+    shift (a :| as) = NE.prependList as (NE.singleton a)
 
 -- TODO: these two should be related
 ifNullElse :: [a] -> NonEmpty a -> NonEmpty a

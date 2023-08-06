@@ -38,7 +38,7 @@ data TurnControl = TEndTurn | TEndGame [Player] deriving (Eq, Ord, Show, Generic
 
 data Phase phaseName l cn r playName i = Phase
   { name :: phaseName,
-    seedNodes :: [GameRule l cn r phaseName playName i ()]
+    seedNodes :: GameRule l cn r phaseName playName i ()
   }
   deriving (Generic)
 

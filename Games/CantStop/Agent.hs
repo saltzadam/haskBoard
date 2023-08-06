@@ -4,7 +4,7 @@
 module Agent where
 
 import Game.Agent
-import Interface.Choose (GameToInterfacePayload)
+import Game.Choose (GameToInterfacePayload)
 import Objects
 
 type CSAgent = Agent CantStopLocations CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue IO

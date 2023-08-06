@@ -1,130 +1,125 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 {-# HLINT ignore "Redundant <$>" #-}
 {-# HLINT ignore "Use head" #-}
-module LoveLetter
-    where
+module LoveLetter where
 
-import Objects
-import Game.Helpers
-import Game.Player
-import Game.Location
-import qualified Data.Set as S
-import qualified Data.List.NonEmpty as NE
-import qualified Data.Map as M
-import Game.Options (Options(..), Legality (..))
-import Data.Maybe (mapMaybe, fromMaybe, listToMaybe)
-import Data.List (delete)
-import Game.GameNode (mkOptionsNode, GameAction (..), mkActionNode)
+import qualified Cards as Card
 import Control.Monad (filterM, forM, join, (<=<))
-import Util (maximaByScore)
-import Data.List.NonEmpty (NonEmpty)
-import Game.Monad (injectGame)
-import Game.GameState (Phase(..), GameRules (..))
+import Data.Foldable (traverse_)
+import Data.List (delete)
+import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
+import qualified Data.Set as S
+import Game.GameState (GameRules (..), Phase (..))
+import Game.Location ()
+import Game.Player
+import Game.Rules
+import Helpers
+import Objects
+import Util (ifM, maximaByScore, maximaByScoreM)
 
-drawCard ::  Player -> LLM [LLGameNode]
-drawCard p = nodeMaybe (mkTransfer TheDeck (Hand p)) <$> peek  TheDeck
+drawCard :: Player -> LLM ()
+drawCard p = Card.draw TheDeck (Hand p)
 
-playCard :: Player -> Character -> LLM [LLGameNode]
-playCard p char = nodeMaybe (mkTransfer (Hand p) BoxTop) <$> hasMaybe (Hand p) (Card char)
+playCard :: Player -> Character -> LLM ()
+playCard p char = Card.play (Hand p) BoxTop (Card char)
 
-swapHands :: Player -> Player -> LLM [LLGameNode]
+swapHands :: Player -> Player -> LLM ()
 swapHands p p' = unsafeSwapAll (Hand p) (Hand p')
 
-discardCards :: Player -> LLM [LLGameNode]
+discardCards :: Player -> LLM ()
 discardCards p = do
-    cards <- S.toList <$> whatsAt (Hand p)
-    return (mkTransfer (Hand p) BoxTop <$> cards)
+  cards <- S.toList <$> whatsAt (Hand p)
+  traverse_ (transfer (Hand p) BoxTop) cards
 
-takeToken :: Player -> LLM [LLGameNode]
-takeToken p = justTransfer BoxTop (Tokens p) Token
+takeToken :: Player -> LLM ()
+takeToken p = transfer BoxTop (Tokens p) Token
 
-getCards p =  mapMaybe extractChar . S.toList <$> whatsAt (Hand p)
+getCards p = mapMaybe extractChar . S.toList <$> whatsAt (Hand p)
+
 getCard = fmap listToMaybe . getCards
 
-handFight :: Player -> Player -> LLM [LLGameNode]
-handFight p p' = let
-    pStrength = maximum . fmap charStrength <$> getCard p
-    pStrength' = maximum . fmap charStrength <$> getCard p'
-                  in do
-                     battle <- compare <$> pStrength <*> pStrength'
-                     case battle of 
-                         GT -> discardCards p'
-                         LT -> discardCards p
-                         _ -> head doNothing -- TODO: lol
+handFight :: Player -> Player -> LLM ()
+handFight p p' =
+  let pStrength = maximum . fmap charStrength <$> getCard p
+      pStrength' = maximum . fmap charStrength <$> getCard p'
+   in do
+        battle <- compare <$> pStrength <*> pStrength'
+        case battle of
+          GT -> discardCards p'
+          LT -> discardCards p
+          _ -> justDoNothing
 
+giveHandmaid :: Player -> LLM ()
+giveHandmaid p = transfer BoxTop (HandmaidInd p) HandmaidMarker
 
-giveHandmaid :: Player -> LLM [LLGameNode]
-giveHandmaid p = justTransfer BoxTop (HandmaidInd p) HandmaidMarker
+isAlive :: Player -> LLM Bool
+isAlive p = (Hand p) `hasAny` cards
 
+-- chooseMove :: Player -> LLM ()
+-- chooseMove p = do
+--   cards <- getCards p
+--   otherPlayers <- lookOtherPlayers
+--   targets <- targetablePlayers
+--   return [mkOptionsNode (buildPlay p otherPlayers targets (cards !! 0) (cards !! 1))]
 
-chooseMove :: Player -> LLM [LLGameNode]
-chooseMove p = do
-    cards <- getCards p
-    players <- lookPlayers 
-    let otherPlayers = delete p (S.toList players) 
-    targets <- targetablePlayers
-    return [mkOptionsNode (buildPlay p otherPlayers targets (cards !! 0) (cards !! 1))]
-           
-
-checkGameOver :: LLM [LLGameNode]
-checkGameOver = do
-    keepGoing <- anyHas TheDeck startingCards
-    if keepGoing
-    then return [mkActionNode DoNothing]
-    else do
+checkGameOver :: LLM ()
+checkGameOver =
+  ifM
+    (anyHas TheDeck startingCards)
+    justDoNothing
+    ( do
         ps <- lookPlayers
-        winners <- maximaByScore playerScore (S.toList ps)
-        return [mkActionNode (EndGame winners)]
-    where
-        -- TODO: simplify
-        playerScore :: Player -> LLM Int
-        playerScore p = maybe 0 charStrength . (extractChar =<<) <$> peek (Hand p)
-
-
-activePlayer :: (Player -> LLM [a]) -> LLM [a]
-activePlayer action = maybe (pure []) action . currentPlayer =<< lookCurrentPhase
+        winners <- maximaByScoreM playerScore (S.toList ps)
+        endGame winners
+    )
+  where
+    -- TODO: simplify
+    playerScore :: Player -> LLM Int
+    playerScore p = maybe 0 charStrength . (extractChar =<<) <$> peek (Hand p)
 
 targetablePlayers :: LLM [Player]
-targetablePlayers = let
-    targetable p = has (HandmaidInd p) HandmaidMarker
-    in
-        filterM targetable =<< (S.toList <$> lookPlayers)
+targetablePlayers =
+  let targetable p = has (HandmaidInd p) HandmaidMarker -- TODO: must be alive
+   in filterM targetable =<< (S.toList <$> lookPlayers)
 
-doNothing = [pure $ mkActionNode <$> [DoNothing]]
-
-llRunPlay' :: LLPlayName -> [LLM [LLGameNode]]
-llRunPlay' PlayPrincess = [activePlayer discardCards]
-llRunPlay' PlayCountess = doNothing
-llRunPlay' (PlayKing (Just p')) = [activePlayer (swapHands p')]
-llRunPlay' (PlayKing Nothing) = doNothing
-llRunPlay' (PlayPrince p') = [discardCards p', drawCard p']
-llRunPlay' PlayHandmaid = [activePlayer giveHandmaid]
-llRunPlay' (PlayBaron (Just p')) = [activePlayer (\p -> Hand p `revealTo` p')
-                                  , activePlayer (Hand p' `revealTo`)
-                                  , activePlayer (`handFight` p')
-                                  , activePlayer (\p -> Hand p `unrevealTo` p')
-                                  , activePlayer (Hand p' `unrevealTo`)
-                                   ]
-llRunPlay' (PlayBaron Nothing) = doNothing
-llRunPlay' (PlayPriest (Just p')) = [activePlayer (Hand p' `revealTo`),
-                                     activePlayer (Hand p' `unrevealTo`)]
-llRunPlay' (PlayPriest Nothing) = doNothing
-llRunPlay' (PlayGuard (Just (p',char))) = [do
-    card <- getCard p'
-    if card == Just char
+llRunPlay' :: LLPlayName -> LLM ()
+llRunPlay' PlayPrincess = activePlayer discardCards
+llRunPlay' PlayCountess = justDoNothing
+llRunPlay' (PlayKing (Just p')) = activePlayer (swapHands p')
+llRunPlay' (PlayKing Nothing) = justDoNothing
+llRunPlay' (PlayPrince p') = discardCards p' >> drawCard p'
+llRunPlay' PlayHandmaid = activePlayer giveHandmaid
+llRunPlay' (PlayBaron (Just p')) = do
+  activePlayer (\p -> Hand p `revealTo` p')
+  activePlayer (Hand p' `revealTo`)
+  activePlayer (`handFight` p')
+  activePlayer (\p -> Hand p `unrevealTo` p')
+  activePlayer (Hand p' `unrevealTo`)
+llRunPlay' (PlayBaron Nothing) = justDoNothing
+llRunPlay' (PlayPriest (Just p')) = do
+  activePlayer (Hand p' `revealTo`)
+  activePlayer (Hand p' `unrevealTo`)
+llRunPlay' (PlayPriest Nothing) = justDoNothing
+llRunPlay' (PlayGuard (Just (p', char))) = do
+  card <- getCard p'
+  if card == Just char
     then discardCards p'
-    else head doNothing -- TODO: lol again
-                                          ]
-llRunPlay' (PlayGuard Nothing ) = doNothing
+    else justDoNothing
+llRunPlay' (PlayGuard Nothing) = justDoNothing
 
-llRunPlay = fmap injectGame . llRunPlay'
+llRunPlay :: LLPlayName -> LLM ()
+llRunPlay play =
+  let theCard = Card (playToCharacter play)
+   in do
+        activePlayer (\p -> transfer (Hand p) PlayedCard theCard)
+        llRunPlay' play
+        transfer PlayedCard BoxTop theCard
 
 --
 
 llPhases :: LLPhaseName -> Phase LLPhaseName LLLocation LLCounters LLResource LLPlayName LLIssue
-llPhases (LLTurn p) = Phase (LLTurn p) (injectGame <$> [drawCard p])
-llPhases Setup = undefined
+llPhases (LLTurn p) = Phase (LLTurn p) [drawCard p]
+llPhases Setup = Phase Setup [shuffle TheDeck, ]
 
-
-llGameRules = GameRules llRunPlay llPhases 
-
+llGameRules = GameRules llRunPlay llPhases

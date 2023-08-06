@@ -19,15 +19,16 @@ import qualified Debug.Trace as Debug
 import Effectful (Eff, IOE, liftIO, (:>))
 import Effectful.Dispatch.Dynamic (interpret)
 import GHC.Conc (threadDelay)
-import Game.Agent (BEvent (..), brickAgent, randomAgent)
-import Game.Controller (GameController (..), agentToInterface)
+import Game.Agent (BEvent (..))
+import Game.Choose
 import Game.Player (Player (..))
-import Game.Run (runGameCommonChannels, runGameFromInterfaces)
 import Game.View (buildView', viewGameStateAs')
 import Game.Visibility (allVisible)
 import qualified Graphics.Vty as V
-import Interface.Choose (GameToInterfacePayload (..))
+import Interface.Agent
+import Interface.Controller
 import Objects (CSView, CantStopCounterName, CantStopCounters, CantStopGameState, CantStopIssue, CantStopLocation, CantStopLocations, CantStopOptions, CantStopPhaseName, CantStopPlayName, CantStopResource)
+import Run (runGameCommonChannels, runGameFromInterfaces)
 import Tui (app)
 
 parsePayload :: GameToInterfacePayload CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue -> CSEvent

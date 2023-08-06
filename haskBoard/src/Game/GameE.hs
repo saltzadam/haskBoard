@@ -7,17 +7,14 @@ import Control.Applicative (asum, liftA2)
 import Control.Lens (to, (^.))
 import Control.Monad (foldM, void)
 import Control.Monad.Free
-import Data.Bifunctor (second)
 import Data.Finitary (Finitary)
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe)
 import qualified Data.Sequence as Seq
-import qualified Data.Set as S
 import qualified Data.Text as T
 import Effectful
 import Effectful.Crypto.RNG (CryptoRNG (..), RNG (..))
-import Effectful.State.Static.Shared as State
 import FinitaryMap (ftAt)
 import Game.Choose
 import Game.GameAction
@@ -28,7 +25,6 @@ import Game.Rules
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
 import ShuffleRNG
-import Util (graphM)
 
 -- TODO: some kind of history besides log
 -- TODO: consider modifying/assign w/ built-in updateGS
@@ -115,6 +111,7 @@ runGameAction a@(Shuffle l) = do
       -- let makeSample_r i = randomR (0,length cards - i)
       -- sample <- traverse makeSample_r  [1..(length cards - 1)]
       shuffled <- Seq.fromList <$> shuffleRNG (F.toList cards)
+      -- traceShowM shuffled
       assignGameState (#objects . #locations . ftAt l) (Deck shuffled)
     _ -> pure ()
   logAndContinue a
@@ -158,7 +155,7 @@ runFromPhases phases = fromMaybe TEndTurn . asum <$> traverse handlePhase phases
     handlePhase phase = do
       assignGameState #currentPhase phase
       Phase _ newNodes <- getPhases <*> pure phase
-      result <- runPhaseNodes' newNodes
+      result <- runRuleControl newNodes
       return $ case result of
         PCEndTurn -> Just TEndTurn
         PCEndGame winners -> Just (TEndGame winners)
@@ -169,7 +166,7 @@ playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, R
 playGameTurns setupPhaseName = do
   phases <- getPhases
   case phases <$> setupPhaseName of
-    Just (Phase _ nodes) -> void . runPhaseNodes' $ nodes
+    Just (Phase _ nodes) -> void . runRuleControl $ nodes
     Nothing -> return ()
   winners <- playGameTurns'
   liftA2 (,) getGameState (pure winners)

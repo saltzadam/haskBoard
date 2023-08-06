@@ -3,7 +3,7 @@
 module NoMerci (noMerci) where
 
 import qualified Cards
-import Control.Monad (void)
+import Control.Monad (replicateM_, void)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -75,12 +75,12 @@ nmPhases :: NMPhaseName -> NMPhase
 nmPhases (NMTurnPhase p) =
   Phase
     { name = NMTurnPhase p,
-      seedNodes = [chooseMove p]
+      seedNodes = chooseMove p
     }
 nmPhases Setup =
   Phase
     { name = Setup,
-      seedNodes = shuffle CardDeck : (replicate 9 discardCardFromDeck ++ [drawCard])
+      seedNodes = shuffle CardDeck >> replicateM_ 9 discardCardFromDeck >> drawCard
     }
 
 initGameState :: Int -> NMGameState

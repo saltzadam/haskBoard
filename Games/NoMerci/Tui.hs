@@ -10,11 +10,11 @@ import Data.Maybe (fromJust, fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
-import Game.Helpers
-import Game.Location (inventory, peek)
+import Game.Location (inventory, peek')
 import Game.Options (Options (..))
 import Game.Player (Player, displayPlayer)
 import qualified Graphics.Vty as V
+import Helpers
 import Objects
 
 type NMTUIState = TUIState NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
@@ -36,7 +36,7 @@ drawUIView tui =
 
 drawBoardView :: NMView -> Widget Name
 drawBoardView g =
-  let card = (g `viewLocation` CenterOfTableCard) >>= peek >>= extractCard
+  let card = (g `viewLocation` CenterOfTableCard) >>= peek' >>= extractCard
       chips = viewHowManyAt g ChipPile Chip
    in fromMaybe drawNothing (drawCard <$> card <*> chips)
 
@@ -117,12 +117,13 @@ drawPlayers g = vBox (drawPlayer g <$> g ^. #playersView . to S.toList)
     drawPlayer :: NMView -> Player -> Widget Name
     drawPlayer g p =
       padTop (Pad 1) $
-        str (displayPlayer p)
-          <=> str (maybe " " (drawCards . filter isCard . M.keys . inventory) (viewLocation g (PlayerStuff p)))
+        str (displayPlayer p ++ maybe " " (drawCards . filter isCard . M.keys . inventory) (viewLocation g (PlayerStuff p)))
           <=> str ("Chips: " ++ maybe "" show (viewHowManyAt g (PlayerStuff p) Chip))
 
 drawCards :: [NMResource] -> String
-drawCards = unwords . fmap show . mapMaybe extractCard
+drawCards xs = surround (unwords . fmap show . mapMaybe extractCard $ xs)
+  where
+    surround string = if not . null $ string then "[" ++ string ++ "]" else string
 
 theAttrMap :: AttrMap
 theAttrMap = attrMap (V.white `on` V.black) []
