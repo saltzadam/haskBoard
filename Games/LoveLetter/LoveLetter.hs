@@ -5,15 +5,21 @@
 module LoveLetter where
 
 import qualified Cards as Card
-import Control.Monad (filterM, forM, join, (<=<))
+import Control.Applicative
+import Control.Lens (view, (^.))
+import Control.Monad (filterM, forM, join, void, (<=<))
 import Data.Foldable (traverse_)
-import Data.List (delete)
+import Data.Function ((&))
+import Data.List.NonEmpty (NonEmpty (..))
+import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as S
-import Game.GameState (GameRules (..), Phase (..))
-import Game.Location ()
+import Game.GameState (GameRules (..), GameState (..), Phase (..), location)
+import Game.Location (inventory)
+import Game.Options
 import Game.Player
 import Game.Rules
+import Game.Visibility (allVisible)
 import Helpers
 import Objects
 import Util (ifM, maximaByScore, maximaByScoreM)
@@ -29,8 +35,8 @@ swapHands p p' = unsafeSwapAll (Hand p) (Hand p')
 
 discardCards :: Player -> LLM ()
 discardCards p = do
-  cards <- S.toList <$> whatsAt (Hand p)
-  traverse_ (transfer (Hand p) BoxTop) cards
+  cardsInHand <- S.toList <$> whatsAt (Hand p)
+  traverse_ (transfer (Hand p) BoxTop) cardsInHand
 
 takeToken :: Player -> LLM ()
 takeToken p = transfer BoxTop (Tokens p) Token
@@ -54,14 +60,39 @@ giveHandmaid :: Player -> LLM ()
 giveHandmaid p = transfer BoxTop (HandmaidInd p) HandmaidMarker
 
 isAlive :: Player -> LLM Bool
-isAlive p = (Hand p) `hasAny` cards
+isAlive p = Hand p `hasAny` cards
 
--- chooseMove :: Player -> LLM ()
--- chooseMove p = do
---   cards <- getCards p
---   otherPlayers <- lookOtherPlayers
---   targets <- targetablePlayers
---   return [mkOptionsNode (buildPlay p otherPlayers targets (cards !! 0) (cards !! 1))]
+score :: Player -> GameRule LLLocation LLCounters LLResource LLPhaseName LLPlayName LLIssue Int
+score p = ifM (isAlive p) 1 0
+
+cardPlays :: Player -> Character -> LLM (NonEmpty LLPlayName)
+cardPlays _ Princess = pure (NE.singleton PlayPrincess)
+cardPlays _ Countess = pure (NE.singleton PlayCountess)
+cardPlays p King = fmap PlayKing <$> targetablePlayers p
+cardPlays p Prince = fmap PlayPrince <$> targetablePlayers p
+cardPlays _ Handmaid = pure (NE.singleton PlayHandmaid)
+cardPlays p Baron = fmap PlayBaron <$> targetablePlayers p
+cardPlays p Priest = fmap PlayPriest <$> targetablePlayers p
+cardPlays p Guard = do
+  targets <- targetablePlayers p
+  let targetChars = liftA2 (,) targets characters
+  return (PlayGuard <$> targetChars)
+
+chooseMove :: Player -> LLM LLPlayName
+chooseMove p = do
+  charsHeld <- NE.fromList <$> getCards p -- TODO: is this solvable?
+  let plays = join <$> traverse (cardPlays p) charsHeld -- less confusing if join = concat
+  choices <- youMay p plays & unlessYouCould countessRule
+  makeChoice choices
+  where
+    countessRule PlayCountess PlayPrincess = return $ oneIssue MustDiscardCountess
+    countessRule _ _ = return Legal
+
+-- do
+-- cards <- getCards p
+-- otherPlayers <- lookOtherPlayers
+-- targets <- targetablePlayers
+-- return [mkOptionsNode (buildPlay p otherPlayers targets (cards !! 0) (cards !! 1))]
 
 checkGameOver :: LLM ()
 checkGameOver =
@@ -78,35 +109,40 @@ checkGameOver =
     playerScore :: Player -> LLM Int
     playerScore p = maybe 0 charStrength . (extractChar =<<) <$> peek (Hand p)
 
-targetablePlayers :: LLM [Player]
-targetablePlayers =
-  let targetable p = has (HandmaidInd p) HandmaidMarker -- TODO: must be alive
-   in filterM targetable =<< (S.toList <$> lookPlayers)
+targetablePlayers :: Player -> LLM (NonEmpty Player)
+targetablePlayers p =
+  let targetable p' = has (HandmaidInd p') HandmaidMarker -- TODO: must be alive
+   in do
+        otherPlayers <- S.toList <$> lookOtherPlayers p
+        otherTargets <- filterM targetable otherPlayers
+        return (p :| otherTargets)
+
+untargetablePlayers :: Player -> LLM [Player]
+untargetablePlayers p = do
+  otherPlayersSet <- lookOtherPlayers p
+  targets <- S.fromList . NE.toList <$> targetablePlayers p
+  return (S.toList (otherPlayersSet `S.difference` targets))
 
 llRunPlay' :: LLPlayName -> LLM ()
 llRunPlay' PlayPrincess = activePlayer discardCards
 llRunPlay' PlayCountess = justDoNothing
-llRunPlay' (PlayKing (Just p')) = activePlayer (swapHands p')
-llRunPlay' (PlayKing Nothing) = justDoNothing
+llRunPlay' (PlayKing p') = activePlayer (swapHands p')
 llRunPlay' (PlayPrince p') = discardCards p' >> drawCard p'
 llRunPlay' PlayHandmaid = activePlayer giveHandmaid
-llRunPlay' (PlayBaron (Just p')) = do
+llRunPlay' (PlayBaron p') = do
   activePlayer (\p -> Hand p `revealTo` p')
   activePlayer (Hand p' `revealTo`)
   activePlayer (`handFight` p')
   activePlayer (\p -> Hand p `unrevealTo` p')
   activePlayer (Hand p' `unrevealTo`)
-llRunPlay' (PlayBaron Nothing) = justDoNothing
-llRunPlay' (PlayPriest (Just p')) = do
+llRunPlay' (PlayPriest p') = do
   activePlayer (Hand p' `revealTo`)
   activePlayer (Hand p' `unrevealTo`)
-llRunPlay' (PlayPriest Nothing) = justDoNothing
-llRunPlay' (PlayGuard (Just (p', char))) = do
+llRunPlay' (PlayGuard (p', char)) = do
   card <- getCard p'
   if card == Just char
     then discardCards p'
     else justDoNothing
-llRunPlay' (PlayGuard Nothing) = justDoNothing
 
 llRunPlay :: LLPlayName -> LLM ()
 llRunPlay play =
@@ -119,7 +155,29 @@ llRunPlay play =
 --
 
 llPhases :: LLPhaseName -> Phase LLPhaseName LLLocation LLCounters LLResource LLPlayName LLIssue
-llPhases (LLTurn p) = Phase (LLTurn p) [drawCard p]
-llPhases Setup = Phase Setup [shuffle TheDeck, ]
+llPhases (LLTurn p) = Phase (LLTurn p) (drawCard p >> void (chooseMove p))
+llPhases Setup =
+  Phase
+    Setup
+    ( do
+        shuffle TheDeck
+        traverse_ drawCard =<< lookPlayers
+    )
 
-llGameRules = GameRules llRunPlay llPhases
+initGameState :: Int -> LLGameState
+initGameState numPlayers =
+  let players = S.fromList (mkPlayers numPlayers)
+      -- alivePlayers :: LLGameState -> NonEmpty Player
+      alivePlayer p gs = (sum . inventory $ view (location (Hand p)) gs) > 0
+   in GameState
+        { players = players,
+          objects = initGameObjects players,
+          currentPhase = LLTurn (head (S.toList players)),
+          currentTurn = playerTurn (Player 1),
+          nextTurn = getNextTurnIf playerTurn alivePlayer, -- TODO: how to make this safe?
+          visibility = allVisible -- TODO: no, BoxTop is invisible
+        }
+
+llGameRules = GameRules llRunPlay llPhases score (Just Setup)
+
+loveLetter i = (initGameState i, llGameRules)

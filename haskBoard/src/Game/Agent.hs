@@ -42,9 +42,4 @@ data Agent l cn r ph pl i m = Agent
   }
   deriving (Generic)
 
--- newtype AgentM l cn r ph pl i m n a = AgentM {runAgentM :: StateT (Agent l cn r ph pl i m) n a}
---   deriving (Generic, Functor, Applicative, Monad, MonadState (Agent l cn r ph pl i m), MonadTrans)
-
 makeLenses ''Agent
-
--- makeLenses ''AgentM

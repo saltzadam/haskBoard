@@ -3,6 +3,7 @@
 module Objects where
 
 import Data.Finitary
+import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Sequence as Seq
@@ -29,6 +30,9 @@ data Character
   | Princess
   deriving (Eq, Ord, Show, Generic, Enum, Bounded, Finitary)
 
+characters :: NonEmpty Character
+characters = NE.fromList inhabitants
+
 charStrength :: Character -> Int
 charStrength char = fromEnum char + 1
 
@@ -53,7 +57,7 @@ startingCards =
           Guard
         ]
 
-data LLResource = Token | HandmaidMarker | Card Character deriving (Eq, Ord, Show, Generic)
+data LLResource = Token | HandmaidMarker | Card Character deriving (Eq, Ord, Show, Generic, Finitary)
 
 cards :: [LLResource]
 cards = Card <$> inhabitants
@@ -69,7 +73,7 @@ data LLLocation
   | HandmaidInd Player
   | Tokens Player
   | BoxTop
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, Finitary)
 
 type LLCounters = Void
 
@@ -98,20 +102,20 @@ data LLIssue = ProtectedByHandmaid | MustDiscardCountess | OtherValidTarget deri
 data LLPlayName
   = PlayPrincess
   | PlayCountess
-  | PlayKing (Maybe Player)
+  | PlayKing Player
   | PlayPrince Player
   | PlayHandmaid
-  | PlayBaron (Maybe Player)
-  | PlayPriest (Maybe Player)
-  | PlayGuard (Maybe (Player, Character))
+  | PlayBaron Player
+  | PlayPriest Player
+  | PlayGuard (Player, Character)
   deriving (Eq, Ord, Show, Generic)
 
 target :: LLPlayName -> Maybe Player
-target (PlayKing p) = p
+target (PlayKing p) = Just p
 target (PlayPrince p) = Just p
-target (PlayBaron p) = p
-target (PlayPriest p) = p
-target (PlayGuard (Just (p, _))) = Just p
+target (PlayBaron p) = Just p
+target (PlayPriest p) = Just p
+target (PlayGuard (p, _)) = Just p
 target _ = Nothing
 
 playToCharacter :: LLPlayName -> Character
@@ -188,3 +192,6 @@ type LLView = GameStateView LLLocation LLCounters LLResource LLPhaseName
 currentPlayer :: LLPhaseName -> Maybe Player
 currentPlayer (LLTurn p) = Just p
 currentPlayer _ = Nothing
+
+playerTurn :: Player -> LLTurn
+playerTurn p = Turn p (NE.singleton (LLTurn p))

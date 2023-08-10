@@ -5,7 +5,7 @@ module Game.GameE (playGameTurns) where
 
 import Control.Applicative (asum, liftA2)
 import Control.Lens (to, (^.))
-import Control.Monad (foldM, void)
+import Control.Monad (void)
 import Control.Monad.Free
 import Data.Finitary (Finitary)
 import qualified Data.Foldable as F
@@ -63,6 +63,9 @@ logAction2 (MkSwap l l' r r') = do
   logComponent
     ( T.pack $ "Swapped " ++ show r ++ " and " ++ show r' ++ " between " ++ show l ++ " and " ++ show l' ++ "\n Contents of " ++ show l ++ ": " ++ invl ++ "\n Contents of " ++ show l' ++ ": " ++ invl'
     )
+logAction2 (MakeAnnouncement speaker announcement) =
+  let speaker' = maybe "Nobody" show speaker
+   in logComponent (T.pack (speaker' ++ " announced: ") <> announcement)
 
 -- order:
 -- modify
@@ -131,17 +134,20 @@ runGameAction a@(EndGame winners) = do
   announceWinners winners
   logAction2 a
   return (PCEndGame winners)
+runGameAction a@(MakeAnnouncement speaker announcement) = do
+  announce speaker announcement
+  logAndContinue a
 
-runPhaseNodes' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [GameRule l cn r ph pl i a] -> Eff es PhaseControl
-runPhaseNodes' rules = fromMaybe PCContinue <$> foldM go Nothing rules
-  where
-    -- run until you reach a PhaseControl besides PCContinue
-    go :: Maybe PhaseControl -> GameRule l cn r ph pl i a1 -> Eff es (Maybe PhaseControl)
-    go acc rule = do
-      result <- runRuleControl rule
-      if result == PCContinue
-        then return acc
-        else return (Just result)
+-- runPhaseNodes' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [GameRule l cn r ph pl i a] -> Eff es PhaseControl
+-- runPhaseNodes' rules = fromMaybe PCContinue <$> foldM go Nothing rules
+--   where
+--     -- run until you reach a PhaseControl besides PCContinue
+--     go :: Maybe PhaseControl -> GameRule l cn r ph pl i a1 -> Eff es (Maybe PhaseControl)
+--     go acc rule = do
+--       result <- runRuleControl rule
+--       if result == PCContinue
+--         then return acc
+--         else return (Just result)
 
 continueGame :: Eff es PhaseControl
 continueGame = return PCContinue

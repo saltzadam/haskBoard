@@ -25,3 +25,4 @@ chooseChan viewer gameToClientChan clientToGameChan = interpret $ \_ -> \case
     writeChan gameToClientChan (SendOptions (viewGameStateAs gsv viewer) options)
     readChan clientToGameChan
   AnnounceWinners winners -> liftIO (writeChan gameToClientChan (SendWinners winners))
+  Announce speaker announcement -> liftIO (writeChan gameToClientChan (SendAnnouncement speaker announcement))

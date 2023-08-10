@@ -1,5 +1,6 @@
 module Game.GameAction (GameAction (..)) where
 
+import Data.Text
 import GHC.Generics (Generic)
 import Game.Player
 import Game.Visibility (VisData)
@@ -23,4 +24,5 @@ data GameAction l cn r ph
   | MakeVisibleTo Player (VisData l cn ph)
   | MakeInvisibleTo Player (VisData l cn ph)
   | EndGame [Player]
+  | MakeAnnouncement (Maybe Player) Text
   deriving (Eq, Ord, Show, Generic)

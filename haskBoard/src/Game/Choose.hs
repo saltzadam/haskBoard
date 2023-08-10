@@ -3,6 +3,7 @@
 module Game.Choose where
 
 import Control.Monad.Free (liftF)
+import Data.Text
 import Effectful
 import Effectful.Dispatch.Dynamic
 import GHC.Generics (Generic)
@@ -16,6 +17,7 @@ data Interface l cn r ph pl i :: Effect where
   Choose :: GameState l cn r ph pl i -> Options pl i -> (Interface l cn r ph pl i) m pl
   Update :: GameState l cn r ph pl i -> (Interface l cn r ph pl i) m ()
   AnnounceWinners :: [Player] -> (Interface l cn r ph pl i) m ()
+  Announce :: (Maybe Player) -> Text -> Interface l cn r ph pl i m ()
 
 type instance DispatchOf (Interface l cn r ph pl i) = 'Dynamic
 
@@ -23,6 +25,7 @@ data GameToInterfacePayload l cn r ph pl i
   = SendState (GameStateView l cn r ph)
   | SendOptions (GameStateView l cn r ph) (Options pl i)
   | SendWinners [Player]
+  | SendAnnouncement (Maybe Player) Text
   deriving (Generic)
 
 -- TODO: should this include GameState???
@@ -37,6 +40,9 @@ update gsvc = send (Update gsvc)
 
 announceWinners :: (Interface l cn r ph pl i :> es) => [Player] -> Eff es ()
 announceWinners winners = send (AnnounceWinners winners)
+
+announce :: (Interface l cn r ph pl i :> es) => Maybe Player -> Text -> Eff es ()
+announce speaker announcement = send (Announce speaker announcement)
 
 mkChoice :: Options pl i -> GameRule l cn r ph pl i pl
 mkChoice opts = liftF (MakeChoice opts id)

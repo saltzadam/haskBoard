@@ -68,10 +68,19 @@ unsafeSwapAll l0 l1 = do
 -- control ops
 
 getNextTurn :: (Player -> Turn ph) -> GameState l cn r ph pl i -> Turn ph
-getNextTurn mkTurn gs =
+getNextTurn mkTurn = getNextTurnIf mkTurn (\_ _ -> True)
+
+getNextTurnIf :: (Player -> Turn ph) -> (Player -> GameState l cn r ph pl i -> Bool) -> GameState l cn r ph pl i -> Turn ph
+getNextTurnIf mkTurn filt gs =
   let Turn p _ = (gs ^. #currentTurn)
-      players = NE.fromList (S.toList (gs ^. #players))
+      players = NE.fromList ((S.toList . S.filter (`filt` gs)) (gs ^. #players))
    in mkTurn (fromJust (getNextCyclic p players))
+
+getNextTurnFrom :: (Player -> Turn ph) -> (GameState l cn r ph pl i -> NonEmpty Player) -> GameState l cn r ph pl i -> Turn ph
+getNextTurnFrom mkTurn getPlayers gs =
+  let Turn p _ = (gs ^. #currentTurn)
+      somePlayers = getPlayers gs
+   in mkTurn (fromJust (getNextCyclic p somePlayers))
 
 -- queries
 

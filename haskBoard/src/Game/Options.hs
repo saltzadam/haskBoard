@@ -167,6 +167,7 @@ exceptIf issuefm mdefault mopts = do
 --                                               else as
 -- because neDeleteIfContains a a would just be delete.
 
+-- comparer (ifContains) (maybeIllegal)
 unlessYouCould' :: (Eq i, Ord pl) => (pl -> pl -> Legality i) -> Options pl i -> Options pl i
 unlessYouCould' comparer (Options legal illegal p) =
   let legal' = NE.toList legal

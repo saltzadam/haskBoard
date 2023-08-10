@@ -5,7 +5,7 @@
 
 module Main where
 
-import Agent (NMEvent)
+import Agent
 import Brick (customMain, defaultMain)
 import Brick.BChan (BChan, newBChan, readBChan, writeBChan)
 import Brick.Game.Tui (TUIMode (..), TUIState (..))
@@ -32,17 +32,16 @@ import Game.View (buildView', viewGameStateAs')
 import Game.Visibility (allVisible)
 import qualified Graphics.Vty as V
 import Interface.Agent
-import NoMerci
-import Objects (NMCounters, NMGameState, NMIssue, NMLocation, NMOptions, NMPhaseName, NMPlayName, NMResource, NMView)
+import LoveLetter
+import Objects
 import Run (runGameCommonChannels, runGameFromInterfaces)
-import Tui (app)
 
-parsePayload :: GameToInterfacePayload NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue -> NMEvent
+parsePayload :: GameToInterfacePayload LLLocation LLCounters LLResource LLPhaseName LLPlayName LLIssue -> LLEvent
 parsePayload (SendState csv) = Receive csv
 parsePayload (SendOptions gsv opts) = Request opts
 parsePayload (SendWinners winners) = AnnounceWinner winners
 
-sendToBrickBChan :: Chan (GameToInterfacePayload NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue) -> BChan NMEvent -> IO ()
+sendToBrickBChan :: Chan (GameToInterfacePayload LLLocation LLCounters LLResource LLPhaseName LLPlayName LLIssue) -> BChan LLEvent -> IO ()
 sendToBrickBChan gameToBrickChan gameToBrickBChan = do
   payload <- readChan gameToBrickChan
   let parsed = parsePayload payload
@@ -59,7 +58,7 @@ buildPlayerChannels p = do
 
 main :: IO ()
 main = do
-  let gs = fst (noMerci 3)
+  let gs = fst (loveLetter 3)
   let players = S.toList (gs ^. #players)
   playChannels <- M.fromList <$> traverse buildPlayerChannels players
 
@@ -73,16 +72,14 @@ main = do
   forkIO (runAgentIO ai2)
   forkIO (runAgentIO playerAgent)
 
-  -- let controller = agentToInterface <$> M.fromList [(Player 1, playerAgent), (Player 2, ai1), (Player 3, ai2)]
-
   initVty <- V.mkVty V.defaultConfig
   forkIO $
     -- void $ runGameFromInterfaces
     void $
       runGameCommonChannels
         (Player 1)
-        (fst . noMerci $ 3)
-        (snd . noMerci $ 3)
+        (fst . loveLetter $ 3)
+        (snd . loveLetter $ 3)
         -- (GameController controller)
         (playerAgent ^. #fromGameChannel)
         (playerAgent ^. #toGameChannel)

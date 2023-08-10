@@ -21,6 +21,7 @@ import Control.Lens (at, makeLenses, to, (^.))
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Text
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)
 import GHC.Generics (Generic)
@@ -60,6 +61,7 @@ chooseInterface controller = interpret $ \_ -> \case
   Update gs -> sendUpdate controller gs
   Choose gs opts -> sendChoice controller gs opts
   AnnounceWinners winners -> sendWinners controller winners
+  Announce speaker announcement -> sendAnnouncement controller speaker announcement
 
 data ControllerException = NoSuchInterface Player deriving (Eq, Ord, Show)
 
@@ -95,10 +97,16 @@ sendChoice' gc gs opts = case gc ^. #playerInterfaces . at chooser of
     chooser = opts ^. #owner
 
 sendWinners :: (IOE :> es) => GameController l cn r ph pl i -> [Player] -> Eff es ()
-sendWinners gc winners = liftIO $ traverse_ (sendWinners' winners) (gc ^. #playerInterfaces . to M.elems)
+sendWinners gc winners = liftIO $ traverse_ sendWinners' (gc ^. #playerInterfaces . to M.elems)
   where
-    sendWinners' :: [Player] -> PlayerInterface l cn r ph pl i -> IO ()
-    sendWinners' ps interface = writeChan (interface ^. #fromGameChannel) (SendWinners ps)
+    sendWinners' :: PlayerInterface l cn r ph pl i -> IO ()
+    sendWinners' interface = writeChan (interface ^. #fromGameChannel) (SendWinners winners)
+
+sendAnnouncement :: (IOE :> es) => GameController l cn r ph pl i -> Maybe Player -> Text -> Eff es ()
+sendAnnouncement gc speaker announcement = liftIO $ traverse_ sendAnnouncement' (gc ^. #playerInterfaces . to M.elems)
+  where
+    sendAnnouncement' :: PlayerInterface l cn r ph pl i -> IO ()
+    sendAnnouncement' interface = writeChan (interface ^. #fromGameChannel) (SendAnnouncement speaker announcement)
 
 -- Use the same interface for all players (e.g. a multi-player TUI or testing)
 commonInterface ::
