@@ -19,12 +19,14 @@ import Objects
 
 type NMTUIState = TUIState NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
 
+type Name = ()
+
 app :: App NMTUIState NMEvent Name
 app =
   App
     { appDraw = drawUIView,
       appChooseCursor = neverShowCursor,
-      appHandleEvent = handleEvent,
+      appHandleEvent = runHandler simpleHandler,
       appStartEvent = return (),
       appAttrMap = const theAttrMap
     }

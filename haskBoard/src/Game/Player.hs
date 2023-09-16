@@ -5,6 +5,7 @@
 module Game.Player where
 
 import Data.Finitary (Finitary)
+import qualified Data.Text as T
 import GHC.Generics (Generic)
 
 data PlayerNum = PlayerOne | PlayerTwo | PlayerThree | PlayerFour | PlayerFive | PlayerSix
@@ -20,6 +21,8 @@ displayPlayerNum PlayerSix = "Player Six"
 
 displayPlayer :: Player -> String
 displayPlayer (Player pnum) = displayPlayerNum pnum
+
+displayPlayerT = T.pack . displayPlayer
 
 newtype Player = Player {num :: PlayerNum} deriving (Eq, Ord, Show, Generic, Read, Bounded, Finitary, Enum)
 

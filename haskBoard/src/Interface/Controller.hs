@@ -125,7 +125,8 @@ agentFromInterface ::
   PlayerInterface l cn r ph pl i ->
   (GameStateView l cn r ph -> Options pl i -> m pl) ->
   (GameStateView l cn r ph -> m ()) ->
+  (Maybe Player -> Text -> m ()) ->
   ([Player] -> m ()) ->
   Agent l cn r ph pl i m
-agentFromInterface (PlayerInterface fromChan toChan) chooser stater winner =
-  Agent chooser stater winner fromChan toChan
+agentFromInterface (PlayerInterface fromChan toChan) chooser stater announcer winner =
+  Agent chooser stater winner announcer fromChan toChan

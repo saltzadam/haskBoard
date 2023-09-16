@@ -79,7 +79,7 @@ main = do
           (GameController controller)
 
   let gsv = viewGameStateAs' gs (Player 1)
-  let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True
+  let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True []
   void $ customMain initVty (V.mkVty V.defaultConfig) (Just gameToBrickBChan) app initTUI
   killThread ai1thread
   killThread ai2thread

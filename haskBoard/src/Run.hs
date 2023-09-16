@@ -17,7 +17,7 @@ import Log
 import System.IO (IOMode (..), withFile)
 
 runGameCommonChannels ::
-  (Ord l, Ord r, Ord cn, Enum cn, Bounded cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph, Finitary cn, Finitary l) =>
+  (Ord l, Ord r, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph, Finitary cn, Finitary l) =>
   Player ->
   GameState l cn r ph pl i ->
   GameRules l cn r ph pl i ->

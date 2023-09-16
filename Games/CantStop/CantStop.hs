@@ -12,6 +12,7 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (catMaybes, fromJust, fromMaybe, listToMaybe)
 import qualified Data.Set as S
+import qualified Debug.Trace as Debug
 import Game.GameAction
 import Game.GameState
 import Game.Location (histogram)
@@ -28,8 +29,11 @@ import Util
 rollDice :: CSM ()
 rollDice = traverse_ roll theDice
 
-moveMarkerBy :: CantStopResource -> TrackName -> Int -> CSM ()
-moveMarkerBy marker s amt = replicateM_ amt (Track.advanceOrInsert marker BoxTop (track s))
+moveMarkerBy :: Player -> CantStopResource -> TrackName -> Int -> CSM ()
+moveMarkerBy pl marker s amt = do
+  tempPos <- Track.resMaxHeight (PlayerMarker pl) (track s)
+  let tempPos' = fromMaybe 0 tempPos
+  replicateM_ amt (Track.advanceOrInsertAt marker BoxTop (track s) tempPos')
 
 returnMarker :: Maybe Player -> TrackName -> CSM ()
 returnMarker maybep trackName = Track.transferFrom (track trackName) BoxTop (maybe TemporaryMarker PlayerMarker maybep)
@@ -171,11 +175,11 @@ initGameState numPlayers =
 
 csRunPlay' :: CantStopPlayName -> CSM ()
 csRunPlay' (TwoMove pl s t) = do
-  moveMarkerBy TemporaryMarker s 1
-  moveMarkerBy TemporaryMarker t 1
+  moveMarkerBy pl TemporaryMarker s 1
+  moveMarkerBy pl TemporaryMarker t 1
   stopOrGoNode pl
 csRunPlay' (OneMove pl s) = do
-  moveMarkerBy TemporaryMarker s 1
+  moveMarkerBy pl TemporaryMarker s 1
   stopOrGoNode pl
 csRunPlay' (Stop pl) = do
   resolveMarkers pl

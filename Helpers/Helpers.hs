@@ -16,6 +16,7 @@ import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Text (Text)
 import FinitaryMap (ftAt, (!!!))
 import GHC.Base (Applicative (..))
 import Game.GameAction
@@ -56,6 +57,9 @@ shuffle = act . Shuffle
 
 endGame :: [Player] -> GameRule l cn r ph pl i ()
 endGame winners = act (EndGame winners)
+
+announceGame :: Text -> GameRule l cn r ph pl i ()
+announceGame announcement = act (MakeAnnouncement Nothing announcement)
 
 -- bulk operations
 unsafeSwapAll :: (Finitary l, Ord r, Ord l) => l -> l -> GameRule l cn r ph pl i ()

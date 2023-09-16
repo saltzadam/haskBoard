@@ -12,3 +12,4 @@ draw deck hand = do
 
 play :: l -> l -> r -> GameRule l cn r ph pl i ()
 play = transfer
+

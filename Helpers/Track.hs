@@ -17,7 +17,7 @@ import Game.Location (LocationShape)
 import Game.Player (Player)
 import Game.Rules
 import Helpers
-import Util (ifM, pureIfM)
+import Util (ifM, pureIfM, safeIndexList)
 
 -- TODO: rewrite stuff as folds
 
@@ -83,6 +83,12 @@ advance res track = do
 
 advanceOrInsert :: (Ord r, Eq l) => r -> l -> Track l -> GameRule l cn r ph pl i ()
 advanceOrInsert res source track' = ifM (holds res track') (advance res track') (startTrack res source track')
+
+advanceOrInsertAt :: (Ord r, Eq l) => r -> l -> Track l -> Int -> GameRule l cn r ph pl i ()
+advanceOrInsertAt res source track'@(Track slots) startingPosition = ifM (holds res track') (advance res track')
+    $ case safeIndexList startingPosition (NE.toList slots) of
+        Nothing -> transfer source (NE.last slots) res 
+        Just slot -> transfer source slot res 
 
 recede' :: forall r l cn ph pl i. (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl i (Either AdvanceException (GameAction l cn r ph))
 recede' res (Track slots) = first reverseExceptions <$> advance' res (Track (NE.reverse slots))

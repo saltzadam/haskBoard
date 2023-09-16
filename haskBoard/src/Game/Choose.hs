@@ -7,6 +7,7 @@ import Data.Text
 import Effectful
 import Effectful.Dispatch.Dynamic
 import GHC.Generics (Generic)
+import Game.GameAction (GameAction)
 import Game.GameState
 import Game.Options (Options)
 import Game.Player

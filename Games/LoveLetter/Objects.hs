@@ -1,8 +1,11 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE KindSignatures #-}
 
 module Objects where
 
 import Data.Finitary
+import Data.Kind (Type)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
@@ -77,6 +80,8 @@ data LLLocation
 
 type LLCounters = Void
 
+instance Enum Void
+
 type LLGameObjects = GameObjects LLLocation LLCounters LLResource
 
 initLocations' :: Set Player -> LLLocation -> LocationShape LLResource
@@ -107,15 +112,25 @@ data LLPlayName
   | PlayHandmaid
   | PlayBaron Player
   | PlayPriest Player
-  | PlayGuard (Player, Character)
+  | PlayGuard Player Character
   deriving (Eq, Ord, Show, Generic)
+
+playGetter :: (Applicative m) => Character -> m Player -> m Character -> m LLPlayName
+playGetter Princess _ _ = pure PlayPrincess
+playGetter Countess _ _ = pure PlayCountess
+playGetter King playerGetter _ = PlayKing <$> playerGetter
+playGetter Prince playerGetter _ = PlayPrince <$> playerGetter
+playGetter Handmaid _ _ = pure PlayHandmaid
+playGetter Baron playerGetter _ = PlayBaron <$> playerGetter
+playGetter Priest playerGetter _ = PlayPriest <$> playerGetter
+playGetter Guard playerGetter charGetter = PlayGuard <$> playerGetter <*> charGetter
 
 target :: LLPlayName -> Maybe Player
 target (PlayKing p) = Just p
 target (PlayPrince p) = Just p
 target (PlayBaron p) = Just p
 target (PlayPriest p) = Just p
-target (PlayGuard (p, _)) = Just p
+target (PlayGuard p _) = Just p
 target _ = Nothing
 
 playToCharacter :: LLPlayName -> Character
@@ -126,51 +141,7 @@ playToCharacter (PlayPrince _) = Prince
 playToCharacter PlayHandmaid = Handmaid
 playToCharacter (PlayBaron _) = Baron
 playToCharacter (PlayPriest _) = Priest
-playToCharacter (PlayGuard _) = Guard
-
--- buildPlay' ::
---   -- | active player
---   Player ->
---   -- | other players
---   [Player] ->
---   -- | valid targets
---   [Player] ->
---   -- | char in hand
---   Character ->
---   Options LLPlayName LLIssue
--- buildPlay' p _ _ Princess = Options (NE.singleton PlayPrincess) M.empty p
--- buildPlay' p _ _ Countess = Options (NE.singleton PlayCountess) M.empty p
--- buildPlay' p _ _ Handmaid = Options (NE.singleton PlayHandmaid) M.empty p
--- -- TODO: fromJust
--- buildPlay' p ps tars Prince =
---   Options
---     (PlayPrince <$> (p NE.:| tars))
---     (M.fromList [(PlayPrince p', Illegal $ NE.singleton ProtectedByHandmaid) | p' <- ps, p' `notElem` tars])
---     p
--- buildPlay' p ps tars King = whenTargets PlayKing p ps tars
--- buildPlay' p ps tars Baron = whenTargets PlayBaron p ps tars
--- buildPlay' p ps tars Priest = whenTargets PlayPriest p ps tars
--- buildPlay' p ps tars Guard =
---   Options
---     (buildSafeNonempty (PlayGuard . Just <$> cartesianProduct tars [Guard .. King]) (PlayGuard Nothing))
---     (M.fromList [(PlayGuard (Just (p', char)), Illegal $ NE.singleton ProtectedByHandmaid) | p' <- ps, p' `notElem` tars, char <- [Guard .. King]])
---     p
-
--- buildPlay :: Player -> [Player] -> [Player] -> Character -> Character -> Options LLPlayName LLIssue
--- buildPlay p ps tars Countess King =
---   let Options legal illegal _ = buildPlay' p ps tars Countess
---    in Options legal (illegal <> M.fromList [(PlayKing (Just p'), Illegal (NE.singleton MustDiscardCountess)) | p' <- tars]) p
--- buildPlay p ps tars Countess Prince =
---   let Options legal illegal _ = buildPlay' p ps tars Countess
---    in Options legal (illegal <> M.fromList [(PlayPrince p', Illegal (NE.singleton MustDiscardCountess)) | p' <- tars]) p
--- buildPlay p ps tars char0 char1 = buildPlay' p ps tars char0 <> buildPlay' p ps tars char1
-
--- whenTargets :: (Ord pl, Eq a) => (Maybe a -> pl) -> Player -> [a] -> [a] -> Options pl LLIssue
--- whenTargets f p ps tars =
---   Options
---     (buildSafeNonempty (f . Just <$> tars) (f Nothing))
---     (M.fromList [(f (Just p'), Illegal $ NE.singleton ProtectedByHandmaid) | p' <- ps, p' `notElem` tars])
---     p
+playToCharacter (PlayGuard _ _) = Guard
 
 data LLPhaseName = Setup | LLTurn Player deriving (Eq, Ord, Show, Generic)
 

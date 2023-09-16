@@ -6,7 +6,7 @@ module LoveLetter where
 
 import qualified Cards as Card
 import Control.Applicative
-import Control.Lens (view, (^.))
+import Control.Lens (view)
 import Control.Monad (filterM, forM, join, void, (<=<))
 import Data.Foldable (traverse_)
 import Data.Function ((&))
@@ -14,6 +14,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as S
+import qualified Data.Text as T
 import Game.GameState (GameRules (..), GameState (..), Phase (..), location)
 import Game.Location (inventory)
 import Game.Options
@@ -22,19 +23,25 @@ import Game.Rules
 import Game.Visibility (allVisible)
 import Helpers
 import Objects
+import Text
 import Util (ifM, maximaByScore, maximaByScoreM)
 
 drawCard :: Player -> LLM ()
 drawCard p = Card.draw TheDeck (Hand p)
 
 playCard :: Player -> Character -> LLM ()
-playCard p char = Card.play (Hand p) BoxTop (Card char)
+playCard p char = do
+  announceGame (displayPlayerT p <> T.pack " played " <> icon char)
+  Card.play (Hand p) BoxTop (Card char)
 
 swapHands :: Player -> Player -> LLM ()
-swapHands p p' = unsafeSwapAll (Hand p) (Hand p')
+swapHands p p' = do
+  announceGame (displayPlayerT p <> T.pack " and " <> displayPlayerT p' <> T.pack "swapped hands")
+  unsafeSwapAll (Hand p) (Hand p')
 
 discardCards :: Player -> LLM ()
 discardCards p = do
+  announceGame (displayPlayerT p <> T.pack " discarded their hand.")
   cardsInHand <- S.toList <$> whatsAt (Hand p)
   traverse_ (transfer (Hand p) BoxTop) cardsInHand
 
@@ -50,6 +57,7 @@ handFight p p' =
   let pStrength = maximum . fmap charStrength <$> getCard p
       pStrength' = maximum . fmap charStrength <$> getCard p'
    in do
+        announceGame (displayPlayerT p <> T.pack " and " <> displayPlayerT p' <> T.pack " compare their hands")
         battle <- compare <$> pStrength <*> pStrength'
         case battle of
           GT -> discardCards p'
@@ -75,8 +83,7 @@ cardPlays p Baron = fmap PlayBaron <$> targetablePlayers p
 cardPlays p Priest = fmap PlayPriest <$> targetablePlayers p
 cardPlays p Guard = do
   targets <- targetablePlayers p
-  let targetChars = liftA2 (,) targets characters
-  return (PlayGuard <$> targetChars)
+  return (PlayGuard <$> targets <*> characters)
 
 chooseMove :: Player -> LLM LLPlayName
 chooseMove p = do
@@ -87,12 +94,6 @@ chooseMove p = do
   where
     countessRule PlayCountess PlayPrincess = return $ oneIssue MustDiscardCountess
     countessRule _ _ = return Legal
-
--- do
--- cards <- getCards p
--- otherPlayers <- lookOtherPlayers
--- targets <- targetablePlayers
--- return [mkOptionsNode (buildPlay p otherPlayers targets (cards !! 0) (cards !! 1))]
 
 checkGameOver :: LLM ()
 checkGameOver =
@@ -136,9 +137,10 @@ llRunPlay' (PlayBaron p') = do
   activePlayer (\p -> Hand p `unrevealTo` p')
   activePlayer (Hand p' `unrevealTo`)
 llRunPlay' (PlayPriest p') = do
+  activePlayer (\p -> announceGame (displayPlayerT p <> T.pack " reveals their hand to " <> displayPlayerT p'))
   activePlayer (Hand p' `revealTo`)
   activePlayer (Hand p' `unrevealTo`)
-llRunPlay' (PlayGuard (p', char)) = do
+llRunPlay' (PlayGuard p' char) = do
   card <- getCard p'
   if card == Just char
     then discardCards p'

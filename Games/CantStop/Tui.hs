@@ -21,19 +21,21 @@ import qualified Data.Text as T
 import Dice (renderDice)
 import Draw
 import Game.Location (inventory, listAllShape)
-import Game.Player (mkPlayers)
+import Game.Player (Player (..), mkPlayers)
 import Helpers
 import Objects
 import Track
 
 type CSTUIState = TUIState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
+type Name = ()
+
 app :: App CSTUIState CSEvent Name
 app =
   App
     { appDraw = drawUIView,
       appChooseCursor = neverShowCursor,
-      appHandleEvent = handleEvent,
+      appHandleEvent = runHandler simpleHandler,
       appStartEvent = return (),
       appAttrMap = const theAttrMap
     }

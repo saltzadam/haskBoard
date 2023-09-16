@@ -35,6 +35,7 @@ import Interface.Agent
 import LoveLetter
 import Objects
 import Run (runGameCommonChannels, runGameFromInterfaces)
+import Tui
 
 parsePayload :: GameToInterfacePayload LLLocation LLCounters LLResource LLPhaseName LLPlayName LLIssue -> LLEvent
 parsePayload (SendState csv) = Receive csv
@@ -84,5 +85,5 @@ main = do
         (playerAgent ^. #fromGameChannel)
         (playerAgent ^. #toGameChannel)
   let gsv = viewGameStateAs' gs (Player 1)
-  let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True
+  let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True []
   void $ customMain initVty (V.mkVty V.defaultConfig) (Just gameToBrickBChan) app initTUI

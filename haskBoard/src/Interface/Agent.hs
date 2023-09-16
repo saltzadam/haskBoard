@@ -27,6 +27,7 @@ runAgentIO agent = forever $ do
       let chooser = agent ^. #playChooser
       let toChan = agent ^. #toGameChannel
       writeChan toChan =<< chooser gsv options
+    SendAnnouncement speaker announcement -> (agent ^. #announceHandler) speaker announcement
 
 brickAgent ::
   Chan (GameToInterfacePayload l cn r ph pl i) ->
@@ -41,6 +42,7 @@ brickAgent fromGameChan toBrickBChan toGameChan fromBrickBChan =
         readBChan fromBrickBChan,
       stateHandler = writeBChan toBrickBChan . Receive,
       winnersHandler = writeBChan toBrickBChan . AnnounceWinner,
+      announceHandler = \speaker announcement -> writeBChan toBrickBChan (AnnounceEvent speaker announcement),
       fromGameChannel = fromGameChan,
       toGameChannel = toGameChan
     }
@@ -56,6 +58,7 @@ randomAgent fromGameChan toGameChan =
     { playChooser = chooseRandom,
       stateHandler = \_ -> return (),
       winnersHandler = \_ -> return (),
+      announceHandler = \_ _ -> return (),
       fromGameChannel = fromGameChan,
       toGameChannel = toGameChan
     }

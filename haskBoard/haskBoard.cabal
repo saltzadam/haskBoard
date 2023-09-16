@@ -33,8 +33,8 @@ library
                 effectful, effectful-core, mtl, mmorph,
                 crypto-rng-effectful, effectful-plugin,
                  random-shuffle, finitary, ghc-typelits-knownnat, brick, finite-typelits, vty, safe,
-                 lattices, free, semigroupoids
-    exposed-modules: FinitaryMap, Game.Location, Game.GameE, Game.Player,Game.Options,Game.GameAction, Log,    Util, Game.Visibility,  Run, Game.GameState, Game.Choose,  Game.View, Game.Controller, Game.Agent, Brick.Game.Tui,Game.Rules, Interface.Choose, ShuffleRNG, Interface.Agent, Interface.Controller
+                 lattices, free, semigroupoids, word-wrap, generics-sop
+    exposed-modules: FinitaryMap, Game.Location, Game.GameE, Game.Player,Game.Options,Game.GameAction, Log,    Util, Game.Visibility,  Run, Game.GameState, Game.Choose,  Game.View, Game.Controller, Game.Agent, Brick.Game.Tui,Game.Rules, Interface.Choose, ShuffleRNG, Interface.Agent, Interface.Controller, Brick.Widgets.TextStream, Menu
     default-language: Haskell2010
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses, GeneralizedNewtypeDeriving
     ghc-options:  -Wall -fplugin=Effectful.Plugin -fplugin=GHC.TypeLits.KnownNat.Solver
