@@ -1,13 +1,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Game.Monad
-  ( LookerType (..),
-    GameEff (..),
-    askEff,
-    hoistGameEff,
-    injectGame,
-    runGameEff,
-    injectGame',
+  (
+  -- LookerType (..),
+  --   GameEff (..),
+  --   askEff,
+  --   hoistGameEff,
+  --   injectGame,
+  --   runGameEff,
+  --   injectGame',
   )
 where
 
@@ -27,7 +28,7 @@ import Game.Visibility (LookerType (..))
 newtype GameEff l cn r ph pl i a = GameEff {unEff :: MaybeT (Eff '[GameInteract l cn r ph pl i, Reader LookerType]) a}
   deriving (Generic, Functor, Applicative, Monad)
 
-instance Num a => Num (GameEff l cn r ph pl i a) where
+instance (Num a) => Num (GameEff l cn r ph pl i a) where
   (+) = liftA2 (+)
   (-) = liftA2 (-)
   (*) = liftA2 (*)
@@ -35,10 +36,10 @@ instance Num a => Num (GameEff l cn r ph pl i a) where
   signum = fmap signum
   fromInteger = pure . fromInteger
 
-instance Semigroup a => Semigroup (GameEff l cn r ph pl i a) where
+instance (Semigroup a) => Semigroup (GameEff l cn r ph pl i a) where
   (<>) = liftA2 (<>)
 
-instance Monoid a => Monoid (GameEff l cn r ph pl i a) where
+instance (Monoid a) => Monoid (GameEff l cn r ph pl i a) where
   mempty = pure mempty
 
 askEff :: GameEff l cn r ph pl i (GameState l cn r ph pl i, LookerType)

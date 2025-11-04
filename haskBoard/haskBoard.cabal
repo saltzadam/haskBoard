@@ -37,7 +37,8 @@ library
     exposed-modules: FinitaryMap, Game.Location, Game.GameE, Game.Player,Game.Options,Game.GameAction, Log,    Util, Game.Visibility,  Run, Game.GameState, Game.Choose,  Game.View, Game.Controller, Game.Agent, Brick.Game.Tui,Game.Rules, Interface.Choose, ShuffleRNG, Interface.Agent, Interface.Controller, Brick.Widgets.TextStream, Menu
     default-language: Haskell2010
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses, GeneralizedNewtypeDeriving
-    ghc-options:  -Wall -fplugin=Effectful.Plugin -fplugin=GHC.TypeLits.KnownNat.Solver
+    ghc-options:  -Wall -fplugin=Effectful.Plugin
+    -- -fplugin=GHC.TypeLits.KnownNat.Solver -O0 
     -- Modules included in this executable, other than Main.
     -- other-modules:
 

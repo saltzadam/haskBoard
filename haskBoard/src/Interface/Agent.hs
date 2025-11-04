@@ -14,8 +14,8 @@ import Game.Options
 -- Start an agent
 -- wait for a payload from fromChan
 -- depending on the type, pull the appropriate handler
--- runAgentIO :: AgentM l cn r ph pl i IO IO ()
-runAgentIO :: Agent l cn r ph pl i IO -> IO ()
+-- runAgentIO :: AgentM l cn r ph pl IO IO ()
+runAgentIO :: Agent l cn r ph pl IO -> IO ()
 runAgentIO agent = forever $ do
   let fromChan = agent ^. #fromGameChannel
   payload <- readChan fromChan
@@ -30,11 +30,11 @@ runAgentIO agent = forever $ do
     SendAnnouncement speaker announcement -> (agent ^. #announceHandler) speaker announcement
 
 brickAgent ::
-  Chan (GameToInterfacePayload l cn r ph pl i) ->
-  BChan (BEvent l cn r ph pl i) ->
+  Chan (GameToInterfacePayload l cn r ph pl) ->
+  BChan (BEvent l cn r ph pl) ->
   Chan pl ->
   BChan pl ->
-  Agent l cn r ph pl i IO
+  Agent l cn r ph pl IO
 brickAgent fromGameChan toBrickBChan toGameChan fromBrickBChan =
   Agent
     { playChooser = \_ options -> do
@@ -50,9 +50,9 @@ brickAgent fromGameChan toBrickBChan toGameChan fromBrickBChan =
 --
 -- chooses moves at random
 randomAgent ::
-  Chan (GameToInterfacePayload l cn r ph pl i) ->
+  Chan (GameToInterfacePayload l cn r ph pl) ->
   Chan pl ->
-  Agent l cn r ph pl i IO
+  Agent l cn r ph pl IO
 randomAgent fromGameChan toGameChan =
   Agent
     { playChooser = chooseRandom,
@@ -63,8 +63,8 @@ randomAgent fromGameChan toGameChan =
       toGameChannel = toGameChan
     }
   where
-    chooseRandom :: p -> Options b i -> IO b
-    chooseRandom _ (Options legal _ _) =
+    chooseRandom :: p -> Options b -> IO b
+    chooseRandom _ (Options legal _) =
       let numOptions = length legal
        in do
             choice <- randomRIO (1, numOptions)

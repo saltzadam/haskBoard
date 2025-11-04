@@ -17,13 +17,13 @@ import Log
 import System.IO (IOMode (..), withFile)
 
 runGameCommonChannels ::
-  (Ord l, Ord r, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Eq ph, Finitary cn, Finitary l) =>
+  (Ord l, Ord r, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Eq ph, Finitary cn, Finitary l) =>
   Player ->
-  GameState l cn r ph pl i ->
-  GameRules l cn r ph pl i ->
-  Chan (GameToInterfacePayload l cn r ph pl i) ->
+  GameState l cn r ph pl ->
+  GameRules l cn r ph pl ->
+  Chan (GameToInterfacePayload l cn r ph pl) ->
   Chan pl ->
-  IO (GameState l cn r ph pl i, [Player])
+  IO (GameState l cn r ph pl, [Player])
 runGameCommonChannels p gameState gameRules chanGameToClient chanClientToGame = do
   gen <- newCryptoRNGState
   withFile "log" WriteMode $ \handle ->
@@ -48,15 +48,14 @@ runGameFromInterfaces ::
     Show l,
     Show r,
     Show pl,
-    Show i,
     Eq ph,
     Finitary cn,
     Finitary l
   ) =>
-  GameState l cn r ph pl i ->
-  GameRules l cn r ph pl i ->
-  GameController l cn r ph pl i ->
-  IO (GameState l cn r ph pl i, [Player])
+  GameState l cn r ph pl ->
+  GameRules l cn r ph pl ->
+  GameController l cn r ph pl ->
+  IO (GameState l cn r ph pl, [Player])
 runGameFromInterfaces gameState gameRules controller = do
   gen <- newCryptoRNGState
   withFile "log" WriteMode $ \handle ->

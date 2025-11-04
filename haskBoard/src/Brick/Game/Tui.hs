@@ -23,11 +23,11 @@ import Util
 
 data TUIMode options = ShowState | Ask options | EndGame deriving (Eq, Ord, Show)
 
-data TUIState l cn r ph pl i = TUIState
+data TUIState l cn r ph pl = TUIState
   { gameStateView :: GameStateView l cn r ph,
     viewer :: Player,
-    tuiMode :: TUIMode (Options pl i),
-    eventQueue :: [BEvent l cn r ph pl i],
+    tuiMode :: TUIMode (Options pl),
+    eventQueue :: [BEvent l cn r ph pl],
     brickToGameChan :: BChan pl,
     winner :: Maybe Player,
     batchUpdates :: Bool,
@@ -37,31 +37,31 @@ data TUIState l cn r ph pl i = TUIState
 
 makeFields 'TUIState
 
-newtype TUIEventHandler name l cn r ph pl i = TUIEventHandler (BrickEvent name (BEvent l cn r ph pl i) -> EventM name (TUIState l cn r ph pl i) (Maybe ())) deriving (Generic)
+newtype TUIEventHandler name l cn r ph pl = TUIEventHandler (BrickEvent name (BEvent l cn r ph pl) -> EventM name (TUIState l cn r ph pl) (Maybe ())) deriving (Generic)
 
-instance Semigroup (TUIEventHandler name l cn r ph pl i) where
+instance Semigroup (TUIEventHandler name l cn r ph pl) where
   (<>) (TUIEventHandler f) (TUIEventHandler g) = TUIEventHandler (\x -> liftA2 (<|>) (f x) (g x))
 
-instance Monoid (TUIEventHandler name l cn r ph pl i) where
+instance Monoid (TUIEventHandler name l cn r ph pl) where
   mempty = TUIEventHandler (const (return Nothing))
 
-runHandler :: TUIEventHandler name l cn r ph pl i -> BrickEvent name (BEvent l cn r ph pl i) -> EventM name (TUIState l cn r ph pl i) ()
+runHandler :: TUIEventHandler name l cn r ph pl -> BrickEvent name (BEvent l cn r ph pl) -> EventM name (TUIState l cn r ph pl) ()
 runHandler (TUIEventHandler f) event = fromMaybe () <$> f event
 
-escHandler :: TUIEventHandler name l cn r ph pl i
+escHandler :: TUIEventHandler name l cn r ph pl
 escHandler = TUIEventHandler escHandler'
   where
     escHandler' (VtyEvent (V.EvKey V.KEsc [])) = Just <$> halt
     escHandler' _ = return Nothing
 
--- endGameHandler ::  TUIEventHandler name l cn r ph pl i
+-- endGameHandler ::  TUIEventHandler name l cn r ph pl
 -- endGameHandler = TUIEventHandler endGameHandler' where
 --     endGameHandler' (VtyEvent (V.EvKey V.KEsc [])) = Just $ do
 --                   mode <- use #tuiMode
 --                   when (mode == EndGame) halt
 --     endGameHandler' _ = Nothing
 
-receiveHandler :: TUIEventHandler name l cn r ph pl i
+receiveHandler :: TUIEventHandler name l cn r ph pl
 receiveHandler = TUIEventHandler receiveHandler'
   where
     receiveHandler' (AppEvent (Receive gsv)) =
@@ -75,7 +75,7 @@ receiveHandler = TUIEventHandler receiveHandler'
         assign #tuiMode ShowState
     receiveHandler' _ = return Nothing
 
-requestHandler :: TUIEventHandler name l cn r ph pl i
+requestHandler :: TUIEventHandler name l cn r ph pl
 requestHandler = TUIEventHandler requestHandler'
   where
     requestHandler' (AppEvent (Request opts)) =
@@ -95,7 +95,7 @@ requestHandler = TUIEventHandler requestHandler'
         assign #tuiMode (Ask opts)
     requestHandler' _ = return Nothing
 
-announceWinnersHandler :: TUIEventHandler name l cn r ph pl i
+announceWinnersHandler :: TUIEventHandler name l cn r ph pl
 announceWinnersHandler = TUIEventHandler announceWinnersHandler'
   where
     announceWinnersHandler' (AppEvent (AnnounceWinner winners)) =
@@ -105,7 +105,7 @@ announceWinnersHandler = TUIEventHandler announceWinnersHandler'
         assign #tuiMode EndGame
     announceWinnersHandler' _ = return Nothing
 
-announceEventHandler :: TUIEventHandler name l cn r ph pl i
+announceEventHandler :: TUIEventHandler name l cn r ph pl
 announceEventHandler =
   TUIEventHandler
     ( \case
@@ -114,7 +114,7 @@ announceEventHandler =
         _ -> return Nothing
     )
 
-simpleOptionKeyHandler :: TUIEventHandler name l cn r ph pl i
+simpleOptionKeyHandler :: TUIEventHandler name l cn r ph pl
 simpleOptionKeyHandler = TUIEventHandler $ \case
   VtyEvent (V.EvKey (V.KChar c) []) -> do
     mode <- use #tuiMode
@@ -131,7 +131,7 @@ simpleOptionKeyHandler = TUIEventHandler $ \case
       _ -> return Nothing
   _ -> return Nothing
 
-basicHandler :: TUIEventHandler name l cn r ph pl i
+basicHandler :: TUIEventHandler name l cn r ph pl
 basicHandler =
   escHandler
     <> receiveHandler
@@ -139,10 +139,10 @@ basicHandler =
     <> announceWinnersHandler
     <> announceEventHandler
 
-simpleHandler :: TUIEventHandler name l cn r ph pl i
+simpleHandler :: TUIEventHandler name l cn r ph pl
 simpleHandler = basicHandler <> simpleOptionKeyHandler
 
--- handleEvent :: BrickEvent name (BEvent l cn r ph pl i) -> EventM name (TUIState l cn r ph pl i) ()
+-- handleEvent :: BrickEvent name (BEvent l cn r ph pl) -> EventM name (TUIState l cn r ph pl) ()
 -- handleEvent e = do
 --   mode <- use #tuiMode
 --   case mode of

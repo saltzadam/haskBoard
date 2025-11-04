@@ -36,85 +36,85 @@ data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame [Player] der
 
 data TurnControl = TEndTurn | TEndGame [Player] deriving (Eq, Ord, Show, Generic)
 
-data Phase phaseName l cn r playName i = Phase
+data Phase phaseName l cn r playName = Phase
   { name :: phaseName,
-    seedNodes :: GameRule l cn r phaseName playName i ()
+    seedNodes :: GameRule l cn r phaseName playName ()
   }
   deriving (Generic)
 
-type PlayRunner l cn r ph pl i = pl -> GameRule l cn r ph pl i ()
+type PlayRunner l cn r ph pl = pl -> GameRule l cn r ph pl ()
 
-data GameState l cn r ph pl i = GameState
+data GameState l cn r ph pl = GameState
   { players :: Set Player,
     objects :: GameObjects l cn r,
     currentPhase :: ph,
     -- owner :: l -> Maybe Player,
     currentTurn :: Turn ph,
-    nextTurn :: GameState l cn r ph pl i -> Turn ph,
+    nextTurn :: GameState l cn r ph pl -> Turn ph,
     visibility :: VisibilityMap l cn ph
   }
   deriving (Generic)
 
-data GameRules l cn r ph pl i = GameRules
-  { playRunner :: PlayRunner l cn r ph pl i,
-    phases :: ph -> Phase ph l cn r pl i,
-    score :: Player -> GameRule l cn r ph pl i Int,
+data GameRules l cn r ph pl = GameRules
+  { playRunner :: PlayRunner l cn r ph pl,
+    phases :: ph -> Phase ph l cn r pl,
+    score :: Player -> GameRule l cn r ph pl Int,
     setupPhase :: Maybe ph
   }
   deriving (Generic)
 
 -- These lenses basically exist for GameE
 -- They shouldn't be used for writing games.
-counter :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Counter
+counter :: (Eq cn) => cn -> Lens' (GameState l cn r ph pl) Counter
 counter c = #objects . #counters . ftAt c
 
-counterVal :: Eq cn => cn -> Lens' (GameState l cn r ph pl i) Int
+counterVal :: (Eq cn) => cn -> Lens' (GameState l cn r ph pl) Int
 counterVal c = counter c . #val
 
-location :: Eq l => l -> Lens' (GameState l cn r ph pl i) (LocationShape r)
+location :: (Eq l) => l -> Lens' (GameState l cn r ph pl) (LocationShape r)
 location l = #objects . #locations . ftAt l
 
-type GameInteract l cn r ph pl i = State.State (GameState l cn r ph pl i)
+type GameInteract l cn r ph pl = State.State (GameState l cn r ph pl)
 
 -- TODO: package this and eliminate Game
-type GameRun l cn r ph pl i = Reader.Reader (GameRules l cn r ph pl i)
+type GameRun l cn r ph pl = Reader.Reader (GameRules l cn r ph pl)
 
 makeFields ''GameState
 makeFields ''GameRules
 makeFields ''Phase
 
-getsGameState :: (GameInteract l cn r ph pl i :> es) => (GameState l cn r ph pl i -> b) -> Eff es b
+getsGameState :: (GameInteract l cn r ph pl :> es) => (GameState l cn r ph pl -> b) -> Eff es b
 getsGameState = State.gets
 
-getGameState :: (GameInteract l cn r ph pl i :> es) => Eff es (GameState l cn r ph pl i)
+getGameState :: (GameInteract l cn r ph pl :> es) => Eff es (GameState l cn r ph pl)
 getGameState = getsGameState id
 
-useGameState :: (GameInteract l cn r ph pl i :> es) => Getting b (GameState l cn r ph pl i) b -> Eff es b
+useGameState :: (GameInteract l cn r ph pl :> es) => Getting b (GameState l cn r ph pl) b -> Eff es b
 useGameState o = getsGameState (view o)
 
-getRunner :: (GameRun l cn r ph pl i :> es) => Eff es (PlayRunner l cn r ph pl i)
+getRunner :: (GameRun l cn r ph pl :> es) => Eff es (PlayRunner l cn r ph pl)
 getRunner = Reader.asks (view #playRunner)
 
-getPhases :: (GameRun l cn r ph pl i :> es) => Eff es (ph -> Phase ph l cn r pl i)
+getPhases :: (GameRun l cn r ph pl :> es) => Eff es (ph -> Phase ph l cn r pl)
 getPhases = Reader.asks (view #phases)
 
-getScore :: (GameRun l cn r ph pl i :> es) => Eff es (Player -> GameRule l cn r ph pl i Int)
+getScore :: (GameRun l cn r ph pl :> es) => Eff es (Player -> GameRule l cn r ph pl Int)
 getScore = Reader.asks (view #score)
 
-getSetupPhase :: (GameRun l cn r ph pl i :> es) => Eff es (Maybe ph)
+getSetupPhase :: (GameRun l cn r ph pl :> es) => Eff es (Maybe ph)
 getSetupPhase = Reader.asks (view #setupPhase)
 
-modifyingGame :: (GameInteract l cn r ph pl i :> es) => ASetter (GameState l cn r ph pl i) (GameState l cn r ph pl i) a b -> (a -> b) -> Eff es ()
+modifyingGame :: (GameInteract l cn r ph pl :> es) => ASetter (GameState l cn r ph pl) (GameState l cn r ph pl) a b -> (a -> b) -> Eff es ()
 modifyingGame o = State.modify . over o
 
-modifyingGameState :: (GameInteract l cn r ph pl i :> es) => ASetter (GameState l cn r ph pl i) (GameState l cn r ph pl i) a b -> (a -> b) -> Eff es ()
+modifyingGameState :: (GameInteract l cn r ph pl :> es) => ASetter (GameState l cn r ph pl) (GameState l cn r ph pl) a b -> (a -> b) -> Eff es ()
 modifyingGameState o = State.modify . over o
 
-assignGameState :: (GameInteract l cn r ph pl i :> es) => ASetter (GameState l cn r ph pl i) (GameState l cn r ph pl i) a b -> b -> Eff es ()
+assignGameState :: (GameInteract l cn r ph pl :> es) => ASetter (GameState l cn r ph pl) (GameState l cn r ph pl) a b -> b -> Eff es ()
 assignGameState l b = modifyingGameState l (const b)
 
-getVisibility :: (GameInteract l cn r ph pl i :> es) => Eff es (VisibilityMap l cn ph)
+getVisibility :: (GameInteract l cn r ph pl :> es) => Eff es (VisibilityMap l cn ph)
 getVisibility = useGameState #visibility
 
-modifyVisibility :: (GameInteract l cn r ph pl i :> es) => (VisibilityMap l cn ph -> VisibilityMap l cn ph) -> Eff es ()
+modifyVisibility :: (GameInteract l cn r ph pl :> es) => (VisibilityMap l cn ph -> VisibilityMap l cn ph) -> Eff es ()
 modifyVisibility = modifyingGame #visibility

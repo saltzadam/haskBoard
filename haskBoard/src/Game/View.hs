@@ -21,10 +21,10 @@ import Game.Visibility (LookerType (..), VisData (..), VisibilityMap (..), Visib
 
 -- The other way is to explicitly create a GameStateView object.
 
-viewRule :: (GameInteract l cn r ph pl i :> es, Eq l, Eq cn) => Player -> (Options pl i -> Eff es pl) -> GameRule l cn r ph pl i a -> Eff es (Maybe a)
+viewRule :: (GameInteract l cn r ph pl :> es, Eq l, Eq cn) => Player -> (Options pl -> Eff es pl) -> GameRule l cn r ph pl a -> Eff es (Maybe a)
 viewRule p f (GameRule t) = viewRule' p f t
 
-viewRule' :: (Eq l, GameInteract l cn r ph pl i :> es, Eq cn) => Player -> (Options pl i -> Eff es pl) -> Free (GameRuleF l cn r ph pl i) a -> Eff es (Maybe a)
+viewRule' :: (Eq l, GameInteract l cn r ph pl :> es, Eq cn) => Player -> (Options pl -> Eff es pl) -> Free (GameRuleF l cn r ph pl) a -> Eff es (Maybe a)
 viewRule' p c (Free (Act _ next)) = viewRule' p c next
 viewRule' p c (Free (MakeChoice opts next)) = do
   pl <- c opts
@@ -69,7 +69,7 @@ data GameStateView l cn r ph = GameStateView
   }
   deriving (Generic)
 
-project :: GameState l cn r ph pl i -> GameStateView l cn r ph
+project :: GameState l cn r ph pl -> GameStateView l cn r ph
 project gs =
   GameStateView
     { playersView = gs ^. #players,
@@ -82,7 +82,7 @@ type LocationsView l r = FTMap l (Maybe (LocationShape r))
 
 type CountersView cn = FTMap cn (Maybe Counter)
 
-buildView' :: Maybe Player -> GameState l cn r ph pl i -> GameObjectsView l cn r
+buildView' :: Maybe Player -> GameState l cn r ph pl -> GameObjectsView l cn r
 buildView' (Just p) gs =
   let VisibilityMap vis = gs ^. #visibility
       locs = gs ^. #objects . #locations
@@ -114,7 +114,7 @@ viewObjectsAs' objs (VisibilityMap vis') p =
       cnsView = runVis <$> cnsVisMap <*> (cns !!!)
    in GameObjectsView (FTMap locsView) (FTMap cnsView)
 
-viewGameStateAs' :: GameState l cn r ph pl i -> Player -> GameStateView l cn r ph
+viewGameStateAs' :: GameState l cn r ph pl -> Player -> GameStateView l cn r ph
 viewGameStateAs' gs@(GameState {players = ps, currentPhase = cphase, currentTurn = (Turn p' _)}) p =
   GameStateView
     ps
@@ -122,6 +122,6 @@ viewGameStateAs' gs@(GameState {players = ps, currentPhase = cphase, currentTurn
     cphase
     p'
 
-viewGameStateAs :: GameState l cn r ph pl i -> LookerType -> GameStateView l cn r ph
+viewGameStateAs :: GameState l cn r ph pl -> LookerType -> GameStateView l cn r ph
 viewGameStateAs gs (LookAs p) = viewGameStateAs' gs p
 viewGameStateAs gs LookFull = project gs

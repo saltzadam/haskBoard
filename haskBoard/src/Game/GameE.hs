@@ -29,10 +29,10 @@ import ShuffleRNG
 -- TODO: some kind of history besides log
 -- TODO: consider modifying/assign w/ built-in updateGS
 
-updateGS :: (GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es) => Eff es ()
+updateGS :: (GameInteract l cn r ph pl :> es, Interface l cn r ph pl :> es) => Eff es ()
 updateGS = getGameState >>= update
 
-logAction2 :: (GameInteract l cn r ph pl i :> es, Log2 :> es, Show cn, Show ph, Ord r, Eq l, Show r, Show l, Eq cn) => GameAction l cn r ph -> Eff es ()
+logAction2 :: (GameInteract l cn r ph pl :> es, Log2 :> es, Show cn, Show ph, Ord r, Eq l, Show r, Show l, Eq cn) => GameAction l cn r ph -> Eff es ()
 logAction2 (IncrementCounter cn) = do
   val <- useGameState (counter cn . #val)
   logComponent (T.pack $ "Incremented " ++ show cn ++ " to " ++ show val)
@@ -73,13 +73,13 @@ logAction2 (MakeAnnouncement speaker announcement) =
 -- log
 -- continue (or other control)
 -- TODO: code repetition!!!
-logAndContinue :: (Log2 :> es, GameInteract l cn r ph pl i :> es, Interface l cn r ph pl i :> es, Ord r, Eq l, Show cn, Show ph, Show r, Show l, Eq cn) => GameAction l cn r ph -> Eff es PhaseControl
+logAndContinue :: (Log2 :> es, GameInteract l cn r ph pl :> es, Interface l cn r ph pl :> es, Ord r, Eq l, Show cn, Show ph, Show r, Show l, Eq cn) => GameAction l cn r ph -> Eff es PhaseControl
 logAndContinue a = do
   updateGS
   logAction2 a
   continueGame
 
-runGameAction :: forall l r cn ph pl i es. (Ord l, Ord r, RNG :> es, GameInteract l cn r ph pl i :> es, Eq cn, Show ph, Show cn, Show l, Show r, Log2 :> es, Eq ph, Interface l cn r ph pl i :> es) => GameAction l cn r ph -> Eff es PhaseControl
+runGameAction :: forall l r cn ph pl es. (Ord l, Ord r, RNG :> es, GameInteract l cn r ph pl :> es, Eq cn, Show ph, Show cn, Show l, Show r, Log2 :> es, Eq ph, Interface l cn r ph pl :> es) => GameAction l cn r ph -> Eff es PhaseControl
 runGameAction DoNothing = continueGame
 runGameAction a@(MkTransfer l l' r) = do
   modifyingGameState (#objects . #locations) (transfer r l l')
@@ -138,11 +138,11 @@ runGameAction a@(MakeAnnouncement speaker announcement) = do
   announce speaker announcement
   logAndContinue a
 
--- runPhaseNodes' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => [GameRule l cn r ph pl i a] -> Eff es PhaseControl
+-- runPhaseNodes' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => [GameRule l cn r ph pl a] -> Eff es PhaseControl
 -- runPhaseNodes' rules = fromMaybe PCContinue <$> foldM go Nothing rules
 --   where
 --     -- run until you reach a PhaseControl besides PCContinue
---     go :: Maybe PhaseControl -> GameRule l cn r ph pl i a1 -> Eff es (Maybe PhaseControl)
+--     go :: Maybe PhaseControl -> GameRule l cn r ph pl a1 -> Eff es (Maybe PhaseControl)
 --     go acc rule = do
 --       result <- runRuleControl rule
 --       if result == PCContinue
@@ -154,7 +154,7 @@ continueGame = return PCContinue
 
 -- all control stuff
 
-runFromPhases :: forall l cn r ph pl i es. (GameInteract l cn r ph pl i :> es, Ord l, Finitary cn, Show ph, Interface l cn r ph pl i :> es, RNG :> es, Log2 :> es, Ord r, Eq ph, Show cn, Ord cn, Show l, Show r, Show pl, Show i, GameRun l cn r ph pl i :> es) => [ph] -> Eff es TurnControl
+runFromPhases :: forall l cn r ph pl es. (GameInteract l cn r ph pl :> es, Ord l, Finitary cn, Show ph, Interface l cn r ph pl :> es, RNG :> es, Log2 :> es, Ord r, Eq ph, Show cn, Ord cn, Show l, Show r, Show pl, GameRun l cn r ph pl :> es) => [ph] -> Eff es TurnControl
 runFromPhases phases = fromMaybe TEndTurn . asum <$> traverse handlePhase phases
   where
     handlePhase :: ph -> Eff es (Maybe TurnControl)
@@ -168,7 +168,7 @@ runFromPhases phases = fromMaybe TEndTurn . asum <$> traverse handlePhase phases
         PCEndPhase -> Nothing
         PCContinue -> Nothing
 
-playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => Maybe ph -> Eff es (GameState l cn r ph pl i, [Player])
+playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Maybe ph -> Eff es (GameState l cn r ph pl, [Player])
 playGameTurns setupPhaseName = do
   phases <- getPhases
   case phases <$> setupPhaseName of
@@ -189,7 +189,7 @@ playGameTurns setupPhaseName = do
           playGameTurns'
 
 -- Run rule and return appropriate PhaseControl
-runRuleControl' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Show i, Log2 :> es, Eq ph, GameRun l cn r ph pl i :> es) => Free (GameRuleF l cn r ph pl i) a -> Eff es PhaseControl
+runRuleControl' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Free (GameRuleF l cn r ph pl) a -> Eff es PhaseControl
 runRuleControl' (Free (Act action next)) = runGameAction action >> runRuleControl' next
 runRuleControl' (Free (MakeChoice opts _)) = do
   gs <- getGameState
@@ -208,5 +208,5 @@ runRuleControl' (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn 
 runRuleControl' (Free (LookPlayers next)) = useGameState #players >>= runRuleControl' . next
 runRuleControl' (Pure _) = return PCContinue
 
-runRuleControl :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Show i, Interface l cn r ph pl i :> es, GameInteract l cn r ph pl i :> es, GameRun l cn r ph pl i :> es, RNG :> es, Log2 :> es, Eq ph) => GameRule l cn r ph pl i a -> Eff es PhaseControl
+runRuleControl :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, GameRun l cn r ph pl :> es, RNG :> es, Log2 :> es, Eq ph) => GameRule l cn r ph pl a -> Eff es PhaseControl
 runRuleControl (GameRule rule) = runRuleControl' rule

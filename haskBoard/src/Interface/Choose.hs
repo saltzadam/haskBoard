@@ -13,11 +13,11 @@ import Game.Visibility (LookerType)
 -- A chooser.
 
 chooseChan ::
-  (IOE :> es, Show pl, Show i, Finitary l, Finitary cn, Show l, Show r, Show cn, Show ph) =>
+  (IOE :> es, Show pl, Finitary l, Finitary cn, Show l, Show r, Show cn, Show ph) =>
   LookerType -> -- could be a list of clients or something in the future
-  Chan (GameToInterfacePayload l cn r ph pl i) ->
+  Chan (GameToInterfacePayload l cn r ph pl) ->
   Chan pl ->
-  Eff (Interface l cn r ph pl i : es) a ->
+  Eff (Interface l cn r ph pl : es) a ->
   Eff es a
 chooseChan viewer gameToClientChan clientToGameChan = interpret $ \_ -> \case
   Update gs -> liftIO $ writeChan gameToClientChan (SendState (viewGameStateAs gs viewer))
