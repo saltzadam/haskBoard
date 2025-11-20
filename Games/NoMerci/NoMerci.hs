@@ -3,12 +3,11 @@
 module NoMerci (noMerci) where
 
 import qualified Cards
-import Control.Monad (replicateM_, void)
+import Control.Monad (replicateM_)
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Map as M
 import qualified Data.Set as S
 import Game.GameState (GameRules (..), GameState (..), Phase (..))
-import Game.Options (Options (..), oneIssue)
+import Game.Options (Options (..))
 import Game.Player (Player (..), mkPlayers)
 import Game.Rules
 import Game.Visibility (allVisible)
@@ -18,32 +17,17 @@ import Util (ifM, maximaByScoreM)
 
 -- Plays --
 
-discardCardFromDeck :: NMM ()
-discardCardFromDeck = Cards.draw CardDeck BoxTop
-
-takeCard :: Player -> NMM ()
-takeCard p = Cards.draw CenterOfTableCard (PlayerStuff p)
-
-takeChips :: Player -> NMM ()
-takeChips p = transferAll ChipPile (PlayerStuff p) Chip
-
 drawCard :: NMM ()
 drawCard = Cards.draw CardDeck CenterOfTableCard
-
--- TODO: list is lame
-payChip :: NMM ()
-payChip = do
-  p <- lookCurrentTurnOwner
-  transfer (PlayerStuff p) ChipPile Chip
 
 chooseMove :: Player -> NMM ()
 chooseMove p = do
   pHasChips <- has (PlayerStuff p) Chip
   let options =
         if pHasChips -- TODO: improve
-          then Options (Take NE.:| [Decline]) M.empty p
-          else Options (NE.singleton Take) (M.singleton Decline (oneIssue NoMoreChips)) p
-  void $ makeChoice options -- TODO: no void
+          then Options (Take NE.:| [Decline]) p
+          else Options (NE.singleton Take) p
+  makeChoice_ options
 
 score :: Player -> NMM Int
 score p =
@@ -63,12 +47,12 @@ checkEnd =
 
 nmRunPlay :: NMPlayName -> NMM ()
 nmRunPlay Take = do
-  activePlayer takeCard
-  activePlayer takeChips
+  activePlayer (\p -> Cards.draw CenterOfTableCard (PlayerStuff p))
+  activePlayer (\p -> transferAll ChipPile (PlayerStuff p) Chip)
   checkEnd
   drawCard
   activePlayer chooseMove
-nmRunPlay Decline = payChip >> advanceTurn
+nmRunPlay Decline = activePlayer (\p -> transfer (PlayerStuff p) ChipPile Chip) >> advanceTurn
 
 -- -- Initialization --
 nmPhases :: NMPhaseName -> NMPhase
@@ -80,7 +64,7 @@ nmPhases (NMTurnPhase p) =
 nmPhases Setup =
   Phase
     { name = Setup,
-      seedNodes = shuffle CardDeck >> replicateM_ 9 discardCardFromDeck >> drawCard
+      seedNodes = shuffle CardDeck >> replicateM_ 9 (Cards.draw CardDeck BoxTop) >> drawCard
     }
 
 initGameState :: Int -> NMGameState

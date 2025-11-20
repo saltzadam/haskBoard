@@ -4,6 +4,7 @@ import Brick.BChan (BChan, readBChan, writeBChan)
 import Control.Concurrent (Chan, readChan, writeChan)
 import Control.Lens ((^.))
 import Control.Monad.Random (forever, randomRIO)
+import Data.Finitary (Finitary)
 import qualified Data.List.NonEmpty as NE
 import Game.Agent
 import Game.Choose
@@ -15,7 +16,7 @@ import Game.Options
 -- wait for a payload from fromChan
 -- depending on the type, pull the appropriate handler
 -- runAgentIO :: AgentM l cn r ph pl IO IO ()
-runAgentIO :: Agent l cn r ph pl IO -> IO ()
+runAgentIO :: (Finitary l, Finitary cn, Show cn, Show l, Show r) => Agent l cn r ph pl IO -> IO ()
 runAgentIO agent = forever $ do
   let fromChan = agent ^. #fromGameChannel
   payload <- readChan fromChan
@@ -23,11 +24,30 @@ runAgentIO agent = forever $ do
   case payload of
     SendState csv -> (agent ^. #stateHandler) csv
     SendWinners winners -> (agent ^. #winnersHandler) winners
-    SendOptions gsv options -> do
-      let chooser = agent ^. #playChooser
-      let toChan = agent ^. #toGameChannel
-      writeChan toChan =<< chooser gsv options
+    SendOptions gsv options ->
+      do
+        let chooser = agent ^. #playChooser
+        let toChan = agent ^. #toGameChannel
+        writeChan toChan =<< chooser gsv options
     SendAnnouncement speaker announcement -> (agent ^. #announceHandler) speaker announcement
+
+termAgent ::
+  (Show pl) =>
+  Chan (GameToInterfacePayload l cn r ph pl) ->
+  Chan pl ->
+  Agent l cn r ph pl IO
+termAgent fromGameChan toGameChan =
+  Agent
+    { playChooser = \_ options@(Options plays' _) -> do
+        print options
+        choice <- getLine
+        return (NE.toList plays' !! (read choice :: Int)),
+      stateHandler = const (return ()),
+      winnersHandler = const (return ()),
+      announceHandler = \_ _ -> return (),
+      fromGameChannel = fromGameChan,
+      toGameChannel = toGameChan
+    }
 
 brickAgent ::
   Chan (GameToInterfacePayload l cn r ph pl) ->

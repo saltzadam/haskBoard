@@ -7,7 +7,7 @@ import Game.Agent
 import Game.Choose (GameToInterfacePayload)
 import Objects
 
-type CSAgent = Agent CantStopLocations CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue IO
+type CSAgent = Agent CantStopLocations CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName IO
 
 type CSPayload =
   GameToInterfacePayload
@@ -16,7 +16,6 @@ type CSPayload =
     CantStopResource
     CantStopPhaseName
     CantStopPlayName
-    CantStopIssue
 
 type CSEvent =
   BEvent
@@ -25,4 +24,3 @@ type CSEvent =
     CantStopResource
     CantStopPhaseName
     CantStopPlayName
-    CantStopIssue

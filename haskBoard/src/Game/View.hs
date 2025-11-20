@@ -99,7 +99,7 @@ data GameObjectsView l cn r = GameObjectsView
   { locationsView :: LocationsView l r,
     countersView :: CountersView cn
   }
-  deriving (Generic)
+  deriving (Generic, Show)
 
 makeFields ''GameStateView
 makeFields ''GameObjectsView

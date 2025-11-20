@@ -19,10 +19,11 @@ maintainer:         saltz.adam@gmail.com
 library
     hs-source-dirs: .
     build-depends: base, containers,lens, generic-lens, array, these,
-                transformers, text, formatting, MonadRandom, random, prettyprinter,
+                 text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
-                brick, effectful-plugin, haskBoard, vty, finitary, safe, finite-typelits, Helpers
-    exposed-modules: NoMerci, Objects, Tui, Agent
+                brick, effectful-plugin, haskBoard, vty, finitary, safe, finite-typelits, Helpers,  async
+-- vty-crossplatform,
+    exposed-modules: NoMerci, Objects, Tui
     -- , Tui, Dice
     default-language: Haskell2010
     ghc-options:  -Wall -fplugin=Effectful.Plugin -threaded
@@ -33,10 +34,11 @@ library
 executable NoMerci
     main-is: Main.hs
     hs-source-dirs: .
-    build-depends: base, NoMerci, haskBoard, containers,lens, generic-lens, array, these,
-                transformers, text, formatting, MonadRandom, random, prettyprinter,
-                effectful, effectful-core, mtl, finitary, mmorph, safe,
-                brick, effectful-plugin, haskBoard, vty, finite-typelits, Helpers
+    build-depends: base, NoMerci,  haskBoard, containers,lens, generic-lens, array, these,
+                 text, formatting, MonadRandom, random, prettyprinter,
+                effectful, effectful-core, mtl, finitary,  safe,
+                brick, effectful-plugin, haskBoard, vty, finite-typelits, Helpers, async
+-- vty-crossplatform,
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
     default-language: Haskell2010
     ghc-options: -fplugin=Effectful.Plugin -threaded

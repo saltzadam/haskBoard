@@ -1,12 +1,11 @@
 module Tui where
 
-import Agent (NMEvent)
 import Brick
 import Brick.Game.Tui
 import Control.Lens
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
-import Data.Maybe (fromJust, fromMaybe, listToMaybe, mapMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -17,7 +16,7 @@ import qualified Graphics.Vty as V
 import Helpers
 import Objects
 
-type NMTUIState = TUIState NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
+type NMTUIState = TUIState NMLocation NMCounters NMResource NMPhaseName NMPlayName
 
 type Name = ()
 
@@ -103,7 +102,7 @@ drawChips i =
         ++ fromMaybe "" (lookup remainder chipsDict)
 
 printOptions :: NMOptions -> Text
-printOptions (Options legal' _ _) =
+printOptions (Options legal' _) =
   let legal = NE.toList legal'
       printEnumeratedPlay :: (Int, NMPlayName) -> Text
       printEnumeratedPlay (i, play) = T.pack (show i ++ ") ") <> printPlay play

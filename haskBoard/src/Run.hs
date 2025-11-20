@@ -12,7 +12,7 @@ import Game.Choose
 import Game.GameE
 import Game.GameState
 import Game.Player (Player)
-import Interface.Controller (GameController, chooseInterface, commonInterface)
+import Interface.Controller (GameController, buildInterface, chooseInterface, commonInterface)
 import Log
 import System.IO (IOMode (..), withFile)
 
@@ -26,15 +26,40 @@ runGameCommonChannels ::
   IO (GameState l cn r ph pl, [Player])
 runGameCommonChannels p gameState gameRules chanGameToClient chanClientToGame = do
   gen <- newCryptoRNGState
-  withFile "log" WriteMode $ \handle ->
-    runEff
-      . evalState gameState
-      . runCryptoRNG gen
-      . runReader gameRules
-      -- . chooseChan (LookAs p) chanGameToClient chanClientToGame
-      . chooseInterface (commonInterface thePlayers chanGameToClient chanClientToGame)
-      . logToFile DebugLevel handle
-      $ playGameTurns (gameRules ^. #setupPhase)
+  withFile "log" WriteMode $
+    ( \handle ->
+        runEff
+          . evalState gameState
+          . runCryptoRNG gen
+          . runReader gameRules
+          -- . chooseChan (LookAs p) chanGameToClient chanClientToGame
+          . chooseInterface (commonInterface thePlayers chanGameToClient chanClientToGame)
+          . logToFile DebugLevel handle
+          $ (playGameTurns (gameRules ^. #setupPhase))
+    )
+  where
+    thePlayers = gameState ^. #players . to S.toList
+
+runGameSeparateChannels ::
+  (Ord l, Ord r, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Eq ph, Finitary cn, Finitary l) =>
+  GameController l cn r ph pl ->
+  GameState l cn r ph pl ->
+  GameRules l cn r ph pl ->
+  IO (GameState l cn r ph pl, [Player])
+runGameSeparateChannels controller gameState gameRules = do
+  gen <- newCryptoRNGState
+  -- interface <- (buildInterface thePlayers)
+  withFile "log" WriteMode $
+    ( \handle ->
+        runEff
+          . evalState gameState
+          . runCryptoRNG gen
+          . runReader gameRules
+          -- . chooseChan (LookAs p) chanGameToClient chanClientToGame
+          . chooseInterface controller
+          . logToFile DebugLevel handle
+          $ (playGameTurns (gameRules ^. #setupPhase))
+    )
   where
     thePlayers = gameState ^. #players . to S.toList
 

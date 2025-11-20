@@ -1,10 +1,11 @@
 packages:   haskBoard/
             Helpers/
             haskBoard-brick/
-            Games/CantStop/
+--            Games/CantStop/
             Games/NoMerci/
-            Games/LoveLetter/
+--            Games/LoveLetter/
 
+multi-repl: True
 source-repository-package
     type: git
     location: https://github.com/mstksg/typelits-witnesses/

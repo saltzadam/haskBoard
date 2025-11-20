@@ -13,7 +13,7 @@ import GHC.Generics (Generic)
 import Game.GameAction
 import Game.GameState
 import Game.Location
-import Game.Options (Legality (..), Options, oneIssue)
+import Game.Options (Options)
 import Game.Player
 import Game.Rules
 import Game.View (GameStateView)
@@ -83,12 +83,12 @@ initGameObjects ps =
       counters = FTMap initCounters
     }
 
-data CantStopIssue
-  = NotEnoughMarkers
-  | TrackCompleted
-  | AtTop
-  | CanMoveTwo
-  deriving (Eq, Ord, Show, Generic)
+-- data CantStopIssue
+--   = NotEnoughMarkers
+--   | TrackCompleted
+--   | AtTop
+--   | CanMoveTwo
+--   deriving (Eq, Ord, Show, Generic)
 
 data CantStopPlayName
   = TwoMove Player TrackName TrackName
@@ -98,9 +98,9 @@ data CantStopPlayName
   | ForceStop Player
   deriving (Show, Generic)
 
-thereIsBiggerMove :: CantStopPlayName -> CantStopPlayName -> Legality CantStopIssue
-thereIsBiggerMove (OneMove _ u) (TwoMove _ s t) = if (s == u) || (t == u) then oneIssue CanMoveTwo else Legal
-thereIsBiggerMove _ _ = Legal
+thereIsBiggerMove :: CantStopPlayName -> CantStopPlayName -> Bool
+thereIsBiggerMove (OneMove _ u) (TwoMove _ s t) = (s == u) || (t == u)
+thereIsBiggerMove _ _ = False
 
 instance Eq CantStopPlayName where
   (TwoMove p s t) == (TwoMove p' s' t') = p == p' && ((s == s' && t == t') || (s == t' && t == s'))
@@ -116,20 +116,20 @@ data CantStopPhaseName = CSTurn Player deriving (Eq, Ord, Show, Generic)
 
 type CantStopTurn = Turn CantStopPhaseName
 
-type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource CantStopPlayName CantStopIssue
+type CantStopPhase = Phase CantStopPhaseName CantStopLocation CantStopCounterName CantStopResource CantStopPlayName
 
 type CantStopAction = GameAction CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 
-type CantStopGameState = GameState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
+type CantStopGameState = GameState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName
 
-type CantStopOptions = Options CantStopPlayName CantStopIssue
+type CantStopOptions = Options CantStopPlayName
 
-type CantStopGameRules = GameRules CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
+type CantStopGameRules = GameRules CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName
 
 -- type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
 
 -- type CSM a = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a
-type CSM a = GameRule CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a
+type CSM a = GameRule CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName a
 
 type CSView = GameStateView CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 

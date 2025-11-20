@@ -7,16 +7,16 @@
 -- is finitary, but in context it has like 35 inhabitants instead of MAX_BOUND + MIN_BOUND
 -- Use defaultable-map or something like that, it's still a finite interface
 
-module FinitaryMap
-  ( FTMap (..),
-    (!!!),
-    applyAt,
-    update,
-    -- , fAt
-    -- , fApplyAt
-    ftAt,
-  )
-where
+module FinitaryMap where
+
+-- ( FTMap (..),
+--   (!!!),
+--   applyAt,
+--   update,
+--   -- , fAt
+--   -- , fApplyAt
+--   ftAt,
+-- )
 
 import Control.Lens (lens)
 import Data.Finitary (Finitary, inhabitants)
@@ -32,29 +32,33 @@ import Prelude
 newtype FTMap a b = FTMap {runFn :: a -> b} deriving (Generic, Functor, Applicative)
 
 -- From function to Map using the finitary-ness of `a`.
+-- TODO: change doc
 reifyFn :: (Finitary a, Eq a) => FTMap a b -> Map a b
 reifyFn (FTMap f) = M.fromAscList [(a, f a) | a <- inhabitants]
+
+resultsFn :: (Finitary a) => FTMap a b -> [b]
+resultsFn (FTMap f) = f <$> inhabitants
 
 -- unsafe because the map isn't required to be total.
 unsafeUnreify :: (Ord a, Finitary a) => Map a b -> FTMap a b
 unsafeUnreify m = FTMap (m M.!)
 
 instance (Eq a, Eq b, Finitary a) => Eq (FTMap a b) where
-  (==) f g = reifyFn f == reifyFn g
+  (==) f g = resultsFn f == resultsFn g
 
 instance (Show a, Show b, Finitary a, Eq a) => Show (FTMap a b) where
-  show f = show (reifyFn f)
+  show = show . reifyFn
 
 instance (Eq a, Finitary a) => Foldable (FTMap a) where
   foldMap g = foldMap g . reifyFn
 
-instance Semigroup b => Semigroup (FTMap a b) where
+instance (Semigroup b) => Semigroup (FTMap a b) where
   (<>) = liftA2 (<>)
 
-instance Monoid b => Monoid (FTMap a b) where
+instance (Monoid b) => Monoid (FTMap a b) where
   mempty = FTMap (const mempty)
 
-instance Num b => Num (FTMap a b) where
+instance (Num b) => Num (FTMap a b) where
   (+) = liftA2 (+)
   (-) = liftA2 (-)
   (*) = liftA2 (*)
@@ -63,15 +67,15 @@ instance Num b => Num (FTMap a b) where
   fromInteger i = FTMap (const (fromInteger i))
 
 instance (Finitary a, Ord a, Ord b) => Ord (FTMap a b) where
-  compare f g = compare (reifyFn f) (reifyFn g)
+  compare f g = compare (resultsFn f) (resultsFn g)
 
 (!!!) :: FTMap a b -> a -> b
 (!!!) (FTMap f) = f
 
-applyAt :: Eq a => a -> (b -> b) -> FTMap a b -> FTMap a b
+applyAt :: (Eq a) => a -> (b -> b) -> FTMap a b -> FTMap a b
 applyAt a fn f = FTMap (\x -> if x == a then fn (f !!! x) else f !!! x)
 
-update :: Eq a => (a, b) -> FTMap a b -> FTMap a b
+update :: (Eq a) => (a, b) -> FTMap a b -> FTMap a b
 update (a, b) = applyAt a (const b)
 
 -- TODO : wonder if this could be used elsewhere

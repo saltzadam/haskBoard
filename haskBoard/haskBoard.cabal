@@ -30,23 +30,22 @@ library
     hs-source-dirs: src
     build-depends: base, containers,lens, generic-lens,
                 transformers, text,  MonadRandom, random, 
-                effectful, effectful-core, mtl, mmorph,
+                effectful, effectful-core, mtl, 
                 crypto-rng-effectful, effectful-plugin,
                  random-shuffle, finitary, ghc-typelits-knownnat, brick, finite-typelits, vty, safe,
-                 lattices, free, semigroupoids, word-wrap, generics-sop
+                  free,  word-wrap, generics-sop, foldable1-classes-compat
     exposed-modules: FinitaryMap, Game.Location, Game.GameE, Game.Player,Game.Options,Game.GameAction, Log,    Util, Game.Visibility,  Run, Game.GameState, Game.Choose,  Game.View, Game.Controller, Game.Agent, Brick.Game.Tui,Game.Rules, Interface.Choose, ShuffleRNG, Interface.Agent, Interface.Controller, Brick.Widgets.TextStream, Menu
     default-language: Haskell2010
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses, GeneralizedNewtypeDeriving
-    ghc-options:  -Wall -fplugin=Effectful.Plugin
-    -- -fplugin=GHC.TypeLits.KnownNat.Solver -O0 
+    ghc-options:  -Wall -fplugin=Effectful.Plugin -fplugin=GHC.TypeLits.KnownNat.Solver 
     -- Modules included in this executable, other than Main.
     -- other-modules:
-
-test-suite haskboard-test
-  type: exitcode-stdio-1.0
-  main-is: Main.hs
-  hs-source-dirs: test
-  build-depends: base, containers, lens, QuickCheck, tasty, haskBoard,  tasty-quickcheck
-  other-modules: TestCount, TestFinitaryMap, TestLocation
-  ghc-options: -Wall
-  default-language: Haskell2010
+--
+-- test-suite haskboard-test
+--   type: exitcode-stdio-1.0
+--   main-is: Main.hs
+--   hs-source-dirs: test
+--   build-depends: base, containers, lens, QuickCheck, tasty, haskBoard,  tasty-quickcheck
+--   other-modules: TestCount, TestFinitaryMap, TestLocation
+--   ghc-options: -Wall
+--   default-language: Haskell2010

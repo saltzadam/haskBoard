@@ -26,7 +26,7 @@ import Helpers
 import Objects
 import Track
 
-type CSTUIState = TUIState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
+type CSTUIState = TUIState CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName
 
 type Name = ()
 

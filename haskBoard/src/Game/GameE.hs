@@ -55,14 +55,12 @@ logAction2 (MkTransfer l l' r) = do
   invl <- show . inventory <$> useGameState (location l)
   invl' <- show . inventory <$> useGameState (location l')
   logComponent
-    ( T.pack $ "Transfered " ++ show r ++ " from " ++ show l ++ " to " ++ show l' ++ "\n Contents of " ++ show l ++ ": " ++ invl ++ "\n Contents of " ++ show l' ++ ": " ++ invl'
-    )
+    (T.pack $ "Transfered " ++ show r ++ " from " ++ show l ++ " to " ++ show l' ++ "\n Contents of " ++ show l ++ ": " ++ invl ++ "\n Contents of " ++ show l' ++ ": " ++ invl')
 logAction2 (MkSwap l l' r r') = do
   invl <- show . inventory <$> useGameState (location l)
   invl' <- show . inventory <$> useGameState (location l')
   logComponent
-    ( T.pack $ "Swapped " ++ show r ++ " and " ++ show r' ++ " between " ++ show l ++ " and " ++ show l' ++ "\n Contents of " ++ show l ++ ": " ++ invl ++ "\n Contents of " ++ show l' ++ ": " ++ invl'
-    )
+    (T.pack $ "Swapped " ++ show r ++ " and " ++ show r' ++ " between " ++ show l ++ " and " ++ show l' ++ "\n Contents of " ++ show l ++ ": " ++ invl ++ "\n Contents of " ++ show l' ++ ": " ++ invl')
 logAction2 (MakeAnnouncement speaker announcement) =
   let speaker' = maybe "Nobody" show speaker
    in logComponent (T.pack (speaker' ++ " announced: ") <> announcement)
@@ -113,8 +111,7 @@ runGameAction a@(Shuffle l) = do
       -- [0..n-i]"
       -- let makeSample_r i = randomR (0,length cards - i)
       -- sample <- traverse makeSample_r  [1..(length cards - 1)]
-      shuffled <- Seq.fromList <$> shuffleRNG (F.toList cards)
-      -- traceShowM shuffled
+      shuffled <- (Seq.fromList) <$> shuffleRNG (F.toList cards)
       assignGameState (#objects . #locations . ftAt l) (Deck shuffled)
     _ -> pure ()
   logAndContinue a
@@ -168,7 +165,7 @@ runFromPhases phases = fromMaybe TEndTurn . asum <$> traverse handlePhase phases
         PCEndPhase -> Nothing
         PCContinue -> Nothing
 
-playGameTurns :: forall l cn r ph pl es i. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Maybe ph -> Eff es (GameState l cn r ph pl, [Player])
+playGameTurns :: forall l cn r ph pl es. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Maybe ph -> Eff es (GameState l cn r ph pl, [Player])
 playGameTurns setupPhaseName = do
   phases <- getPhases
   case phases <$> setupPhaseName of
@@ -184,6 +181,7 @@ playGameTurns setupPhaseName = do
         TEndGame winners -> return winners
         TEndTurn -> do
           nextTurn <- useGameState #nextTurn <*> pure gs
+          logGame "end of turn"
           assignGameState #currentTurn nextTurn
           updateGS
           playGameTurns'

@@ -14,6 +14,7 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import FinitaryMap (FTMap (..))
 import GHC.Generics (Generic)
+import Game.Agent
 import Game.GameState (GameRules, GameState, Phase, Turn (..))
 import Game.Location
 import Game.Options (Options)
@@ -81,25 +82,25 @@ initGameObjects ps =
       counters = FTMap (const dummyCounter)
     }
 
-data NMIssue = NoMoreChips deriving (Eq, Ord, Show, Generic)
-
 data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic)
 
 data NMPhaseName = Setup | NMTurnPhase Player deriving (Eq, Ord, Show, Generic)
 
 type NMTurn = Turn NMPhaseName
 
-type NMPhase = Phase NMPhaseName NMLocation NMCounters NMResource NMPlayName NMIssue
+type NMPhase = Phase NMPhaseName NMLocation NMCounters NMResource NMPlayName
 
-type NMGameState = GameState NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
+type NMGameState = GameState NMLocation NMCounters NMResource NMPhaseName NMPlayName
 
-type NMOptions = Options NMPlayName NMIssue
+type NMOptions = Options NMPlayName
 
-type NMGameRules = GameRules NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue
+type NMGameRules = GameRules NMLocation NMCounters NMResource NMPhaseName NMPlayName
 
-type NMM a = GameRule NMLocation NMCounters NMResource NMPhaseName NMPlayName NMIssue a
+type NMM a = GameRule NMLocation NMCounters NMResource NMPhaseName NMPlayName a
 
 type NMView = GameStateView NMLocation NMCounters NMResource NMPhaseName
+
+type NMEvent = BEvent NMLocation NMCounters NMResource NMPhaseName NMPlayName
 
 playerTurn :: Player -> NMTurn
 playerTurn p = Turn p (NE.singleton (NMTurnPhase p))

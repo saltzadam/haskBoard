@@ -12,7 +12,7 @@ import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
-import Data.Semigroup.Foldable (foldMap1)
+import Data.Foldable1 (foldMap1)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Tuple (swap)

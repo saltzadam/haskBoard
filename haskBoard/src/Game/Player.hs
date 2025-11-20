@@ -31,4 +31,4 @@ instance Num PlayerNum where
   fromInteger = toEnum . subtract 1 . fromIntegral
 
 mkPlayers :: Int -> [Player]
-mkPlayers i = Player <$> [toEnum 0 .. toEnum i]
+mkPlayers i = Player <$> [toEnum 0 .. toEnum (i - 1)]

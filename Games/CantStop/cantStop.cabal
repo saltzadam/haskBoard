@@ -19,9 +19,9 @@ maintainer:         saltz.adam@gmail.com
 library
     hs-source-dirs: .
     build-depends: base, containers,lens, generic-lens, array, these,
-                transformers, text, formatting, MonadRandom, random, prettyprinter,
+                 text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
-                brick, effectful-plugin, haskBoard, vty, safe, finitary, lattices, Helpers
+                brick, effectful-plugin, haskBoard, vty, safe, finitary, lattices, Helpers, vty-crossplatform
     exposed-modules: CantStop, Tui, Dice, Objects, Draw, Agent
     -- , Tui, Dice
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
@@ -34,9 +34,9 @@ executable CantStop
     main-is: Main.hs
     hs-source-dirs: .
     build-depends: base, CantStop, haskBoard, containers,lens, generic-lens, array, these,
-                transformers, text, formatting, MonadRandom, random, prettyprinter,
+                 text, formatting, MonadRandom, random, prettyprinter,
                 effectful, effectful-core, mtl,
-                brick, effectful-plugin, haskBoard, vty, safe, finitary, Helpers
+                brick, effectful-plugin, haskBoard, vty, safe, finitary, Helpers, vty-crossplatform
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
     default-language: Haskell2010
     ghc-options: -fplugin=Effectful.Plugin -threaded

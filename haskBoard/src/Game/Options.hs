@@ -6,6 +6,7 @@ module Game.Options where
 
 import Control.Applicative (liftA3)
 import Control.Lens (makeFields)
+import Control.Monad (filterM)
 import qualified Data.Foldable as F
 import Data.Generics.Labels ()
 import Data.List (delete, partition)
@@ -134,6 +135,15 @@ youMayNot' pls (Options opls p) = Options (NE.appendList opls pls) p
 youMayNot :: (Functor f) => [pl] -> f (Options pl) -> f (Options pl)
 youMayNot pls mBasePlays = youMayNot' pls <$> mBasePlays
 
+-- filter out plays IF THE CONDITION IS TRUE
+exceptIf :: (Monad m) => (pl -> m Bool) -> m pl -> m (Options pl) -> m (Options pl)
+exceptIf mfilt mdefault mopts = do
+  let exceptFilt m = not <$> mfilt m
+  def <- mdefault
+  Options plays player <- mopts
+  filteredPlays <- filterM exceptFilt (NE.toList plays)
+  return (Options (buildSafeNonempty filteredPlays def) player)
+
 -- makeIllegal' :: (Ord pl) => pl -> Legality i -> pl -> Options pl -> Options pl
 -- makeIllegal' play issue def (Options legal illegal p) =
 --   Options
@@ -180,6 +190,24 @@ youMayNot pls mBasePlays = youMayNot' pls <$> mBasePlays
 -- because neDeleteIfContains a a would just be delete.
 
 -- comparer (ifContains) (maybeIllegal)
+
+help :: (pl -> pl -> Bool) -> [pl] -> [pl]
+help comparer list =
+  let filters x = all (($ x) . comparer) list
+   in filter filters list
+
+helpM :: (Applicative m) => (pl -> pl -> m Bool) -> [pl] -> m [pl]
+helpM mcomparer list = do
+  let filters x = and <$> traverse (($ x) . mcomparer) list
+  filterM filters list
+
+-- mcomparer a b = if a is in mopts then remove b
+unlessYouCould :: (Ord pl, Monad m) => (pl -> pl -> m Bool) -> m (Options pl) -> m (Options pl)
+unlessYouCould mcomparer mopts = do
+  Options legal p <- mopts
+  newLegal <- helpM mcomparer (NE.toList legal)
+  return $ Options (NE.fromList newLegal) p
+
 -- unlessYouCould' :: (Eq i, Ord pl) => (pl -> pl -> Legality i) -> Options pl -> Options pl
 -- unlessYouCould' comparer (Options legal illegal p) =
 --   let legal' = NE.toList legal

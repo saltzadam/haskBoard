@@ -11,10 +11,11 @@ module Interface.Controller
     agentToInterface,
     chooseInterface,
     agentFromInterface,
+    buildInterface,
   )
 where
 
-import Control.Concurrent (Chan, readChan, writeChan)
+import Control.Concurrent (Chan, newChan, readChan, writeChan)
 import Control.Exception (Exception)
 import Control.Exception.Base (throw)
 import Control.Lens (at, makeLenses, to, (^.))
@@ -22,6 +23,7 @@ import Data.Foldable (traverse_)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Text
+import qualified Debug.Trace as Debug
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)
 import GHC.Generics (Generic)
@@ -92,7 +94,8 @@ sendChoice' gc gs opts = case gc ^. #playerInterfaces . at chooser of
   Just interface -> liftIO $ do
     let gsv = viewGameStateAs gs (LookAs chooser)
     writeChan (interface ^. #fromGameChannel) (SendOptions gsv opts)
-    readChan (interface ^. #toGameChannel)
+    x <- readChan (interface ^. #toGameChannel)
+    return x
   where
     chooser = opts ^. #owner
 
@@ -107,6 +110,15 @@ sendAnnouncement gc speaker announcement = liftIO $ traverse_ sendAnnouncement' 
   where
     sendAnnouncement' :: PlayerInterface l cn r ph pl -> IO ()
     sendAnnouncement' interface = writeChan (interface ^. #fromGameChannel) (SendAnnouncement speaker announcement)
+
+buildInterface :: [Player] -> IO (GameController l cn r ph pl)
+buildInterface ps = fmap (GameController . M.fromList) $ traverse go $ ps
+  where
+    go :: Player -> IO (Player, PlayerInterface l cn r ph pl)
+    go p = do
+      c0 <- newChan :: IO (Chan (GameToInterfacePayload l cn r ph pl))
+      c1 <- newChan :: IO (Chan pl)
+      return (p, PlayerInterface c0 c1)
 
 -- Use the same interface for all players (e.g. a multi-player TUI or testing)
 commonInterface ::

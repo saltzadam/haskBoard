@@ -54,13 +54,6 @@ escHandler = TUIEventHandler escHandler'
     escHandler' (VtyEvent (V.EvKey V.KEsc [])) = Just <$> halt
     escHandler' _ = return Nothing
 
--- endGameHandler ::  TUIEventHandler name l cn r ph pl
--- endGameHandler = TUIEventHandler endGameHandler' where
---     endGameHandler' (VtyEvent (V.EvKey V.KEsc [])) = Just $ do
---                   mode <- use #tuiMode
---                   when (mode == EndGame) halt
---     endGameHandler' _ = Nothing
-
 receiveHandler :: TUIEventHandler name l cn r ph pl
 receiveHandler = TUIEventHandler receiveHandler'
   where
@@ -141,54 +134,3 @@ basicHandler =
 
 simpleHandler :: TUIEventHandler name l cn r ph pl
 simpleHandler = basicHandler <> simpleOptionKeyHandler
-
--- handleEvent :: BrickEvent name (BEvent l cn r ph pl) -> EventM name (TUIState l cn r ph pl) ()
--- handleEvent e = do
---   mode <- use #tuiMode
---   case mode of
---     EndGame -> case e of
---       VtyEvent (V.EvKey V.KEsc []) -> halt
---       _ -> return ()
---     _ -> case e of
---       VtyEvent (V.EvKey V.KEsc []) -> halt
---       AppEvent (Receive gsv) -> do
---         assign #gameStateView gsv
---         doBatch <- use #batchUpdates
---         -- in batch, add items to front
---         if doBatch
---           then modifying #eventQueue (Receive gsv :)
---           else assign #gameStateView gsv
---         assign #tuiMode ShowState
---       AppEvent (Request opts) -> do
---         -- assign #lastEvent (Just (Request opts))
---         -- in batch, just read first item
---         doBatch <- use #batchUpdates
---         when
---           doBatch
---           ( do
---               queue <- use #eventQueue
---               let rQueue = mapMaybe extractReceive queue
---               let endState = listToMaybe rQueue
---               maybe (return ()) (assign #gameStateView) endState
---               assign #eventQueue []
---           )
---         assign #tuiMode (Ask opts)
---       AppEvent (AnnounceWinner winners) -> do
---         -- assign #lastEvent (Just (AnnounceWinner winners))
---         assign #winner (listToMaybe winners)
---         assign #tuiMode EndGame
---       AppEvent (AnnounceEvent speaker announcement) -> do
---         modifying #announcements ((speaker, announcement) :)
---       VtyEvent (V.EvKey (V.KChar c) []) -> do
---         case mode of
---           Ask options ->
---             case (readMay [c] :: Maybe Int) of
---               Nothing -> pure ()
---               Just i -> case options ^. #legal . to (safeIndexList (i - 1)) of
---                 Nothing -> pure ()
---                 Just opt -> do
---                   chan <- use #brickToGameChan
---                   liftIO $ writeBChan chan opt
---                   assign #tuiMode ShowState
---           _ -> return ()
---       _ -> return ()

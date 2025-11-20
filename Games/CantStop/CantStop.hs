@@ -10,13 +10,12 @@ import Data.Function ((&))
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
-import Data.Maybe (catMaybes, fromJust, fromMaybe, listToMaybe)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, listToMaybe)
 import qualified Data.Set as S
-import qualified Debug.Trace as Debug
 import Game.GameAction
 import Game.GameState
 import Game.Location (histogram)
-import Game.Options (Legality (..), exceptIf, oneIssue, unlessYouCould, youMay, youMay')
+import Game.Options (exceptIf, unlessYouCould, youMay, youMay')
 import Game.Player
 import Game.Rules
 import Game.Visibility (allVisible)
@@ -103,35 +102,31 @@ getOptions p =
     & exceptIf atTop (pure (ForceStop p))
     & unlessYouCould (\pl0 pl1 -> return (thereIsBiggerMove pl0 pl1))
   where
-    notEnoughMarkers :: CantStopPlayName -> CSM (Legality CantStopIssue)
+    notEnoughMarkers :: CantStopPlayName -> CSM Bool
     notEnoughMarkers (TwoMove _ track0 track1) = do
       onBoard0 <- Track.count TemporaryMarker (track track0)
       onBoard1 <- Track.count TemporaryMarker (track track1)
       let needed = (if track0 == track1 then 1 else 2) - (onBoard0 + onBoard1)
       inBox <- howManyAt BoxTop TemporaryMarker
-      return (if needed > inBox then oneIssue NotEnoughMarkers else Legal)
+      return (needed > inBox)
     notEnoughMarkers (OneMove _ track0) = do
       onBoard <- Track.count TemporaryMarker (track track0)
       let needed = 1 - onBoard
       inBox <- howManyAt BoxTop TemporaryMarker
-      return (if needed > inBox then oneIssue NotEnoughMarkers else Legal)
-    notEnoughMarkers _ = return Legal
+      return (needed > inBox)
+    notEnoughMarkers _ = return False
 
-    onWonTrack :: CantStopPlayName -> CSM (Legality CantStopIssue)
+    onWonTrack :: CantStopPlayName -> CSM Bool
     onWonTrack (OneMove _ s) = do
       maybeWinner <- trackWinner s
-      case maybeWinner of
-        Just _ -> return (oneIssue TrackCompleted)
-        Nothing -> return Legal
-    onWonTrack (TwoMove p s t) = onWonTrack (OneMove p s) >> onWonTrack (OneMove p t)
-    onWonTrack _ = return Legal
+      return $ isJust maybeWinner
+    onWonTrack (TwoMove p s t) = (&&) <$> onWonTrack (OneMove p s) <*> onWonTrack (OneMove p t)
+    onWonTrack _ = return False
 
-    atTop :: CantStopPlayName -> CSM (Legality CantStopIssue)
-    atTop (OneMove p s) = do
-      maxSlot <- Track.resAtTop (PlayerMarker p) (track s)
-      return (if maxSlot then oneIssue AtTop else Legal)
-    atTop (TwoMove p s t) = atTop (OneMove p s) >> atTop (OneMove p t)
-    atTop _ = return Legal
+    atTop :: CantStopPlayName -> CSM Bool
+    atTop (OneMove p s) = Track.resAtTop (PlayerMarker p) (track s)
+    atTop (TwoMove p s t) = (&&) <$> atTop (OneMove p s) <*> atTop (OneMove p t)
+    atTop _ = return False
 
 chooseMove :: Player -> CSM ()
 chooseMove p = do

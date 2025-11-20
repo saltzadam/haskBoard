@@ -2,6 +2,7 @@ module Game.Rules where
 
 import Control.Applicative
 import Control.Lens (view)
+import Control.Monad (void)
 import Control.Monad.Free
 import Data.Set (Set)
 import GHC.Generics (Generic)
@@ -35,6 +36,9 @@ instance (Num a) => Num (GameRule l cn r ph pl a) where
 
 makeChoice :: Options pl -> GameRule l cn r ph pl pl
 makeChoice opts = liftF (MakeChoice opts id)
+
+makeChoice_ :: Options a -> GameRule l cn r ph a ()
+makeChoice_ = void . makeChoice
 
 act :: GameAction l cn r ph -> GameRule l cn r ph pl ()
 act action = liftF (Act action ())

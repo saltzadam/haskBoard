@@ -25,18 +25,19 @@ import Game.Player (Player (..))
 import Game.View (buildView', viewGameStateAs')
 import Game.Visibility (allVisible)
 import qualified Graphics.Vty as V
+import Graphics.Vty.CrossPlatform (mkVty)
 import Interface.Agent
 import Interface.Controller
-import Objects (CSView, CantStopCounterName, CantStopCounters, CantStopGameState, CantStopIssue, CantStopLocation, CantStopLocations, CantStopOptions, CantStopPhaseName, CantStopPlayName, CantStopResource)
+import Objects (CSView, CantStopCounterName, CantStopCounters, CantStopGameState, CantStopLocation, CantStopLocations, CantStopOptions, CantStopPhaseName, CantStopPlayName, CantStopResource)
 import Run (runGameCommonChannels, runGameFromInterfaces)
 import Tui (app)
 
-parsePayload :: GameToInterfacePayload CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue -> CSEvent
+parsePayload :: GameToInterfacePayload CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName -> CSEvent
 parsePayload (SendState csv) = Receive csv
 parsePayload (SendOptions gsv opts) = Request opts
 parsePayload (SendWinners winners) = AnnounceWinner winners
 
-sendToBrickBChan :: Chan (GameToInterfacePayload CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue) -> BChan CSEvent -> IO ()
+sendToBrickBChan :: Chan (GameToInterfacePayload CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName) -> BChan CSEvent -> IO ()
 sendToBrickBChan gameToBrickChan gameToBrickBChan = do
   payload <- readChan gameToBrickChan
   let parsed = parsePayload payload
@@ -69,7 +70,7 @@ main = do
 
   let controller = agentToInterface <$> M.fromList [(Player 1, playerAgent), (Player 2, ai1), (Player 3, ai2)]
 
-  initVty <- V.mkVty V.defaultConfig
+  initVty <- mkVty V.defaultConfig
   gameThread <-
     forkIO $
       void $
@@ -80,7 +81,7 @@ main = do
 
   let gsv = viewGameStateAs' gs (Player 1)
   let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True []
-  void $ customMain initVty (V.mkVty V.defaultConfig) (Just gameToBrickBChan) app initTUI
+  void $ customMain initVty (mkVty V.defaultConfig) (Just gameToBrickBChan) app initTUI
   killThread ai1thread
   killThread ai2thread
   killThread playerthread

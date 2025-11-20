@@ -3,6 +3,15 @@
 module Game.Location
   ( LocationShape (..),
     Locations,
+    TransferStatus (..),
+    moveFromL,
+    moveToL,
+    transfer',
+    -- transferSafelyByName,
+    -- -- howManyF,
+    -- -- mapCounter,
+    -- -- increment',
+    -- -- decrement',
     transfer,
     swap,
     inventory,
@@ -63,7 +72,7 @@ type Locations names r = FTMap names (LocationShape r)
 data TransferStatus = Success | Failure deriving (Eq, Ord, Show, Generic)
 
 -- TODO: should be abstractable
-moveFromL :: Ord r => r -> LocationShape r -> (LocationShape r, TransferStatus)
+moveFromL :: (Ord r) => r -> LocationShape r -> (LocationShape r, TransferStatus)
 moveFromL r (Deck s) = case Seq.elemIndexL r s of -- search from left (i.e. "top")
   Nothing -> (Deck s, Failure)
   Just i -> (Deck (Seq.deleteAt i s), Success)
@@ -84,7 +93,7 @@ moveFromL r (Infinite r') =
     else (Infinite r, Failure)
 moveFromL _ Dummy = (Dummy, Failure)
 
-moveToL :: Ord r => r -> LocationShape r -> (LocationShape r, TransferStatus)
+moveToL :: (Ord r) => r -> LocationShape r -> (LocationShape r, TransferStatus)
 moveToL r (Deck s) = (Deck (r <| s), Success) -- add to left (i.e. "top")
 moveToL r (Pile pileMap) = (Pile (M.alter addOneWithDefault r pileMap), Success)
   where
@@ -110,7 +119,7 @@ moveToL r (Infinite r') =
 -- Actually, can't even meaningfully test shapes for equality! Player A
 -- and Player B might start with the same set of resources! Check has to
 -- happen below.
-transfer' :: Ord r => r -> LocationShape r -> LocationShape r -> (LocationShape r -> LocationShape r, LocationShape r -> LocationShape r, TransferStatus)
+transfer' :: (Ord r) => r -> LocationShape r -> LocationShape r -> (LocationShape r -> LocationShape r, LocationShape r -> LocationShape r, TransferStatus)
 transfer' r source target =
   let (_, sourceStatus) = moveFromL r source
       (_, targetStatus) = moveToL r target
@@ -124,7 +133,7 @@ transfer' r source target =
 -- matter in most situations. It's like -1 to one pile and +1 to
 -- another. But if source == target, then we have to remove the thing
 -- before adding it.
-
+{-# NOINLINE transferSafelyByName #-}
 transferSafelyByName :: (Ord name, Ord r) => r -> name -> name -> Locations name r -> (Locations name r, TransferStatus)
 transferSafelyByName r name0 name1 locs =
   let loc0 = locs !!! name0
@@ -157,7 +166,7 @@ histogram = foldl' (flip (M.alter plusOrInsertOne)) mempty
     plusOrInsertOne = Just . maybe 1 (+ 1)
 
 -- why not inventory = histogramF :(
-inventory :: Ord r => LocationShape r -> (Map r) Int
+inventory :: (Ord r) => LocationShape r -> (Map r) Int
 inventory (Pile s) = s
 inventory (Deck s) = histogram s
 inventory (Slot Nothing) = M.empty
@@ -165,34 +174,34 @@ inventory (Slot (Just r)) = M.singleton r 1
 inventory Dummy = M.empty
 inventory (Infinite r) = M.singleton r maxBound
 
-howManyF :: Ord r => LocationShape r -> (r -> Bool) -> Int
+howManyF :: (Ord r) => LocationShape r -> (r -> Bool) -> Int
 howManyF loc filt = sum . M.filterWithKey (\k _ -> filt k) . inventory $ loc
 
-howMany' :: Ord r => LocationShape r -> r -> Int
+howMany' :: (Ord r) => LocationShape r -> r -> Int
 howMany' loc res = fromMaybe 0 . M.lookup res . inventory $ loc
 
-howMany :: Ord r => Locations l r -> l -> r -> Int
+howMany :: (Ord r) => Locations l r -> l -> r -> Int
 howMany locs lname = howMany' (locs !!! lname)
 
-has' :: Ord r => LocationShape r -> r -> Bool
+has' :: (Ord r) => LocationShape r -> r -> Bool
 has' loc r = howMany' loc r > 0
 
-findResourceWithin :: Ord r => r -> [n] -> Locations n r -> [n]
+findResourceWithin :: (Ord r) => r -> [n] -> Locations n r -> [n]
 findResourceWithin res names locs = filter (\n -> locs !!! n `has'` res) names
 
-listAll :: Ord r => n -> Locations n r -> [r]
+listAll :: (Ord r) => n -> Locations n r -> [r]
 listAll n locs = listAllF n locs (const True)
 
-listAllShapeF :: Ord a => LocationShape a -> (a -> Bool) -> [a]
+listAllShapeF :: (Ord a) => LocationShape a -> (a -> Bool) -> [a]
 listAllShapeF locs filt = filter filt . M.keys . M.filter (> 0) . inventory $ locs
 
 -- listAllShapeMapF :: Ord t => LocationShape t -> (t -> Bool) -> Map t Int
 -- listAllShapeMapF locs filt = M.filterWithKey (\k _ -> filt k) . M.filter (>0) . inventory $ locs
 
-listAllShape :: Ord a => LocationShape a -> [a]
+listAllShape :: (Ord a) => LocationShape a -> [a]
 listAllShape locs = listAllShapeF locs (const True)
 
-listAllF :: Ord r => n -> Locations n r -> (r -> Bool) -> [r]
+listAllF :: (Ord r) => n -> Locations n r -> (r -> Bool) -> [r]
 listAllF n locs = listAllShapeF (locs !!! n)
 
 -- listAllF n locs filt = filter filt . M.keys . M.filter (>0) . inventory $ locs !!! n
@@ -253,7 +262,7 @@ transferCounter' fromc toc = case (decrement' fromc, increment' toc) of
   (_, (_, Nothing)) -> (fromc, toc, Failure)
   ((fromc', _), (toc', _)) -> (fromc', toc', Success)
 
-transferCounter :: Eq cn => cn -> cn -> Counters cn -> Counters cn
+transferCounter :: (Eq cn) => cn -> cn -> Counters cn -> Counters cn
 transferCounter fromcn tocn counters =
   let fromc = counters !!! fromcn
       toc = counters !!! tocn
