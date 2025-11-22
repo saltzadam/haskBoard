@@ -61,6 +61,9 @@ endGame winners = act (EndGame winners)
 announceGame :: Text -> GameRule l cn r ph pl ()
 announceGame announcement = act (MakeAnnouncement Nothing announcement)
 
+setPlayerNextTurn :: (Player -> Turn ph) -> Player -> GameRule l cn r ph pl ()
+setPlayerNextTurn mkTurn nextP = act (SetNextTurn (Just $ mkTurn nextP))
+
 -- bulk operations
 unsafeSwapAll :: (Finitary l, Ord r, Ord l) => l -> l -> GameRule l cn r ph pl ()
 unsafeSwapAll l0 l1 = do
@@ -70,6 +73,17 @@ unsafeSwapAll l0 l1 = do
   traverse_ (transfer l1 l0) atl1
 
 -- control ops
+--
+
+setNextTurnCyclic :: (Player -> Turn ph) -> GameRule l cn r ph pl ()
+setNextTurnCyclic mkTurn = do
+  ps <- lookPlayers
+  p <- lookCurrentTurnOwner
+  let ps' = NE.fromList . S.toList $ ps
+  act (SetNextTurn (Just $ getNextTurn2 mkTurn ps' p))
+
+getNextTurn2 :: (Player -> Turn ph) -> NE.NonEmpty Player -> Player -> Turn ph
+getNextTurn2 mkTurn eligiblePlayers currentPlayer = mkTurn (fromJust (getNextCyclic currentPlayer eligiblePlayers))
 
 getNextTurn :: (Player -> Turn ph) -> GameState l cn r ph pl -> Turn ph
 getNextTurn mkTurn = getNextTurnIf mkTurn (\_ _ -> True)

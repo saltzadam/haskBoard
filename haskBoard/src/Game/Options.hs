@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -7,6 +8,7 @@ module Game.Options where
 import Control.Applicative (liftA3)
 import Control.Lens (makeFields)
 import Control.Monad (filterM)
+import Data.Aeson (FromJSON, ToJSON)
 import qualified Data.Foldable as F
 import Data.Generics.Labels ()
 import Data.List (delete, partition)
@@ -60,7 +62,7 @@ data Options pl = Options
     -- illegal :: Map pl (Legality i),
     owner :: Player
   }
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
 
 makeFields ''Options
 

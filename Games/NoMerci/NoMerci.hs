@@ -59,7 +59,7 @@ nmPhases :: NMPhaseName -> NMPhase
 nmPhases (NMTurnPhase p) =
   Phase
     { name = NMTurnPhase p,
-      seedNodes = chooseMove p
+      seedNodes = setNextTurnCyclic playerTurn >> chooseMove p
     }
 nmPhases Setup =
   Phase
@@ -75,7 +75,8 @@ initGameState numPlayers =
           objects = initGameObjects players,
           currentPhase = NMTurnPhase (head (S.toList players)),
           currentTurn = playerTurn (Player 1),
-          nextTurn = getNextTurn playerTurn, -- TODO: how to make this safe?
+          -- nextTurn = Just $ getNextTurn2 playerTurn (NE.fromList . S.toList $ players), -- TODO: how to make this safe?
+          nextTurn = Just $ playerTurn (Player 1),
           visibility = allVisible -- TODO: no, BoxTop is invisible
         }
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Game.View where
@@ -5,6 +6,7 @@ module Game.View where
 import Control.Lens (to, (^.))
 import Control.Lens.TH (makeFields)
 import Control.Monad.Free (Free (..))
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Set (Set)
 import Effectful (Eff, (:>))
 import FinitaryMap (FTMap (..), ftAt, (!!!))
@@ -12,7 +14,7 @@ import GHC.Generics (Generic)
 import Game.GameState
 import Game.Location (Counter, GameObjects, LocationShape)
 import Game.Options (Options)
-import Game.Player (Player)
+import Game.Player (Player, Turn (..))
 import Game.Rules
 import Game.Visibility (LookerType (..), VisData (..), VisibilityMap (..), VisibilityType (..), runVis)
 
@@ -67,7 +69,7 @@ data GameStateView l cn r ph = GameStateView
     currentPhaseView :: ph,
     currPlayer :: Player
   }
-  deriving (Generic)
+  deriving (Generic, FromJSON, ToJSON)
 
 project :: GameState l cn r ph pl -> GameStateView l cn r ph
 project gs =
@@ -99,7 +101,7 @@ data GameObjectsView l cn r = GameObjectsView
   { locationsView :: LocationsView l r,
     countersView :: CountersView cn
   }
-  deriving (Generic, Show)
+  deriving (Generic, Show, FromJSON, ToJSON)
 
 makeFields ''GameStateView
 makeFields ''GameObjectsView

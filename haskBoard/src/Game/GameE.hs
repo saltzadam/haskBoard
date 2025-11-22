@@ -20,7 +20,7 @@ import Game.Choose
 import Game.GameAction
 import Game.GameState
 import Game.Location (LocationShape (..), decrement, increment, inventory, setCounter, swap, transfer, transferCounter)
-import Game.Player (Player)
+import Game.Player (Player, Turn (..))
 import Game.Rules
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
@@ -49,7 +49,8 @@ logAction2 (MakeVisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ "vi
 logAction2 (MakeInvisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ "invisible to " ++ show p)
 logAction2 EndPhase = logComponent (T.pack "Ended phase")
 logAction2 DoNothing = pure ()
-logAction2 AdvanceTurn = logComponent "Advanced turn"
+logAction2 AdvanceTurn = logComponent "advanced turn"
+logAction2 (SetNextTurn turn) = logComponent (T.pack $ "set next turn: " ++ show turn)
 logAction2 (EndGame winners) = logComponent (T.pack ("Game over! Winners: " ++ show winners))
 logAction2 (MkTransfer l l' r) = do
   invl <- show . inventory <$> useGameState (location l)
@@ -127,6 +128,9 @@ runGameAction a@EndPhase = do
 runGameAction a@AdvanceTurn = do
   logAction2 a
   return PCEndTurn
+runGameAction a@(SetNextTurn turn) = do
+  assignGameState #nextTurn turn
+  logAndContinue a
 runGameAction a@(EndGame winners) = do
   announceWinners winners
   logAction2 a
@@ -180,11 +184,15 @@ playGameTurns setupPhaseName = do
       case result of
         TEndGame winners -> return winners
         TEndTurn -> do
-          nextTurn <- useGameState #nextTurn <*> pure gs
-          logGame "end of turn"
-          assignGameState #currentTurn nextTurn
-          updateGS
-          playGameTurns'
+          nextTurn <- useGameState #nextTurn
+          case nextTurn of
+            Nothing -> error "no next turn" -- TODO: make proper exception
+            Just t -> do
+              logGame "end of turn"
+              assignGameState #currentTurn t
+              assignGameState #nextTurn Nothing
+              updateGS
+              playGameTurns'
 
 -- Run rule and return appropriate PhaseControl
 runRuleControl' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Free (GameRuleF l cn r ph pl) a -> Eff es PhaseControl

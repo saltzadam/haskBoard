@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Game.Location
@@ -41,6 +42,7 @@ module Game.Location
 where
 
 import Control.Lens (makeFields, set)
+import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Foldable (foldl')
 import Data.Generics.Labels ()
 import Data.Map (Map)
@@ -61,7 +63,7 @@ data LocationShape r
   | Slot (Maybe r) -- Single slot
   | Infinite r -- infinite pile
   | Dummy -- No space
-  deriving (Eq, Ord, Show, Generic)
+  deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
 
 type Locations names r = FTMap names (LocationShape r)
 
@@ -220,7 +222,7 @@ data Counter = Counter
   { val :: Int,
     bounds :: (Int, Int)
   }
-  deriving (Eq, Show, Generic)
+  deriving (Eq, Show, Generic, FromJSON, ToJSON)
 
 makeFields ''Counter
 
@@ -274,6 +276,6 @@ data GameObjects n cn r = GameObjects
   { locations :: Locations n r,
     counters :: Counters cn
   }
-  deriving (Generic)
+  deriving (Generic, FromJSON, ToJSON)
 
 makeFields ''GameObjects

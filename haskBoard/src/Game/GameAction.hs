@@ -21,6 +21,7 @@ data GameAction l cn r ph
   | -- | ChangePhase ph
     EndPhase
   | AdvanceTurn
+  | SetNextTurn (Maybe (Turn ph))
   | MakeVisibleTo Player (VisData l cn ph)
   | MakeInvisibleTo Player (VisData l cn ph)
   | EndGame [Player]

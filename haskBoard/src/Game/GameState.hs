@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
@@ -14,6 +15,7 @@ import Control.Lens
     over,
     view,
   )
+import Data.Aeson (FromJSON (..), ToJSON (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Set (Set)
 import Effectful (Eff, (:>))
@@ -25,12 +27,6 @@ import Game.Location
 import Game.Player
 import Game.Rules (GameRule)
 import Game.Visibility (VisibilityMap (..))
-
-data Turn phaseName = Turn
-  { owner :: Player,
-    turnPhases :: NE.NonEmpty phaseName
-  }
-  deriving (Eq, Ord, Show, Generic)
 
 data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame [Player] deriving (Eq, Ord, Show, Generic)
 
@@ -50,10 +46,10 @@ data GameState l cn r ph pl = GameState
     currentPhase :: ph,
     -- owner :: l -> Maybe Player,
     currentTurn :: Turn ph,
-    nextTurn :: GameState l cn r ph pl -> Turn ph,
+    nextTurn :: Maybe (Turn ph),
     visibility :: VisibilityMap l cn ph
   }
-  deriving (Generic)
+  deriving (Generic, FromJSON, ToJSON)
 
 data GameRules l cn r ph pl = GameRules
   { playRunner :: PlayRunner l cn r ph pl,

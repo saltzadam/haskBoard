@@ -4,6 +4,7 @@
 
 module Objects where
 
+import Data.Aeson (FromJSON (..), ToJSON (..), Value (..))
 import Data.Finitary
 import Data.Finite (Finite)
 import qualified Data.List.NonEmpty as NE
@@ -12,10 +13,11 @@ import Data.Maybe (fromJust, isJust)
 import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as S
+import qualified Data.Text as T
 import FinitaryMap (FTMap (..))
 import GHC.Generics (Generic)
 import Game.Agent
-import Game.GameState (GameRules, GameState, Phase, Turn (..))
+import Game.GameState (GameRules, GameState, Phase)
 import Game.Location
 import Game.Options (Options)
 import Game.Player
@@ -23,7 +25,14 @@ import Game.Rules
 import Game.View (GameStateView)
 
 -- don't derive Functor so it's not easy to modify card nums
-data NMResource = Chip | Card (Finite 35) deriving (Eq, Ord, Show, Generic, Finitary)
+data NMResource = Chip | Card (Finite 35) deriving (Eq, Ord, Show, Read, Generic, Finitary)
+
+instance ToJSON NMResource where
+  toJSON r = String (T.pack . show $ r)
+
+instance FromJSON NMResource where
+  parseJSON (String s) = return . read . T.unpack $ s
+  parseJSON _ = error $ "invalid JSON: NMResource"
 
 extractCard :: NMResource -> Maybe Int
 extractCard (Card i) = Just (fromEnum i)
@@ -55,9 +64,9 @@ data NMLocation
   | PlayerStuff Player
   | CardDeck
   | BoxTop
-  deriving (Eq, Ord, Show, Generic, Finitary)
+  deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON)
 
-data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic, Enum, Bounded)
+data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic, Enum, Bounded, FromJSON, ToJSON)
 
 instance Finitary NMCounters
 
@@ -82,9 +91,9 @@ initGameObjects ps =
       counters = FTMap (const dummyCounter)
     }
 
-data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic)
+data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
 
-data NMPhaseName = Setup | NMTurnPhase Player deriving (Eq, Ord, Show, Generic)
+data NMPhaseName = Setup | NMTurnPhase Player deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
 
 type NMTurn = Turn NMPhaseName
 

@@ -1,8 +1,10 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Game.Choose where
 
 import Control.Monad.Free (liftF)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Text
 import Effectful
 import Effectful.Dispatch.Dynamic
@@ -27,7 +29,7 @@ data GameToInterfacePayload l cn r ph pl
   | SendOptions (GameStateView l cn r ph) (Options pl)
   | SendWinners [Player]
   | SendAnnouncement (Maybe Player) Text
-  deriving (Generic)
+  deriving (Generic, FromJSON, ToJSON)
 
 -- TODO: should this include GameState???
 choose :: (Interface l cn r ph pl :> es) => GameState l cn r ph pl -> Options pl -> Eff es pl

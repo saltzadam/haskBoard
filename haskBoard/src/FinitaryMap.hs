@@ -19,6 +19,8 @@ module FinitaryMap where
 -- )
 
 import Control.Lens (lens)
+import Data.Aeson (FromJSON (..), ToJSON (..))
+import Data.Aeson.Types (FromJSONKey, ToJSONKey)
 import Data.Finitary (Finitary, inhabitants)
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -30,6 +32,13 @@ import Prelude
 -- It's represented as a newtype wrapper on `a -> b` where a is Finitary.
 
 newtype FTMap a b = FTMap {runFn :: a -> b} deriving (Generic, Functor, Applicative)
+
+-- instance (Finitary a, Eq a, FromJSON a, FromJSON b) => FromJSON (FTMap a b)
+instance (Finitary a, Eq a, Ord a, ToJSON a, ToJSON b, ToJSONKey a) => ToJSON (FTMap a b) where
+  toJSON = toJSON . reifyFn
+
+instance (Ord a, Finitary a, FromJSONKey a, FromJSON b) => FromJSON (FTMap a b) where
+  parseJSON = fmap unsafeUnreify . parseJSON
 
 -- From function to Map using the finitary-ness of `a`.
 -- TODO: change doc
