@@ -17,7 +17,7 @@ import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
-import Data.Tuple (swap)
+
 
 -- TODO: assess whether these two are ever actually necessary
 graph :: (t -> b) -> t -> (t, b)
@@ -114,14 +114,6 @@ safeIndexList i xs = if i < 0 then Nothing else safeIndexList' i (F.toList xs)
     safeIndexList' i (x : xs) = if i == 0 then Just x else safeIndexList' (i - 1) xs
     safeIndexList' _ [] = Nothing
 
-invertNestedMaps :: (Ord k, Ord k') => Map k (Map k' v) -> Map k' (Map k v)
-invertNestedMaps = uncurryMap . M.mapKeys swap . curryMap
-  where
-    uncurryMap :: (Ord k) => Map (k, k') v -> Map k (Map k' v)
-    uncurryMap = M.mapKeys fst . M.mapWithKey (\(_, k') v -> M.singleton k' v)
-
-    curryMap :: (Ord k, Ord k') => Map k (Map k' v) -> Map (k, k') v
-    curryMap = M.unions . fmap snd . M.toList . M.mapWithKey (\k mapk' -> M.mapKeys (k,) mapk')
 
 concatNE :: NonEmpty (NonEmpty a) -> NonEmpty a
 concatNE = foldMap1 id

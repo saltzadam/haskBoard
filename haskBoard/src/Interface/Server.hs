@@ -18,7 +18,6 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Debug.Trace as Debug
 import GHC.Generics (Generic)
 import Game.Choose (GameToInterfacePayload (..))
 import Game.Player (Player (..), PlayerNum, mkPlayers)
@@ -41,8 +40,8 @@ data ServerState = ServerState
 
 makeFields ''ServerState
 
-newServerState :: ServerState
-newServerState = ServerState M.empty NotEnoughClients 3
+newServerState :: Int -> ServerState
+newServerState n = ServerState M.empty NotEnoughClients n
 
 serverNumPlayers :: ServerState -> Int
 serverNumPlayers server_ = length (server_ ^. #clients)
@@ -65,12 +64,11 @@ broadcast message server_ = do
 
 server ::
   (Finitary l, Finitary cn, Finitary r, Ord l, Ord cn, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl) =>
+  Int ->
   GameController l cn r ph pl ->
   IO ()
-server controller = do
-  print "init server"
-  state <- newMVar newServerState
-  print "got state"
+server numPlayers controller = do
+  state <- newMVar (newServerState numPlayers)
   WS.runServer "127.0.0.1" 9159 $ (application controller) state
 
 application ::
@@ -80,10 +78,7 @@ application ::
   PendingConnection ->
   IO ()
 application controller state pending = do
-  print "init application"
-  Debug.traceM "init application"
   conn <- WS.acceptRequest pending
-  print "got a connection"
   void $
     forkIO $
       void $
@@ -98,8 +93,6 @@ application controller state pending = do
     -- When a client is succesfully connected, we read the first message. This should
     -- be in the format of "Hi! I am Jasper", where Jasper is the requested username.
     msg <- WS.receiveData conn
-    print msg
-
     case readMaybe (T.unpack msg) :: Maybe PlayerNum of
       -- Check that the first message has the right format:
       Nothing -> WS.sendTextData conn ("Not a player number" :: Text)
@@ -115,27 +108,21 @@ application controller state pending = do
             let client = (player', conn)
             modifyMVar_ state $ \s -> do
               let s' = addClient player' (snd client) s
-              print player'
               WS.sendTextData conn $
                 "Welcome! Players: "
                   <> T.intercalate ", " (T.pack . show <$> M.keys (s' ^. #clients))
-              print (M.keys (s' ^. #clients))
-              print (T.pack (show player') <> " joined")
               broadcast (T.pack (show (fst client)) <> " joined") s'
               return s'
 
             forever $
               ifM
                 ((\ss -> ss ^. #serverStatus == Active) <$> readMVar state)
-                ( print "main loop true"
-                    >> playerWorker controller player' state
-                )
+                (playerWorker controller player' state)
                 (WS.sendTextData conn ("waiting for more players" :: Text) >> threadDelay 5000000)
   where
     disconnect pNum = do
       -- Remove client and return new state
       let player' = Player pNum
-      print ("disconnecting" :: Text)
       s <- modifyMVar state $ \s ->
         let s' = removeClient player' s in return (s', s')
       broadcast (T.pack (show player') <> " disconnected") s
@@ -153,7 +140,6 @@ runGame ::
   MVar ServerState ->
   IO ()
 runGame controller ss = do
-  print ("init rungame")
   ss' <- readMVar ss
   let players = mkPlayers (ss' ^. #expectedPlayers)
   foldr withWorker (return ()) ((\p -> playerWorker controller p ss) <$> players)
@@ -168,7 +154,6 @@ playerWorker ::
   MVar ServerState ->
   IO ()
 playerWorker controller p ss = forever $ do
-  print ("init playerWorker")
   ss' <- readMVar ss
   let conn = (ss' ^. #clients) M.! p
   let PlayerInterface fromGameChan toGameChan = (controller ^. #playerInterfaces) M.! p

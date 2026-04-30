@@ -2,7 +2,16 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Log where
+module Log
+  ( LogLevel (..),
+    LogPayload (..),
+    Log2,
+    logDebug,
+    logComponent,
+    logGame,
+    logStdOut,
+    logToFile,
+  ) where
 
 import Control.Monad (void)
 import Data.Text

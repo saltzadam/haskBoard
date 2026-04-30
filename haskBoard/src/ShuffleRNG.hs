@@ -1,13 +1,12 @@
 module ShuffleRNG where
 
-import qualified Debug.Trace as Debug
 import Effectful (Eff, (:>))
 import Effectful.Crypto.RNG
 import System.Random.Shuffle
 
 shuffleRNG :: (RNG :> es) => [a] -> Eff es [a]
 shuffleRNG elements
-  | null elements = Debug.trace "empty" $ return []
+  | null elements = return []
   | otherwise = do
       fmap (shuffle elements) (rseqM (length elements - 1))
   where

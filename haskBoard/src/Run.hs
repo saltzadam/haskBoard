@@ -18,15 +18,16 @@ import System.IO (IOMode (..), withFile)
 
 runGameCommonChannels ::
   (Ord l, Ord r, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Eq ph, Finitary cn, Finitary l) =>
+  FilePath ->
   Player ->
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->
   Chan (GameToInterfacePayload l cn r ph pl) ->
   Chan pl ->
   IO (GameState l cn r ph pl, [Player])
-runGameCommonChannels p gameState gameRules chanGameToClient chanClientToGame = do
+runGameCommonChannels logFile p gameState gameRules chanGameToClient chanClientToGame = do
   gen <- newCryptoRNGState
-  withFile "log" WriteMode $
+  withFile logFile WriteMode $
     ( \handle ->
         runEff
           . evalState gameState
@@ -42,14 +43,14 @@ runGameCommonChannels p gameState gameRules chanGameToClient chanClientToGame = 
 
 runGameSeparateChannels ::
   (Ord l, Ord r, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Eq ph, Finitary cn, Finitary l) =>
+  FilePath ->
   GameController l cn r ph pl ->
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->
   IO (GameState l cn r ph pl, [Player])
-runGameSeparateChannels controller gameState gameRules = do
+runGameSeparateChannels logFile controller gameState gameRules = do
   gen <- newCryptoRNGState
-  -- interface <- (buildInterface thePlayers)
-  withFile "log" WriteMode $
+  withFile logFile WriteMode $
     ( \handle ->
         runEff
           . evalState gameState
@@ -60,8 +61,6 @@ runGameSeparateChannels controller gameState gameRules = do
           . logToFile DebugLevel handle
           $ (playGameTurns (gameRules ^. #setupPhase))
     )
-  where
-    thePlayers = gameState ^. #players . to S.toList
 
 -- TODO: remove bounded, enum
 runGameFromInterfaces ::
@@ -77,13 +76,14 @@ runGameFromInterfaces ::
     Finitary cn,
     Finitary l
   ) =>
+  FilePath ->
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->
   GameController l cn r ph pl ->
   IO (GameState l cn r ph pl, [Player])
-runGameFromInterfaces gameState gameRules controller = do
+runGameFromInterfaces logFile gameState gameRules controller = do
   gen <- newCryptoRNGState
-  withFile "log" WriteMode $ \handle ->
+  withFile logFile WriteMode $ \handle ->
     runEff
       . evalState gameState
       . runCryptoRNG gen

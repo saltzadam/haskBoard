@@ -47,23 +47,23 @@ instance (Finitary a, Finitary b, Ord a) => Finitary (FTMap a b) where
 -- fns :: [FTMap a b]
 -- fns = unsafeUnreify <$> M.fromList [(a,
 
-maps :: (Finitary a, Finitary b, Ord a) => Map a [b]
-maps = M.fromList [(a, inhabitants) | a <- inhabitants]
+-- maps :: (Finitary a, Finitary b, Ord a) => Map a [b]
+-- maps = M.fromList [(a, inhabitants) | a <- inhabitants]
 
-fns :: (Ord a, Finitary a, Finitary b) => [FTMap a b]
-fns = unsafeUnreify <$> sequence maps
+-- fns :: (Ord a, Finitary a, Finitary b) => [FTMap a b]
+-- fns = unsafeUnreify <$> sequence maps
 
-g :: forall a b. (Finitary a, Finitary b) => (a -> b) -> Int
-g f = unDigits base $ toInt . f <$> inhabitants
-  where
-    toInt = fromIntegral . getFinite . toFinite
-    base = length (inhabitants :: [b])
+-- g :: forall a b. (Finitary a, Finitary b) => (a -> b) -> Int
+-- g f = unDigits base $ toInt . f <$> inhabitants
+--   where
+--     toInt = fromIntegral . getFinite . toFinite
+--     base = length (inhabitants :: [b])
 
 padList :: Int -> a -> [a] -> [a]
 padList targetLength def xs = replicate (targetLength - length xs) def ++ xs
 
-h :: forall a b. (Finitary a, Finitary b, Ord a) => Int -> (FTMap a b)
-h i = unsafeUnreify $ M.fromAscList $ zip (inhabitants :: [a]) $ fmap (fromFinite . finite . fromIntegral :: Int -> b) $ padList (length (inhabitants :: [a])) 0 $ digits (length (inhabitants :: [b])) i
+-- h :: forall a b. (Finitary a, Finitary b, Ord a) => Int -> (FTMap a b)
+-- h i = unsafeUnreify $ M.fromAscList $ zip (inhabitants :: [a]) $ fmap (fromFinite . finite . fromIntegral :: Int -> b) $ padList (length (inhabitants :: [a])) 0 $ digits (length (inhabitants :: [b])) i
 
 -- From function to Map using the finitary-ness of `a`.
 -- TODO: change doc
@@ -111,10 +111,6 @@ applyAt a fn f = FTMap (\x -> if x == a then fn (f !!! x) else f !!! x)
 
 update :: (Eq a) => (a, b) -> FTMap a b -> FTMap a b
 update (a, b) = applyAt a (const b)
-
--- TODO : wonder if this could be used elsewhere
-filter :: (Ord a, Finitary a, Eq a) => (b -> Bool) -> FTMap a b -> FTMap a b
-filter filt = unsafeUnreify . M.filter filt . reifyFn
 
 -- Lenses
 

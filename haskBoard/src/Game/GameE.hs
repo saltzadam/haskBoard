@@ -45,8 +45,8 @@ logAction2 (RollCounter cn) = do
   logComponent (T.pack $ "Rolled " ++ show cn ++ " to " ++ show val)
 logAction2 (TransferCounter cn cn') = logComponent (T.pack $ "Moved one from " ++ show cn ++ " to " ++ show cn')
 logAction2 (Shuffle l) = logComponent (T.pack $ "Shuffled " ++ show l)
-logAction2 (MakeVisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ "visible to " ++ show p)
-logAction2 (MakeInvisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ "invisible to " ++ show p)
+logAction2 (MakeVisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ " visible to " ++ show p)
+logAction2 (MakeInvisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ " invisible to " ++ show p)
 logAction2 EndPhase = logComponent (T.pack "Ended phase")
 logAction2 DoNothing = pure ()
 logAction2 AdvanceTurn = logComponent "advanced turn"
@@ -186,7 +186,7 @@ playGameTurns setupPhaseName = do
         TEndTurn -> do
           nextTurn <- useGameState #nextTurn
           case nextTurn of
-            Nothing -> error "no next turn" -- TODO: make proper exception
+            Nothing -> error "no next turn" -- TODO: enforce via types — AdvanceTurn could carry the next Turn as an argument, eliminating this runtime crash
             Just t -> do
               logGame "end of turn"
               assignGameState #currentTurn t
