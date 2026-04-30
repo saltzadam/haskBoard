@@ -1,4 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Game.View where
@@ -6,13 +8,17 @@ module Game.View where
 import Control.Lens (to, (^.))
 import Control.Lens.TH (makeFields)
 import Control.Monad.Free (Free (..))
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, Value, decodeStrict, object, withObject, (.:), (.=))
+import Data.Finitary (Finitary)
+import Data.Maybe (fromJust)
 import Data.Set (Set)
+import Data.Text (Text)
+import qualified Data.Text.Encoding as T
 import Effectful (Eff, (:>))
 import FinitaryMap (FTMap (..), ftAt, (!!!))
 import GHC.Generics (Generic)
 import Game.GameState
-import Game.Location (Counter, GameObjects, LocationShape)
+import Game.Location (Counter, GameObjects, LocationShape, decodeCounter, decodeLocationShape, encodeCounter, encodeLocationShape, fromGymShape, toGymShape)
 import Game.Options (Options)
 import Game.Player (Player, Turn (..))
 import Game.Rules
@@ -69,7 +75,7 @@ data GameStateView l cn r ph = GameStateView
     currentPhaseView :: ph,
     currPlayer :: Player
   }
-  deriving (Generic, FromJSON, ToJSON)
+  deriving (Generic)
 
 project :: GameState l cn r ph pl -> GameStateView l cn r ph
 project gs =
@@ -83,6 +89,15 @@ project gs =
 type LocationsView l r = FTMap l (Maybe (LocationShape r))
 
 type CountersView cn = FTMap cn (Maybe Counter)
+
+encodeLocationsView :: (Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l) => LocationsView l r -> Value
+encodeLocationsView = toJSON . fmap (fmap (toGymShape . encodeLocationShape))
+
+decodeLocationsView :: (Ord l, Ord r, Finitary l, Finitary r, FromJSONKey l) => Text -> LocationsView l r
+decodeLocationsView = fmap (fmap (decodeLocationShape . fromGymShape)) . (fromJust . decodeStrict . T.encodeUtf8)
+
+encodeCountersView :: (Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn) => CountersView cn -> Value
+encodeCountersView = toJSON . fmap (fmap encodeCounter)
 
 buildView' :: Maybe Player -> GameState l cn r ph pl -> GameObjectsView l cn r
 buildView' (Just p) gs =
@@ -101,10 +116,27 @@ data GameObjectsView l cn r = GameObjectsView
   { locationsView :: LocationsView l r,
     countersView :: CountersView cn
   }
-  deriving (Generic, Show, FromJSON, ToJSON)
+  deriving (Generic, Show)
 
 makeFields ''GameStateView
 makeFields ''GameObjectsView
+
+instance (Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn, Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l) => ToJSON (GameObjectsView l cn r) where
+  toJSON (GameObjectsView locs cts) =
+    object
+      [ "locations" .= encodeLocationsView locs,
+        "counters" .= encodeCountersView cts
+      ]
+
+instance (FromJSON r, FromJSON l, FromJSON cn, Finitary l, Finitary r, Finitary cn, Ord cn, Ord l, FromJSONKey cn, Ord r, FromJSONKey l, FromJSONKey r) => FromJSON (GameObjectsView l cn r) where
+  parseJSON = withObject "GameObjectsView" $ \v ->
+    GameObjectsView
+      <$> v .: "locations"
+      <*> v .: "counters"
+
+deriving instance (FromJSON r, FromJSON l, FromJSON cn, Finitary l, Finitary r, Finitary cn, Ord cn, Ord l, FromJSONKey cn, Ord r, FromJSONKey l, FromJSONKey r, Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn, Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l, FromJSON ph) => FromJSON (GameStateView l cn r ph)
+
+deriving instance (ToJSON ph, Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn, Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l) => ToJSON (GameStateView l cn r ph)
 
 viewObjectsAs' :: GameObjects l cn r -> VisibilityMap l cn ph -> Player -> GameObjectsView l cn r
 viewObjectsAs' objs (VisibilityMap vis') p =

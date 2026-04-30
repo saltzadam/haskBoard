@@ -1,6 +1,5 @@
 module ShuffleRNG where
 
-import Control.Applicative (Applicative (..))
 import qualified Debug.Trace as Debug
 import Effectful (Eff, (:>))
 import Effectful.Crypto.RNG

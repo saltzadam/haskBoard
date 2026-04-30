@@ -4,7 +4,7 @@
 
 module Objects where
 
-import Data.Aeson (FromJSON (..), ToJSON (..), Value (..))
+import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, Value (..))
 import Data.Finitary
 import Data.Finite (Finite)
 import qualified Data.List.NonEmpty as NE
@@ -25,7 +25,7 @@ import Game.Rules
 import Game.View (GameStateView)
 
 -- don't derive Functor so it's not easy to modify card nums
-data NMResource = Chip | Card (Finite 35) deriving (Eq, Ord, Show, Read, Generic, Finitary)
+data NMResource = Chip | Card (Finite 35) deriving (Eq, Ord, Show, Read, Generic, Finitary, ToJSONKey, FromJSONKey)
 
 instance ToJSON NMResource where
   toJSON r = String (T.pack . show $ r)
@@ -64,9 +64,9 @@ data NMLocation
   | PlayerStuff Player
   | CardDeck
   | BoxTop
-  deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON)
+  deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
-data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic, Enum, Bounded, FromJSON, ToJSON)
+data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic, Enum, Bounded, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 instance Finitary NMCounters
 
@@ -91,9 +91,9 @@ initGameObjects ps =
       counters = FTMap (const dummyCounter)
     }
 
-data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
+data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
-data NMPhaseName = Setup | NMTurnPhase Player deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
+data NMPhaseName = Setup | NMTurnPhase Player deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 type NMTurn = Turn NMPhaseName
 

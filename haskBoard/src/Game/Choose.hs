@@ -4,8 +4,11 @@
 module Game.Choose where
 
 import Control.Monad.Free (liftF)
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON, ToJSON (..), ToJSONKey, Value)
+import Data.Aeson.Text (encodeToLazyText)
+import Data.Finitary (Finitary)
 import Data.Text
+import Data.Text.Lazy (toStrict)
 import Effectful
 import Effectful.Dispatch.Dynamic
 import GHC.Generics (Generic)
@@ -29,8 +32,25 @@ data GameToInterfacePayload l cn r ph pl
   | SendOptions (GameStateView l cn r ph) (Options pl)
   | SendWinners [Player]
   | SendAnnouncement (Maybe Player) Text
-  deriving (Generic, FromJSON, ToJSON)
+  deriving (Generic)
 
+data PayloadTxt
+  = SendStateTxt Text
+  | SendOptionsTxt Text Text
+  | SendWinnersTxt Text
+  | SendAnnouncementTxt Text Text
+  deriving (Eq, Ord, Show)
+
+--
+-- encodeStrict :: (ToJSON a) => a -> Text
+-- encodeStrict = toStrict . encodeToLazyText . toJSON
+--
+-- mkPayloadTxt :: (Finitary l, Finitary cn, Ord l, Ord cn, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl) => GameToInterfacePayload l cn r ph pl -> PayloadTxt
+-- mkPayloadTxt (SendState gsv) = SendStateTxt (encodeStrict gsv)
+-- mkPayloadTxt (SendOptions gsv opts) = SendOptionsTxt (encodeStrict gsv) (encodeStrict opts)
+-- mkPayloadTxt (SendWinners ps) = SendWinnersTxt (encodeStrict ps)
+-- mkPayloadTxt (SendAnnouncement ps msg) = SendAnnouncementTxt (encodeStrict ps) (encodeStrict msg)
+--
 -- TODO: should this include GameState???
 choose :: (Interface l cn r ph pl :> es) => GameState l cn r ph pl -> Options pl -> Eff es pl
 choose gs cs = send (Choose gs cs)

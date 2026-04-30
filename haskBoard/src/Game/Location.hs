@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Game.Location
@@ -38,18 +39,28 @@ module Game.Location
     howManyF,
     transferCounter',
     transferCounter,
+    encodeLocations,
+    toGymShape,
+    encodeLocationShape,
+    encodeCounter,
+    fromGymShape,
+    decodeLocationShape,
+    decodeCounter,
   )
 where
 
 import Control.Lens (makeFields, set)
-import Data.Aeson (FromJSON (..), ToJSON (..))
-import Data.Foldable (foldl')
+import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, decodeStrict)
+import Data.Aeson.Types (Value)
+import Data.Finitary (Finitary (..))
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, listToMaybe)
+import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.Sequence (Seq (Empty, (:<|)), (<|))
 import qualified Data.Sequence as Seq
+import Data.Text (Text)
+import qualified Data.Text.Encoding as T
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
 import GHC.Generics (Generic)
@@ -66,6 +77,54 @@ data LocationShape r
   deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
 
 type Locations names r = FTMap names (LocationShape r)
+
+data GymFundShape
+  = Sequence (Seq Int)
+  | MultiDiscrete (Map Int Int)
+  | DiscreteM (Maybe Int)
+  | DiscreteInf Int
+  | Discrete (Int, Int) Int
+  | DummyShape
+  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+
+toGymShape :: LocationShape Int -> GymFundShape
+toGymShape (Deck s) = Sequence s
+toGymShape (Pile p) = MultiDiscrete p
+toGymShape (Slot s) = DiscreteM s
+toGymShape (Infinite r) = DiscreteInf r
+toGymShape Dummy = DummyShape
+
+encodeLocations :: (Finitary name, Finitary r, ToJSON r, ToJSONKey name, ToJSONKey r) => Locations name r -> Value
+encodeLocations locs = toJSON $ (fmap toGymShape) . fmap encodeLocationShape . FT.reifyFn $ locs
+
+encodeLocationShape :: (Finitary r, ToJSON r) => LocationShape r -> LocationShape Int
+encodeLocationShape (Deck seq') = Deck ((fromIntegral . toFinite <$> seq' :: Seq Int))
+encodeLocationShape (Pile mri) = Pile (((M.mapKeys (fromIntegral . toFinite) mri) :: Map Int Int))
+encodeLocationShape (Slot s) = Slot (((fromIntegral . toFinite <$> s) :: Maybe Int))
+encodeLocationShape (Infinite inf) = Infinite (((fromIntegral . toFinite $ inf) :: Int))
+encodeLocationShape Dummy = Dummy
+
+fromGymShape (Sequence s) = Deck s
+fromGymShape (MultiDiscrete p) = Pile p
+fromGymShape (DiscreteM s) = Slot s
+fromGymShape (DiscreteInf r) = Infinite r
+fromGymShape DummyShape = Dummy
+
+decodeLocationShape :: (Finitary r, Ord r) => LocationShape Int -> LocationShape r
+decodeLocationShape (Deck seq) = Deck (fromFinite . fromIntegral <$> seq)
+decodeLocationShape (Pile mri) = Pile (((M.mapKeys (fromFinite . fromIntegral) mri)))
+decodeLocationShape (Slot (Just s)) = Slot (Just (fromFinite . fromIntegral $ s))
+decodeLocationShape (Slot Nothing) = Slot Nothing
+decodeLocationShape (Infinite inf) = Infinite (fromFinite . fromIntegral $ inf)
+decodeLocationShape Dummy = Dummy
+
+decodeLocations :: forall name r. (Ord r, Ord name, FromJSONKey name, FromJSONKey r, FromJSON r, Finitary r, Finitary name) => Text -> Locations name r
+decodeLocations val = FT.unsafeUnreify . fmap decodeLocationShape . fmap (fromGymShape) . fromJust $ (decodeStrict . T.encodeUtf8 $ val :: Maybe (Map name GymFundShape))
+
+-- instance (Finitary names, Finitary r, ToJSON r, ToJSONKey names, ToJSONKey r) => ToJSON (Locations names r) where
+-- toJSON = encodeLocations
+
+-- instance (Eq r, Finitary names, Finitary r) => Finitary (Locations names r)
 
 -- Transfer should not happen unless sender and recipient allow it.
 -- This enforces the invariant that resources cannot 'disappear.' Either
@@ -226,7 +285,17 @@ data Counter = Counter
 
 makeFields ''Counter
 
+encodeCounter :: Counter -> Value
+encodeCounter (Counter val bounds) = toJSON $ Discrete bounds val
+
+decodeCounter :: Text -> Counter
+decodeCounter t = case (fromJust (decodeStrict . T.encodeUtf8 $ t) :: GymFundShape) of
+  Discrete bounds val -> Counter val bounds
+
 type Counters name = FTMap name Counter
+
+encodeCounters :: (Finitary name, Ord name, ToJSON name, ToJSONKey name) => Counters name -> Value
+encodeCounters = toJSON . fmap encodeCounter
 
 makeCounter :: (Int, Int) -> Counter
 makeCounter (a, b) = Counter a (a, b)
@@ -239,7 +308,7 @@ d6 = makeCounter (1, 6)
 
 mapCounter :: (Int -> Int) -> Counter -> (Counter, Maybe Int)
 mapCounter f c@(Counter a (bl, bu)) =
-  if f a >= bl && f a <= bl
+  if f a >= bl && f a <= bu
     then (Counter (f a) (bl, bu), Just (f a))
     else (c, Nothing)
 

@@ -1,13 +1,18 @@
+{-# HLINT ignore "Avoid lambda" #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-{-# HLINT ignore "Avoid lambda" #-}
 module Game.Agent where
 
 import Control.Concurrent (Chan)
 import Control.Lens (makeLenses)
+import Data.Aeson (FromJSON, ToJSON, ToJSONKey)
+import Data.Aeson.Text (encodeToLazyText)
+import Data.Finitary (Finitary)
 import Data.Text (Text)
+import Data.Text.Lazy (toStrict)
 import GHC.Generics
 import Game.Choose (GameToInterfacePayload)
 import Game.Options (Options (..))
@@ -18,7 +23,8 @@ data BEvent l cn r ph pl
   = Receive (GameStateView l cn r ph)
   | Request (Options pl)
   | AnnounceWinner [Player]
-  | AnnounceEvent (Maybe Player) Text
+  | -- TODO: why does this have Player argument? Probably shouldn't
+    AnnounceEvent (Maybe Player) Text
   deriving (Generic)
 
 extractReceive :: BEvent l cn r ph pl -> Maybe (GameStateView l cn r ph)
@@ -45,3 +51,16 @@ data Agent l cn r ph pl m = Agent
   deriving (Generic)
 
 makeLenses ''Agent
+
+data BEventMessage
+  = ReceiveMessage Text
+  | RequestMessage Text
+  | AnnounceWinnerMessage Text
+  | AnnounceEventMessage Text
+  deriving (Eq, Ord, Show)
+
+-- mkEventMessage :: (ToJSON pl, ToJSON cn, ToJSON r, ToJSON l, ToJSON ph, ToJSONKey cn, ToJSONKey l, ToJSONKey r, Ord cn, Ord l, Finitary cn, Finitary l) => BEvent l cn r ph pl -> BEventMessage
+-- mkEventMessage (Receive gsv) = ReceiveMessage (toStrict . encodeToLazyText $ gsv)
+-- mkEventMessage (Request opts) = RequestMessage (toStrict . encodeToLazyText $ opts)
+-- mkEventMessage (AnnounceWinner ps) = AnnounceWinnerMessage (toStrict . encodeToLazyText $ ps)
+-- mkEventMessage (AnnounceEvent mp txt) = AnnounceEventMessage txt

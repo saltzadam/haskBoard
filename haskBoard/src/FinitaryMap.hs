@@ -1,14 +1,11 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RankNTypes #-}
-
--- TODO: remove this module
--- the finitary interface is not really what we want. The issue is that
--- data Card = Card Int
--- is finitary, but in context it has like 35 inhabitants instead of MAX_BOUND + MIN_BOUND
--- Use defaultable-map or something like that, it's still a finite interface
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module FinitaryMap where
 
+-- TODO: weird performance regression depending on imports because of inlining
 -- ( FTMap (..),
 --   (!!!),
 --   applyAt,
@@ -21,11 +18,13 @@ module FinitaryMap where
 import Control.Lens (lens)
 import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Aeson.Types (FromJSONKey, ToJSONKey)
-import Data.Finitary (Finitary, inhabitants)
+import Data.Digits (digits, unDigits)
+import Data.Finitary (Finitary (..), inhabitants)
+import Data.Finite (Finite, finite, getFinite)
 import Data.Map (Map)
 import qualified Data.Map as M
-import GHC.Base (liftA2)
 import GHC.Generics (Generic)
+import GHC.TypeNats (type (^))
 import Prelude
 
 -- FTMap is a "Finitary, total map". That is, it's a total map from a finitary domain.
@@ -39,6 +38,32 @@ instance (Finitary a, Eq a, Ord a, ToJSON a, ToJSON b, ToJSONKey a) => ToJSON (F
 
 instance (Ord a, Finitary a, FromJSONKey a, FromJSON b) => FromJSON (FTMap a b) where
   parseJSON = fmap unsafeUnreify . parseJSON
+
+instance (Finitary a, Finitary b, Ord a) => Finitary (FTMap a b) where
+  type Cardinality (FTMap a b) = Cardinality a ^ Cardinality b
+  toFinite (FTMap f) = finite . fromIntegral . unDigits (length (inhabitants :: [b])) $ fromIntegral . getFinite . toFinite . f <$> inhabitants
+  fromFinite i = unsafeUnreify $ M.fromAscList $ zip (inhabitants :: [a]) $ fmap (fromFinite . finite . fromIntegral :: Int -> b) $ padList (length (inhabitants :: [a])) 0 $ digits (length (inhabitants :: [b])) (fromIntegral $ getFinite i)
+
+-- fns :: [FTMap a b]
+-- fns = unsafeUnreify <$> M.fromList [(a,
+
+maps :: (Finitary a, Finitary b, Ord a) => Map a [b]
+maps = M.fromList [(a, inhabitants) | a <- inhabitants]
+
+fns :: (Ord a, Finitary a, Finitary b) => [FTMap a b]
+fns = unsafeUnreify <$> sequence maps
+
+g :: forall a b. (Finitary a, Finitary b) => (a -> b) -> Int
+g f = unDigits base $ toInt . f <$> inhabitants
+  where
+    toInt = fromIntegral . getFinite . toFinite
+    base = length (inhabitants :: [b])
+
+padList :: Int -> a -> [a] -> [a]
+padList targetLength def xs = replicate (targetLength - length xs) def ++ xs
+
+h :: forall a b. (Finitary a, Finitary b, Ord a) => Int -> (FTMap a b)
+h i = unsafeUnreify $ M.fromAscList $ zip (inhabitants :: [a]) $ fmap (fromFinite . finite . fromIntegral :: Int -> b) $ padList (length (inhabitants :: [a])) 0 $ digits (length (inhabitants :: [b])) i
 
 -- From function to Map using the finitary-ness of `a`.
 -- TODO: change doc

@@ -40,11 +40,11 @@ data Phase phaseName l cn r playName = Phase
 
 type PlayRunner l cn r ph pl = pl -> GameRule l cn r ph pl ()
 
+-- TODO: Add history
 data GameState l cn r ph pl = GameState
   { players :: Set Player,
     objects :: GameObjects l cn r,
     currentPhase :: ph,
-    -- owner :: l -> Maybe Player,
     currentTurn :: Turn ph,
     nextTurn :: Maybe (Turn ph),
     visibility :: VisibilityMap l cn ph

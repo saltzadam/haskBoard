@@ -5,21 +5,15 @@
 
 module Game.Options where
 
-import Control.Applicative (liftA3)
 import Control.Lens (makeFields)
 import Control.Monad (filterM)
 import Data.Aeson (FromJSON, ToJSON)
-import qualified Data.Foldable as F
 import Data.Generics.Labels ()
-import Data.List (delete, partition)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
-import Data.Map (Map)
-import qualified Data.Map as M
-import qualified Data.Set as S
 import GHC.Generics (Generic)
 import Game.Player
-import Util (buildSafeNonempty, compose, graphM)
+import Util (buildSafeNonempty)
 
 -- -- A move may have lots of illegality.
 -- -- Concatenate where possible.

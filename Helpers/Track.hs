@@ -17,7 +17,7 @@ import Game.Location (LocationShape)
 import Game.Player (Player)
 import Game.Rules
 import Helpers
-import Util (ifM, pureIfM, safeIndexList)
+import Util (ifM, safeIndexList)
 
 -- TODO: rewrite stuff as folds
 

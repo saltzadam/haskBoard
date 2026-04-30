@@ -31,10 +31,10 @@ library
     build-depends: base, containers,lens, generic-lens,
                 transformers, text,  MonadRandom, random, 
                 effectful, effectful-core, mtl, 
-                crypto-rng-effectful, effectful-plugin,
+                crypto-rng-effectful, effectful-plugin, async,
                  random-shuffle, finitary, ghc-typelits-knownnat, brick, finite-typelits, vty, safe,
-                  free,  word-wrap, generics-sop, foldable1-classes-compat, aeson
-    exposed-modules: FinitaryMap, Game.Location, Game.GameE, Game.Player,Game.Options,Game.GameAction, Log,    Util, Game.Visibility,  Run, Game.GameState, Game.Choose,  Game.View, Game.Controller, Game.Agent, Brick.Game.Tui,Game.Rules, Interface.Choose, ShuffleRNG, Interface.Agent, Interface.Controller, Brick.Widgets.TextStream, Menu
+                  free,  word-wrap, generics-sop, foldable1-classes-compat, aeson, websockets, digits
+    exposed-modules: FinitaryMap, Game.Location, Game.GameE, Game.Player,Game.Options,Game.GameAction, Log,    Util, Game.Visibility,  Run, Game.GameState, Game.Choose,  Game.View,  Game.Agent, Brick.Game.Tui,Game.Rules, Interface.Choose, ShuffleRNG, Interface.Agent, Interface.Controller, Brick.Widgets.TextStream, Interface.Server
     default-language: Haskell2010
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses, GeneralizedNewtypeDeriving
     ghc-options:  -Wall -fplugin=Effectful.Plugin -fplugin=GHC.TypeLits.KnownNat.Solver 

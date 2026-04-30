@@ -10,7 +10,7 @@ import Game.GameState (GameRules (..), GameState (..), Phase (..))
 import Game.Options (Options (..))
 import Game.Player (Player (..), mkPlayers)
 import Game.Rules
-import Game.Visibility (allVisible)
+import Game.Visibility (VisData (..), VisibilityMap (..), allVisible, makeInvisible)
 import Helpers
 import Objects
 import Util (ifM, maximaByScoreM)
@@ -67,6 +67,13 @@ nmPhases Setup =
       seedNodes = shuffle CardDeck >> replicateM_ 9 (Cards.draw CardDeck BoxTop) >> drawCard
     }
 
+compose = foldr (.) id
+
+visibility :: Int -> VisibilityMap NMLocation NMCounters NMPhaseName
+visibility numPlayers = compose [\vis -> makeInvisible vis player (VisLocation loc) | player <- mkPlayers numPlayers, loc <- [BoxTop, CardDeck]] $ allVisible
+
+-- visibility numPlayers = (\player -> makeInvisible player allVisible (VisLocation BoxTop)) <$> mkPlayers numPlayers
+
 initGameState :: Int -> NMGameState
 initGameState numPlayers =
   let players = S.fromList (mkPlayers numPlayers)
@@ -77,7 +84,7 @@ initGameState numPlayers =
           currentTurn = playerTurn (Player 1),
           -- nextTurn = Just $ getNextTurn2 playerTurn (NE.fromList . S.toList $ players), -- TODO: how to make this safe?
           nextTurn = Just $ playerTurn (Player 1),
-          visibility = allVisible -- TODO: no, BoxTop is invisible
+          visibility = visibility numPlayers -- TODO: no, BoxTop is invisible
         }
 
 noMerci :: Int -> (NMGameState, NMGameRules)

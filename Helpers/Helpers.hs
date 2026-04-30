@@ -4,8 +4,8 @@
 {-# HLINT ignore "Use <$" #-}
 module Helpers where
 
-import Control.Lens (to, view, (^.))
-import Control.Monad (replicateM_, void)
+import Control.Lens (view, (^.))
+import Control.Monad (replicateM_)
 import Control.Monad.Free (liftF)
 import Data.Finitary
 import Data.Foldable (traverse_)
@@ -18,16 +18,15 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
 import FinitaryMap (ftAt, (!!!))
-import GHC.Base (Applicative (..))
 import Game.GameAction
 import Game.GameState
-import Game.Location (Counter, LocationShape, Locations, has', howMany', inventory, listAllShapeF, peek')
+import Game.Location (LocationShape, Locations, howMany', inventory, peek')
 import Game.Options
 import Game.Player
 import Game.Rules
 import Game.View (GameStateView)
-import Game.Visibility (VisData (..), VisibilityMap (..), runVis)
-import Util (buildSafeNonempty, compose, concatNE, getNextCyclic, graph, graphM, ifNullElse, inhabitantsSet, invertNestedMaps, kleisliCompose, mapMaybeMap, mapMaybeMapM)
+import Game.Visibility (VisData (..))
+import Util (getNextCyclic, inhabitantsSet, invertNestedMaps)
 
 -- particular actions
 
@@ -135,7 +134,7 @@ howManyAt' :: (Ord r) => Locations l r -> l -> r -> Int
 howManyAt' locs l = howMany' (locs !!! l)
 
 howManyAtF :: (Ord r, Eq l) => l -> r -> (Int -> Bool) -> GameRule l cn r ph pl Bool
-howManyAtF l r pred = pred <$> howManyAt l r
+howManyAtF l r predicate = predicate <$> howManyAt l r
 
 howManyWithin :: (Ord r, Eq l) => [l] -> r -> GameRule l cn r ph pl Int
 howManyWithin ls r = sum <$> traverse (`howManyAt` r) ls

@@ -5,23 +5,25 @@
 module Util where
 
 import Control.Monad (foldM, (>=>))
+import qualified Data.Aeson.Types as Aeson
 import Data.Finitary (Finitary, inhabitants)
 import qualified Data.Foldable as F
+import Data.Foldable1 (foldMap1)
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
-import Data.Foldable1 (foldMap1)
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Text (Text)
 import Data.Tuple (swap)
 
 -- TODO: assess whether these two are ever actually necessary
 graph :: (t -> b) -> t -> (t, b)
 graph f a = (a, f a)
 
-graphM :: Functor m => (a -> m b) -> (a -> m (a, b))
+graphM :: (Functor m) => (a -> m b) -> (a -> m (a, b))
 graphM f a = fmap (a,) (f a)
 
 compose :: [a -> a] -> (a -> a)
@@ -30,12 +32,12 @@ compose = foldr (.) id
 kleisliCompose :: (Monad m) => [a -> m a] -> (a -> m a)
 kleisliCompose = foldr (>=>) return
 
-getNext :: Eq a => a -> NE.NonEmpty a -> Maybe a
+getNext :: (Eq a) => a -> NE.NonEmpty a -> Maybe a
 -- look for first match, then take next item. Zip together list and tail so we can fold
 -- will always be Nothing on empty or one-item lists
 getNext match items = foldr (\(x, x') acc -> if x == match then Just x' else acc) Nothing (zip (NE.toList items) (NE.tail items))
 
-getNextCyclic :: Eq a => a -> NE.NonEmpty a -> Maybe a
+getNextCyclic :: (Eq a) => a -> NE.NonEmpty a -> Maybe a
 getNextCyclic match items =
   foldr
     (\(x, x') acc -> if x == match then Just x' else acc)
@@ -54,7 +56,7 @@ ifNullElse tested def = fromMaybe def (NE.nonEmpty tested)
 buildSafeNonempty :: [a] -> a -> NonEmpty a
 buildSafeNonempty xs def = if null xs then NE.singleton def else NE.fromList xs
 
-inhabitantsSet :: Finitary a => Set a
+inhabitantsSet :: (Finitary a) => Set a
 inhabitantsSet = S.fromAscList inhabitants
 
 maximaBy :: forall a. (a -> a -> Ordering) -> [a] -> [a]
@@ -74,7 +76,7 @@ maximaBy cmp = foldr (go cmp) []
 -- fun GT a = const [a]
 -}
 
-maximaByScore :: Ord b => (a -> b) -> [a] -> [a]
+maximaByScore :: (Ord b) => (a -> b) -> [a] -> [a]
 maximaByScore score =
   let cmp x y = compare (score x) (score y)
    in maximaBy cmp
@@ -96,17 +98,17 @@ maximaByScoreM scorem =
   let cmp x y = compare <$> scorem x <*> scorem y
    in maximaByM cmp
 
-ifM :: Monad m => m Bool -> m a -> m a -> m a
+ifM :: (Monad m) => m Bool -> m a -> m a -> m a
 ifM mbool mtrue mfalse = do
   boolResult <- mbool
   if boolResult
     then mtrue
     else mfalse
 
-pureIfM :: Monad m => m Bool -> a -> a -> m a
+pureIfM :: (Monad m) => m Bool -> a -> a -> m a
 pureIfM mbool true false = ifM mbool (pure true) (pure false)
 
-safeIndexList :: Foldable f => Int -> f a -> Maybe a
+safeIndexList :: (Foldable f) => Int -> f a -> Maybe a
 safeIndexList i xs = if i < 0 then Nothing else safeIndexList' i (F.toList xs)
   where
     safeIndexList' i (x : xs) = if i == 0 then Just x else safeIndexList' (i - 1) xs
@@ -115,7 +117,7 @@ safeIndexList i xs = if i < 0 then Nothing else safeIndexList' i (F.toList xs)
 invertNestedMaps :: (Ord k, Ord k') => Map k (Map k' v) -> Map k' (Map k v)
 invertNestedMaps = uncurryMap . M.mapKeys swap . curryMap
   where
-    uncurryMap :: Ord k => Map (k, k') v -> Map k (Map k' v)
+    uncurryMap :: (Ord k) => Map (k, k') v -> Map k (Map k' v)
     uncurryMap = M.mapKeys fst . M.mapWithKey (\(_, k') v -> M.singleton k' v)
 
     curryMap :: (Ord k, Ord k') => Map k (Map k' v) -> Map (k, k') v
@@ -124,13 +126,13 @@ invertNestedMaps = uncurryMap . M.mapKeys swap . curryMap
 concatNE :: NonEmpty (NonEmpty a) -> NonEmpty a
 concatNE = foldMap1 id
 
-mapMaybeMap :: Ord a => (a -> Maybe b) -> [a] -> Map a b
+mapMaybeMap :: (Ord a) => (a -> Maybe b) -> [a] -> Map a b
 mapMaybeMap f = M.fromList . mapMaybe (sequence . graph f)
 
 mapMaybeMapM :: (Ord a, Applicative f) => (a -> f (Maybe b)) -> [a] -> f (Map a b)
 mapMaybeMapM fm xs = fmap (M.fromList . mapMaybe sequence) (traverse (graphM fm) xs)
 
-mapKeysCatMaybes :: Ord k' => (k -> Maybe k') -> Map k a -> Map k' a
+mapKeysCatMaybes :: (Ord k') => (k -> Maybe k') -> Map k a -> Map k' a
 mapKeysCatMaybes fm = M.mapKeys fromJust . M.filterWithKey (\k _ -> isJust k) . M.mapKeys fm
 
 mkPairs :: [a] -> [[(a, a)]]
