@@ -64,7 +64,7 @@ printOptions (Options legal' _ _) =
 
 choiceView tui =
   (border . hLimit 30) $
-    let p = tui ^. #gameStateView . #currPlayer
+    let p = tui ^. #gameStateView . #currentPlayerView
         playerW = withAttr (playerToColor p) (txtWrap (T.pack . show $ p))
      in case tui ^. #tuiMode of
           Ask options -> playerW <=> txtWrap (printOptions options)

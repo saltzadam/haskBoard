@@ -27,7 +27,7 @@ renderBottomUp ws =
     render $ fill ' ' <=> raw img
 
 textStream :: (Ord n, Show n) => n -> Int -> Int -> [Text] -> Widget n
-textStream name hsize vsize lines = vLimit vsize . hLimit hsize $ viewport name Vertical (vLimit vsize . hLimit hsize . renderBottomUp $ txtWrapWith settings <$> lines)
+textStream name hsize vsize lineWidgets = vLimit vsize . hLimit hsize $ viewport name Vertical (vLimit vsize . hLimit hsize . renderBottomUp $ txtWrapWith settings <$> lineWidgets)
   where
     settings =
       WrapSettings

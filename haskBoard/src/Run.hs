@@ -61,6 +61,8 @@ runGameSeparateChannels logFile controller gameState gameRules = do
           . logToFile DebugLevel handle
           $ (playGameTurns (gameRules ^. #setupPhase))
     )
+   where
+    thePlayers = gameState ^. #players . to S.toList
 
 -- TODO: remove bounded, enum
 runGameFromInterfaces ::

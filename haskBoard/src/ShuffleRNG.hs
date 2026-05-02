@@ -11,5 +11,4 @@ shuffleRNG elements
       fmap (shuffle elements) (rseqM (length elements - 1))
   where
     rseqM :: (RNG :> es) => Int -> Eff es [Int]
-    rseqM 0 = return []
-    rseqM i = liftA2 (:) (randomR (0, i)) (rseqM (i - 1))
+    rseqM n = traverse (\i -> randomR (0, i)) [n, n-1 .. 1]

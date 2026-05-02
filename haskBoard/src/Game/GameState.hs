@@ -100,9 +100,6 @@ getScore = Reader.asks (view #score)
 getSetupPhase :: (GameRun l cn r ph pl :> es) => Eff es (Maybe ph)
 getSetupPhase = Reader.asks (view #setupPhase)
 
-modifyingGame :: (GameInteract l cn r ph pl :> es) => ASetter (GameState l cn r ph pl) (GameState l cn r ph pl) a b -> (a -> b) -> Eff es ()
-modifyingGame o = State.modify . over o
-
 modifyingGameState :: (GameInteract l cn r ph pl :> es) => ASetter (GameState l cn r ph pl) (GameState l cn r ph pl) a b -> (a -> b) -> Eff es ()
 modifyingGameState o = State.modify . over o
 
@@ -113,4 +110,4 @@ getVisibility :: (GameInteract l cn r ph pl :> es) => Eff es (VisibilityMap l cn
 getVisibility = useGameState #visibility
 
 modifyVisibility :: (GameInteract l cn r ph pl :> es) => (VisibilityMap l cn ph -> VisibilityMap l cn ph) -> Eff es ()
-modifyVisibility = modifyingGame #visibility
+modifyVisibility = modifyingGameState #visibility

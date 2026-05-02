@@ -37,35 +37,29 @@ viewRule' p c (Free (Act _ next)) = viewRule' p c next
 viewRule' p c (Free (MakeChoice opts next)) = do
   pl <- c opts
   viewRule' p c (next pl)
-viewRule' p c (Free (LookLocation l next)) =
-  do
-    shape <- useGameState (#objects . #locations . ftAt l)
-    VisibilityMap canSee <- getVisibility
-    case canSee p (VisLocation l) of
-      Invisible -> return Nothing
-      Visible -> viewRule' p c (next shape)
+viewRule' p c (Free (LookLocation l next)) = do
+  shape <- useGameState (#objects . #locations . ftAt l)
+  withVisible p (VisLocation l) (viewRule' p c (next shape))
 viewRule' p c (Free (LookCounter cn next)) = do
   shape <- useGameState (#objects . #counters . ftAt cn)
-  VisibilityMap canSee <- getVisibility
-  case canSee p (VisCounter cn) of
-    Invisible -> return Nothing
-    Visible -> viewRule' p c (next shape)
+  withVisible p (VisCounter cn) (viewRule' p c (next shape))
 viewRule' p c (Free (LookCurrentPhase next)) = do
   phase <- useGameState #currentPhase
-  VisibilityMap canSee <- getVisibility
-  case canSee p VisCurrentPhase of
-    Invisible -> return Nothing
-    Visible -> viewRule' p c (next phase)
+  withVisible p VisCurrentPhase (viewRule' p c (next phase))
 viewRule' p c (Free (LookCurrentTurnOwner next)) = do
   Turn currentPlayer _ <- useGameState #currentTurn
-  VisibilityMap canSee <- getVisibility
-  case canSee p (VisTurn currentPlayer) of
-    Invisible -> return Nothing
-    Visible -> viewRule' p c (next currentPlayer)
+  withVisible p (VisTurn currentPlayer) (viewRule' p c (next currentPlayer))
 viewRule' p c (Free (LookPlayers next)) = do
   players <- useGameState #players
   viewRule' p c (next players)
 viewRule' _ _ (Pure a) = return (Just a)
+
+withVisible :: (GameInteract l cn r ph pl :> es) => Player -> VisData l cn ph -> Eff es (Maybe a) -> Eff es (Maybe a)
+withVisible p visData action = do
+  VisibilityMap canSee <- getVisibility
+  case canSee p visData of
+    Invisible -> return Nothing
+    Visible -> action
 
 --- ====== ----
 
@@ -73,7 +67,7 @@ data GameStateView l cn r ph = GameStateView
   { playersView :: Set Player,
     objectsView :: GameObjectsView l cn r,
     currentPhaseView :: ph,
-    currPlayer :: Player
+    currentPlayerView :: Player
   }
   deriving (Generic)
 
@@ -83,7 +77,7 @@ project gs =
     { playersView = gs ^. #players,
       objectsView = buildView' Nothing gs,
       currentPhaseView = gs ^. #currentPhase,
-      currPlayer = gs ^. #currentTurn . #owner
+      currentPlayerView = gs ^. #currentTurn . #owner
     }
 
 type LocationsView l r = FTMap l (Maybe (LocationShape r))
@@ -100,13 +94,7 @@ encodeCountersView :: (Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn) => Counters
 encodeCountersView = toJSON . fmap (fmap encodeCounter)
 
 buildView' :: Maybe Player -> GameState l cn r ph pl -> GameObjectsView l cn r
-buildView' (Just p) gs =
-  let VisibilityMap vis = gs ^. #visibility
-      locs = gs ^. #objects . #locations
-      counters = gs ^. #objects . #counters
-      locView l = runVis (vis p (VisLocation l)) (locs !!! l)
-      cView cn = runVis (vis p (VisCounter cn)) (counters !!! cn)
-   in GameObjectsView (FTMap locView) (FTMap cView)
+buildView' (Just p) gs = viewObjectsAs' (gs ^. #objects) (gs ^. #visibility) p
 buildView' Nothing gs =
   GameObjectsView
     (gs ^. #objects . #locations . to (fmap Just))
@@ -149,12 +137,12 @@ viewObjectsAs' objs (VisibilityMap vis') p =
    in GameObjectsView (FTMap locsView) (FTMap cnsView)
 
 viewGameStateAs' :: GameState l cn r ph pl -> Player -> GameStateView l cn r ph
-viewGameStateAs' gs@(GameState {players = ps, currentPhase = cphase, currentTurn = (Turn p' _)}) p =
+viewGameStateAs' gs p =
   GameStateView
-    ps
+    (gs ^. #players)
     (buildView' (Just p) gs)
-    cphase
-    p'
+    (gs ^. #currentPhase)
+    (gs ^. #currentTurn . #owner)
 
 viewGameStateAs :: GameState l cn r ph pl -> LookerType -> GameStateView l cn r ph
 viewGameStateAs gs (LookAs p) = viewGameStateAs' gs p

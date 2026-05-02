@@ -61,7 +61,7 @@ drawDice csv =
 
 drawMenu :: CSTUIState -> Widget Name
 drawMenu tui =
-  let p = tui ^. #gameStateView . #currPlayer
+  let p = tui ^. #gameStateView . #currentPlayerView
       playerW = withAttr (playerToColor p) (txtWrap (T.pack . show $ p))
    in border . padBottom Max $
         case tui ^. #tuiMode of

@@ -75,7 +75,7 @@ drawCard i chips =
 
 drawMenu :: NMTUIState -> Widget Name
 drawMenu tui =
-  let p = tui ^. #gameStateView . #currPlayer
+  let p = tui ^. #gameStateView . #currentPlayerView
       playerW = strWrap (displayPlayer p)
    in padTop (Pad 1) . hLimit 15 . vLimit 15 $
         case tui ^. #tuiMode of

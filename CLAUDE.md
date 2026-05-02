@@ -94,3 +94,7 @@ See `Games/NoMerci/` as the reference implementation:
 4. `Main.hs` — wire together with `buildInterface`, `runGameSeparateChannels`, and `server`
 
 `Helpers/Helpers.hs` provides game-writing utilities (`transfer`, `draw`, `advanceTurn`, `endGame`, `activePlayer`, etc.) that wrap `Game.Rules` combinators.
+
+## Workflow
+
+When making code changes during a review, apply the change first and show the before/after diff, rather than describing the change and asking for approval. Only ask upfront when there is a real design choice to make.

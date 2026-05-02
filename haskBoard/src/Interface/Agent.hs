@@ -3,7 +3,8 @@ module Interface.Agent where
 import Brick.BChan (BChan, readBChan, writeBChan)
 import Control.Concurrent (Chan, readChan, writeChan)
 import Control.Lens ((^.))
-import Control.Monad.Random (forever, randomRIO)
+import Control.Monad (forever)
+import Control.Monad.Random (randomRIO)
 import Data.Finitary (Finitary)
 import qualified Data.List.NonEmpty as NE
 import Game.Agent
@@ -87,5 +88,5 @@ randomAgent fromGameChan toGameChan =
     chooseRandom _ (Options legal _) =
       let numOptions = length legal
        in do
-            choice <- randomRIO (1, numOptions)
-            return (legal NE.!! (choice - 1))
+            choice <- randomRIO (0, numOptions - 1)
+            return (legal NE.!! choice)

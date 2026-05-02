@@ -197,7 +197,7 @@ viewCounterVal :: (Eq cn) => GameStateView l cn r ph -> cn -> Maybe Int
 viewCounterVal gsv cn = view #val <$> gsv ^. #objectsView . #countersView . ftAt cn
 
 viewCurrentPlayer :: GameStateView l cn r ph -> Player
-viewCurrentPlayer gsv = gsv ^. #currPlayer
+viewCurrentPlayer gsv = gsv ^. #currentPlayerView
 
 viewHowManyAt :: (Ord r, Eq l) => GameStateView l cn r ph -> l -> r -> Maybe Int
 viewHowManyAt g l r = flip howMany' r <$> viewLocation g l
