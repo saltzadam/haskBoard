@@ -13,6 +13,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Tuple (swap)
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -114,6 +115,15 @@ safeIndexList i xs = if i < 0 then Nothing else safeIndexList' i (F.toList xs)
     safeIndexList' i (x : xs) = if i == 0 then Just x else safeIndexList' (i - 1) xs
     safeIndexList' _ [] = Nothing
 
+
+invertNestedMaps :: (Ord k, Ord k') => Map k (Map k' v) -> Map k' (Map k v)
+invertNestedMaps = uncurryMap . M.mapKeys swap . curryMap
+  where
+    uncurryMap :: (Ord k) => Map (k, k') v -> Map k (Map k' v)
+    uncurryMap = M.mapKeys fst . M.mapWithKey (\(_, k') v -> M.singleton k' v)
+
+    curryMap :: (Ord k, Ord k') => Map k (Map k' v) -> Map (k, k') v
+    curryMap = M.unions . fmap snd . M.toList . M.mapWithKey (\k mapk' -> M.mapKeys (k,) mapk')
 
 concatNE :: NonEmpty (NonEmpty a) -> NonEmpty a
 concatNE = foldMap1 id

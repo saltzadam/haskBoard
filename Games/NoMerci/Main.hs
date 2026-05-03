@@ -36,11 +36,12 @@ main = do
   withWorker
     ( void $
         runGameSeparateChannels
+          "nomerci.log"
           interface
           gs
           gr
     )
-    (server interface)
+    (server 3 interface)
 
 -- -- need to start writing to channels before reading them
 -- main :: IO ()

@@ -93,21 +93,28 @@ decodeLocationsView = fmap (fmap (decodeLocationShape . fromGymShape)) . (fromJu
 encodeCountersView :: (Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn) => CountersView cn -> Value
 encodeCountersView = toJSON . fmap (fmap encodeCounter)
 
-buildView' :: Maybe Player -> GameState l cn r ph pl -> GameObjectsView l cn r
-buildView' (Just p) gs = viewObjectsAs' (gs ^. #objects) (gs ^. #visibility) p
-buildView' Nothing gs =
-  GameObjectsView
-    (gs ^. #objects . #locations . to (fmap Just))
-    (gs ^. #objects . #counters . to (fmap Just))
-
 data GameObjectsView l cn r = GameObjectsView
   { locationsView :: LocationsView l r,
     countersView :: CountersView cn
   }
   deriving (Generic, Show)
 
-makeFields ''GameStateView
-makeFields ''GameObjectsView
+viewObjectsAs' :: GameObjects l cn r -> VisibilityMap l cn ph -> Player -> GameObjectsView l cn r
+viewObjectsAs' objs (VisibilityMap vis') p =
+  let locs = objs ^. #locations
+      locsVisMap = vis' p . VisLocation
+      locsView = runVis <$> locsVisMap <*> (locs !!!)
+      cns = objs ^. #counters
+      cnsVisMap = vis' p . VisCounter
+      cnsView = runVis <$> cnsVisMap <*> (cns !!!)
+   in GameObjectsView (FTMap locsView) (FTMap cnsView)
+
+buildView' :: Maybe Player -> GameState l cn r ph pl -> GameObjectsView l cn r
+buildView' (Just p) gs = viewObjectsAs' (gs ^. #objects) (gs ^. #visibility) p
+buildView' Nothing gs =
+  GameObjectsView
+    (gs ^. #objects . #locations . to (fmap Just))
+    (gs ^. #objects . #counters . to (fmap Just))
 
 instance (Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn, Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l) => ToJSON (GameObjectsView l cn r) where
   toJSON (GameObjectsView locs cts) =
@@ -126,16 +133,6 @@ deriving instance (FromJSON r, FromJSON l, FromJSON cn, Finitary l, Finitary r, 
 
 deriving instance (ToJSON ph, Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn, Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l) => ToJSON (GameStateView l cn r ph)
 
-viewObjectsAs' :: GameObjects l cn r -> VisibilityMap l cn ph -> Player -> GameObjectsView l cn r
-viewObjectsAs' objs (VisibilityMap vis') p =
-  let locs = objs ^. #locations
-      locsVisMap = vis' p . VisLocation
-      locsView = runVis <$> locsVisMap <*> (locs !!!)
-      cns = objs ^. #counters
-      cnsVisMap = vis' p . VisCounter
-      cnsView = runVis <$> cnsVisMap <*> (cns !!!)
-   in GameObjectsView (FTMap locsView) (FTMap cnsView)
-
 viewGameStateAs' :: GameState l cn r ph pl -> Player -> GameStateView l cn r ph
 viewGameStateAs' gs p =
   GameStateView
@@ -147,3 +144,6 @@ viewGameStateAs' gs p =
 viewGameStateAs :: GameState l cn r ph pl -> LookerType -> GameStateView l cn r ph
 viewGameStateAs gs (LookAs p) = viewGameStateAs' gs p
 viewGameStateAs gs LookFull = project gs
+
+makeFields ''GameStateView
+makeFields ''GameObjectsView
