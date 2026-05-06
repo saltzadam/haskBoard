@@ -1,0 +1,22 @@
+[project]
+name = "haskboard"
+version = "0.1.0"
+description = "Python training interface for haskboard MARL games"
+requires-python = ">=3.10"
+dependencies = [
+    "agilerl",
+    "gymnasium",
+    "numpy",
+    "pettingzoo",
+    "torch",
+]
+
+[project.scripts]
+train = "main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

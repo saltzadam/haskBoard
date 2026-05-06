@@ -1,0 +1,47 @@
+module Interface.Training
+  ( stdioTrainingLoop,
+  )
+where
+
+import Control.Monad (void)
+import Data.Aeson (decodeStrict)
+import qualified Data.ByteString as BS
+import Data.Finitary (Finitary)
+import Game.GameState (GameRules, GameState)
+import Interface.Controller (GameController)
+import Interface.Stdio (InMsg (..), sendInit)
+import Run (runGameSeparateChannels)
+import System.IO (BufferMode (..), hSetBuffering, stdin, stdout)
+
+-- | Run the game in a loop for MARL training.
+-- Sends a single InitMsg on startup, then runs games forever.
+-- After each game ends (SendWinners), waits for a {"type":"reset"} from stdin
+-- before starting the next episode.  The GameController (and its channels)
+-- is reused across episodes — build it once before calling this function.
+stdioTrainingLoop
+  :: ( Ord l, Ord r, Ord cn
+     , Show ph, Show cn, Show l, Show r, Show pl
+     , Eq ph
+     , Finitary cn, Finitary l, Finitary r, Finitary pl
+     )
+  => (GameState l cn r ph pl, GameRules l cn r ph pl)
+  -> FilePath
+  -> GameController l cn r ph pl
+  -> IO ()
+stdioTrainingLoop (gs0, gr0) logFile controller = do
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stdin LineBuffering
+  sendInit gs0
+  loop
+  where
+    loop = do
+      void $ runGameSeparateChannels logFile controller gs0 gr0
+      waitForReset
+      loop
+
+waitForReset :: IO ()
+waitForReset = do
+  line <- BS.getLine
+  case decodeStrict line :: Maybe InMsg of
+    Just ResetMsg -> return ()
+    _             -> waitForReset

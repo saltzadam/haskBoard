@@ -91,7 +91,7 @@ initGameObjects ps =
       counters = FTMap (const dummyCounter)
     }
 
-data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
+data NMPlayName = Take | Decline deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 data NMPhaseName = Setup | NMTurnPhase Player deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 

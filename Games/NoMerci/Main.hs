@@ -8,9 +8,10 @@ module Main where
 import Brick (customMainWithDefaultVty)
 import Brick.BChan (newBChan)
 import Brick.Game.Tui (TUIMode (..), TUIState (..))
+import Control.Concurrent (MVar, forkIO, newMVar)
 import Control.Concurrent.Async (withAsync)
 import Control.Lens ((^.))
-import Control.Monad (void)
+import Control.Monad (forM_, void)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Game.Player (Player (..))
@@ -18,8 +19,11 @@ import Game.View (viewGameStateAs')
 import Interface.Agent (brickAgent, randomAgent, runAgentIO)
 import Interface.Controller (PlayerInterface (..), buildInterface)
 import Interface.Server (server)
+import Interface.Stdio (runStdioAgent)
+import Interface.Training (stdioTrainingLoop)
 import NoMerci
 import Run (runGameSeparateChannels)
+import System.Environment (getArgs)
 import Tui (app)
 
 withWorker :: IO a -> IO a -> IO a
@@ -27,21 +31,31 @@ withWorker outer inner = withAsync outer $ const inner
 
 main :: IO ()
 main = do
+  args <- getArgs
+  if "--stdio" `elem` args
+    then runStdioMode
+    else runServerMode
+
+runServerMode :: IO ()
+runServerMode = do
   let gs = fst (noMerci 3)
   let gr = snd (noMerci 3)
   let players = S.toList (gs ^. #players)
   interface <- buildInterface players
-  let channels = fmap (\(PlayerInterface fromChan toChan) -> (fromChan, toChan)) (interface ^. #playerInterfaces)
-
   withWorker
-    ( void $
-        runGameSeparateChannels
-          "nomerci.log"
-          interface
-          gs
-          gr
-    )
+    (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
     (server 3 interface)
+
+runStdioMode :: IO ()
+runStdioMode = do
+  let gs = fst (noMerci 3)
+  let gr = snd (noMerci 3)
+  let players = S.toList (gs ^. #players)
+  interface <- buildInterface players
+  lock <- newMVar ()
+  forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
+    void $ forkIO $ runStdioAgent p lock players fromChan toChan
+  stdioTrainingLoop (gs, gr) "training.log" interface
 
 -- -- need to start writing to channels before reading them
 -- main :: IO ()

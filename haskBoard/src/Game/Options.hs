@@ -6,9 +6,11 @@ module Game.Options where
 import Control.Lens (makeFields)
 import Control.Monad (filterM)
 import Data.Aeson (FromJSON, ToJSON)
+import Data.Finitary (Finitary (..), inhabitants, toFinite, fromFinite)
 import Data.Generics.Labels ()
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
+import Data.Proxy (Proxy (..))
 import GHC.Generics (Generic)
 import Game.Player
 import Util (buildSafeNonempty)
@@ -63,3 +65,15 @@ unlessYouCould mcomparer mopts = do
   newLegal <- helpM mcomparer (NE.toList legal)
   -- TODO: NE.fromList is partial — if mcomparer or mopts is bad, newLegal can be []. Needs proper error handling.
   return $ Options (NE.fromList newLegal) p
+
+-- Sparse list of legal action indices (0-indexed by Finitary ordering)
+legalActionIndices :: forall pl. (Finitary pl) => Options pl -> [Int]
+legalActionIndices (Options legal' _) = fromIntegral . toFinite <$> NE.toList legal'
+
+-- Total number of actions in the action space
+actionSpaceSize :: forall pl. (Finitary pl) => Proxy pl -> Int
+actionSpaceSize _ = length (inhabitants @pl)
+
+-- Decode an action index back to pl
+decodeAction :: (Finitary pl) => Int -> pl
+decodeAction i = fromFinite (fromIntegral i)

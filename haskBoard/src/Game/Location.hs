@@ -46,20 +46,27 @@ module Game.Location
     fromGymShape,
     decodeLocationShape,
     decodeCounter,
+    GymSpace (..),
+    locationShapeSpace,
+    counterSpace,
+    gameObjectsSpace,
+    infiniteUpperBound,
+    encodeLocationObs,
+    encodeCounterObs,
   )
 where
 
 import Control.Lens (makeFields, set)
-import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, decodeStrict)
+import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, decodeStrict, object, (.=))
 import Data.Aeson.Types (Value)
-import Data.Finitary (Finitary (..))
+import Data.Finitary (Finitary (..), inhabitants)
 import Data.Generics.Labels ()
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromJust, fromMaybe, listToMaybe)
 import Data.Sequence (Seq (Empty, (:<|)), (<|))
 import qualified Data.Sequence as Seq
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import qualified Data.Text.Encoding as T
 import FinitaryMap (FTMap (..), (!!!))
 import qualified FinitaryMap as FT
@@ -348,3 +355,58 @@ data GameObjects n cn r = GameObjects
   deriving (Generic, FromJSON, ToJSON)
 
 makeFields ''GameObjects
+
+-- ---- Gym / training interface types ----
+
+data GymSpace
+  = GymDiscrete Int
+  | GymBox Float Float [Int]
+  | GymMultiBinary Int
+  | GymMultiDiscrete [Int]
+  | GymSequence GymSpace
+  | GymDict [(Text, GymSpace)]
+  deriving (Show, Generic)
+
+instance ToJSON GymSpace where
+  toJSON (GymDiscrete n)       = object ["type" .= ("Discrete" :: Text), "n" .= n]
+  toJSON (GymBox lo hi shape)  = object ["type" .= ("Box" :: Text), "low" .= lo, "high" .= hi, "shape" .= shape]
+  toJSON (GymMultiBinary n)    = object ["type" .= ("MultiBinary" :: Text), "n" .= n]
+  toJSON (GymMultiDiscrete nv) = object ["type" .= ("MultiDiscrete" :: Text), "nvec" .= nv]
+  toJSON (GymSequence s)       = object ["type" .= ("Sequence" :: Text), "space" .= s]
+  toJSON (GymDict pairs)       = object ["type" .= ("Dict" :: Text), "spaces" .= M.fromList pairs]
+
+infiniteUpperBound :: Int
+infiniteUpperBound = 1000
+
+locationShapeSpace :: forall r. (Finitary r) => LocationShape r -> GymSpace
+locationShapeSpace (Slot _)     = GymDiscrete (n + 1)
+  where n = length (inhabitants @r)
+locationShapeSpace (Pile _)     = GymMultiDiscrete (replicate n n)
+  where n = length (inhabitants @r)
+locationShapeSpace (Deck _)     = GymSequence (GymDiscrete n)
+  where n = length (inhabitants @r)
+locationShapeSpace (Infinite _) = GymDiscrete infiniteUpperBound
+locationShapeSpace Dummy        = GymDiscrete 1
+
+counterSpace :: Counter -> GymSpace
+counterSpace (Counter _ (lo, hi)) = GymBox (fromIntegral lo) (fromIntegral hi) [1]
+
+gameObjectsSpace
+  :: forall l cn r. (Finitary l, Finitary cn, Finitary r, Show l, Show cn)
+  => GameObjects l cn r -> GymSpace
+gameObjectsSpace (GameObjects locs cns) = GymDict $
+  [(pack (show l), locationShapeSpace (locs !!! l)) | l <- inhabitants @l]
+  ++ [(pack (show cn), counterSpace (cns !!! cn)) | cn <- inhabitants @cn]
+
+encodeLocationObs :: forall r. (Finitary r, Ord r) => Maybe (LocationShape r) -> Value
+encodeLocationObs Nothing                = toJSON (Nothing :: Maybe ())
+encodeLocationObs (Just (Slot Nothing))  = toJSON (0 :: Int)
+encodeLocationObs (Just (Slot (Just r))) = toJSON (fromIntegral (toFinite r) + 1 :: Int)
+encodeLocationObs (Just (Pile m))        = toJSON [M.findWithDefault 0 r m | r <- inhabitants @r]
+encodeLocationObs (Just (Deck s))        = toJSON [fromIntegral (toFinite r) :: Int | r <- foldr (:) [] s]
+encodeLocationObs (Just (Infinite _))    = toJSON [infiniteUpperBound :: Int]
+encodeLocationObs (Just Dummy)           = toJSON (0 :: Int)
+
+encodeCounterObs :: Maybe Counter -> Value
+encodeCounterObs Nothing              = toJSON [0 :: Int]
+encodeCounterObs (Just (Counter v _)) = toJSON [v]
