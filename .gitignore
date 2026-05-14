@@ -24,4 +24,5 @@ cabal.project.local~
 *.log
 log
 python/__pycache__/
+python/runs
 

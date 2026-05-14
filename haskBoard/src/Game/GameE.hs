@@ -196,7 +196,11 @@ playGameTurns setupPhaseName = do
 
 -- Run rule and return appropriate PhaseControl
 runRuleControl' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Free (GameRuleF l cn r ph pl) a -> Eff es PhaseControl
-runRuleControl' (Free (Act action next)) = runGameAction action >> runRuleControl' next
+runRuleControl' (Free (Act action next)) = do
+  result <- runGameAction action
+  case result of
+    PCContinue -> runRuleControl' next
+    _          -> return result
 runRuleControl' (Free (MakeChoice opts _)) = do
   gs <- getGameState
   pl <- choose gs opts

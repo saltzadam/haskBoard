@@ -38,11 +38,10 @@ import Game.Location
     GymSpace (..),
     encodeCounterObs,
     encodeLocationObs,
-    gameObjectsSpace,
   )
 import Game.Options (Options (..), actionSpaceSize, decodeAction, legalActionIndices)
 import Game.Player (Player (..))
-import Game.View (GameObjectsView (..), GameStateView (..))
+import Game.View (GameObjectsView (..), GameStateView (..), gameObjectsViewSpace, viewGameStateAs')
 
 -- ---- Message types ----
 
@@ -108,8 +107,12 @@ sendInit
 sendInit gs = putJson msg
   where
     toAgentNum (Player pnum) = fromEnum pnum
-    agentNums = map toAgentNum (S.toList (gs ^. #players))
-    obsSpace  = gameObjectsSpace (gs ^. #objects)
+    players   = S.toList (gs ^. #players)
+    agentNums = map toAgentNum players
+    -- Use a player's view so invisible locations get a 1-dim placeholder
+    -- rather than their full (but always-zero) space.
+    objsView  = (viewGameStateAs' gs (head players)) ^. #objectsView
+    obsSpace  = gameObjectsViewSpace objsView
     actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
     msg       = InitMsg agentNums obsSpace actSpace
 

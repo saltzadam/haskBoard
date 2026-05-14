@@ -9,7 +9,8 @@ import Control.Lens (to, (^.))
 import Control.Lens.TH (makeFields)
 import Control.Monad.Free (Free (..))
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, Value, decodeStrict, object, withObject, (.:), (.=))
-import Data.Finitary (Finitary)
+import Data.Finitary (Finitary (..), inhabitants)
+import Data.Text (pack)
 import Data.Maybe (fromJust)
 import Data.Set (Set)
 import Data.Text (Text)
@@ -18,7 +19,7 @@ import Effectful (Eff, (:>))
 import FinitaryMap (FTMap (..), ftAt, (!!!))
 import GHC.Generics (Generic)
 import Game.GameState
-import Game.Location (Counter, GameObjects, LocationShape, decodeCounter, decodeLocationShape, encodeCounter, encodeLocationShape, fromGymShape, toGymShape)
+import Game.Location (Counter, GameObjects, GymSpace (..), LocationShape, counterSpace, decodeCounter, decodeLocationShape, encodeCounter, encodeLocationShape, fromGymShape, locationShapeSpace, toGymShape)
 import Game.Options (Options)
 import Game.Player (Player, Turn (..))
 import Game.Rules
@@ -147,3 +148,17 @@ viewGameStateAs gs LookFull = project gs
 
 makeFields ''GameStateView
 makeFields ''GameObjectsView
+
+-- | Derive a GymSpace descriptor from a player's view of the game objects.
+-- Invisible locations/counters (Nothing in the view) become a 1-dim zero
+-- placeholder so the observation vector has a fixed size regardless of
+-- visibility, but without allocating space for structure the agent can't see.
+gameObjectsViewSpace
+  :: forall l cn r. (Finitary l, Finitary cn, Finitary r, Show l, Show cn)
+  => GameObjectsView l cn r -> GymSpace
+gameObjectsViewSpace (GameObjectsView locsView cnsView) = GymDict $
+  [ (pack (show l), maybe (GymBox 0 0 [1]) locationShapeSpace (locsView !!! l))
+  | l <- inhabitants @l ]
+  ++
+  [ (pack (show cn), maybe (GymBox 0 0 [1]) counterSpace (cnsView !!! cn))
+  | cn <- inhabitants @cn ]

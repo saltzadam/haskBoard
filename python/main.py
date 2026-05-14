@@ -12,6 +12,10 @@ Docs:
 from __future__ import annotations
 
 import argparse
+import csv
+import sys
+import time
+from pathlib import Path
 
 import gymnasium
 import numpy as np
@@ -71,7 +75,19 @@ def train(
     max_steps: int = 500,
     device: str = "cpu",
     max_seq_len: int = 64,
+    log_dir: str = "runs",
+    checkpoint_interval: int = 100,
+    resume: str | None = None,
 ) -> None:
+    run_dir = Path(log_dir) / time.strftime("%Y%m%d_%H%M%S")
+    ckpt_dir = run_dir / "checkpoints"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    metrics_file = (run_dir / "metrics.csv").open("w", newline="")
+    metrics_writer = csv.writer(metrics_file)
+    metrics_writer.writerow(["episode", "steps", "total_reward", "mean_reward_50"])
+    print(f"Logging to {run_dir}")
+
     env = HaskboardEnv(binary)
 
     native_obs_space = env.observation_space(env.possible_agents[0])
@@ -87,12 +103,16 @@ def train(
     print(f"Obs dim:  {obs_dim}  (flattened)")
     print(f"Act dim:  {native_act_space.n}")  # type: ignore[attr-defined]
 
-    agent = IPPO(
-        observation_spaces=[flat_obs_space] * len(env.possible_agents),
-        action_spaces=[native_act_space] * len(env.possible_agents),
-        agent_ids=env.possible_agents,
-        device=device,
-    )
+    if resume:
+        agent = IPPO.load(resume, device=device)
+        print(f"Resumed from {resume}")
+    else:
+        agent = IPPO(
+            observation_spaces=[flat_obs_space] * len(env.possible_agents),
+            action_spaces=[native_act_space] * len(env.possible_agents),
+            agent_ids=env.possible_agents,
+            device=device,
+        )
     learn_step: int = agent.learn_step
 
     def flat(obs) -> np.ndarray:
@@ -138,6 +158,7 @@ def train(
     steps_since_flush = 0
     states: dict[str, np.ndarray] = {a: np.zeros(obs_dim, dtype=np.float32) for a in env.possible_agents}
     final_done = False
+    best_mean_reward = float("-inf")
 
     for episode in range(1, n_episodes + 1):
         observations, _ = env.reset()
@@ -146,6 +167,7 @@ def train(
 
         step = 0
         final_done = False
+        ep_start = time.monotonic()
         while env.agents and step < max_steps:
             current = env.agent_selection
 
@@ -180,15 +202,40 @@ def train(
             if final_done:
                 break
 
-        ep_rewards.append(sum(ep_reward.values()))
-        if episode % 50 == 0:
-            mean_r = float(np.mean(ep_rewards[-50:]))
-            print(f"Episode {episode:>5} | mean reward (last 50): {mean_r:+.3f}")
+        ep_duration = time.monotonic() - ep_start
+        total_reward = sum(ep_reward.values())
+        ep_rewards.append(total_reward)
+        mean_r = float(np.mean(ep_rewards[-50:]))
+        steps_per_sec = step / ep_duration if ep_duration > 0 else 0.0
+
+        metrics_writer.writerow([episode, step, f"{total_reward:.3f}", f"{mean_r:.3f}"])
+        metrics_file.flush()
+
+        if episode % 1 == 0:
+            print(
+                f"Episode {episode:>5} | steps {step:>4} | "
+                f"reward {total_reward:+.2f} | mean50 {mean_r:+.3f} | "
+                f"{steps_per_sec:.1f} steps/s"
+            )
+
+        # Periodic checkpoint
+        if episode % checkpoint_interval == 0:
+            ckpt_path = str(ckpt_dir / f"ep{episode}.pt")
+            agent.save_checkpoint(ckpt_path)
+            print(f"  → checkpoint saved: {ckpt_path}")
+
+        # Best checkpoint
+        if mean_r > best_mean_reward and episode >= 50:
+            best_mean_reward = mean_r
+            agent.save_checkpoint(str(run_dir / "best.pt"))
 
     # Final flush for any remaining experience
     flush(states, final_done)
+    agent.save_checkpoint(str(run_dir / "final.pt"))
+    metrics_file.close()
     env.close()
-    print("Training complete.")
+    print(f"Training complete. Best mean reward: {best_mean_reward:+.3f}")
+    print(f"Artifacts in {run_dir}")
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +258,22 @@ def main() -> None:
         default=64,
         help="Pad length for variable-length Sequence obs (Deck locations)",
     )
+    parser.add_argument(
+        "--log-dir",
+        default="runs",
+        help="Directory for metrics CSV and checkpoints (default: runs/)",
+    )
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=int,
+        default=100,
+        help="Save a checkpoint every N episodes (default: 100)",
+    )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="Path to a checkpoint .pt file to resume training from",
+    )
     args = parser.parse_args()
 
     train(
@@ -219,8 +282,12 @@ def main() -> None:
         max_steps=args.max_steps,
         device=args.device,
         max_seq_len=args.max_seq_len,
+        log_dir=args.log_dir,
+        checkpoint_interval=args.checkpoint_interval,
+        resume=args.resume,
     )
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
     main()
