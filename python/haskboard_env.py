@@ -144,9 +144,6 @@ class HaskboardEnv(AECEnv):
 
         self.agent_selection: str = self.agents[0]
 
-        # Read the first step message from the initial game
-        self._advance()
-
     # ------------------------------------------------------------------
     # Low-level I/O
     # ------------------------------------------------------------------
@@ -174,6 +171,7 @@ class HaskboardEnv(AECEnv):
         obs_space = self.observation_spaces[agent_name]
         self._observations[agent_name] = _obs_to_numpy(msg["observation"], obs_space)
         self._legal_actions[agent_name] = msg["legalActions"]
+        
 
         if msg["msgType"] == "terminal":
             self._rewards[agent_name] = msg["reward"]
@@ -214,7 +212,6 @@ class HaskboardEnv(AECEnv):
         options: dict | None = None,
     ) -> tuple[dict[str, Any], dict[str, dict]]:
         self._send({"type": "reset"})
-
         self.agents = list(self.possible_agents)
         obs_space = self.observation_spaces[self.agents[0]]
         self._observations = {a: _zeros(obs_space) for a in self.agents}

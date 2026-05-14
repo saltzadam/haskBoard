@@ -177,6 +177,8 @@ def train(
                 steps_since_flush = 0
 
             step += 1
+            if final_done:
+                break
 
         ep_rewards.append(sum(ep_reward.values()))
         if episode % 50 == 0:
