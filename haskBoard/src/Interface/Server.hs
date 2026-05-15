@@ -4,24 +4,32 @@
 
 module Interface.Server where
 
-import Control.Concurrent (MVar, forkIO, modifyMVar, modifyMVar_, newMVar, putMVar, readChan, readMVar, threadDelay, writeChan)
-import Control.Concurrent.Async (forConcurrently_, withAsync)
+import Control.Concurrent (MVar, forkIO, modifyMVar, modifyMVar_, newMVar, readChan, readMVar, threadDelay, writeChan)
+import Control.Concurrent.Async (withAsync)
 import Control.Exception (finally)
 import Control.Lens (makeFields, over, (^.))
 import Control.Monad (forM_, forever, void)
 import Control.Monad.Except (ExceptT (..), runExceptT)
 import Control.Monad.Trans (lift)
-import Data.Aeson (FromJSON (..), ToJSON (..), ToJSONKey, decode)
+import Data.Aeson (FromJSON (..), ToJSON (..), ToJSONKey, decode, toJSON)
 import Data.Aeson.Text (encodeToLazyText)
+import qualified Data.ByteString.Lazy as LBS
 import Data.Finitary (Finitary)
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Proxy (Proxy (..))
+import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Game.Choose (GameToInterfacePayload (..))
+import Game.GameState (GameState)
+import Game.Location (GymSpace (..))
+import Game.Options (actionSpaceSize, decodeAction, legalActionIndices)
 import Game.Player (Player (..), PlayerNum, mkPlayers)
+import Game.View (GameStateView (..), gameObjectsViewSpace, viewGameStateAs')
 import Interface.Controller (GameController, PlayerInterface (..))
+import Interface.Stdio (InitMsg (..), InMsg (..), StepMsg (..), encodeGameObjectsObs)
 import Network.WebSockets as WS
 import Text.Read (readMaybe)
 import Util (ifM)
@@ -63,21 +71,24 @@ broadcast message server_ = do
   forM_ (M.toList $ server_ ^. #clients) $ \(_, conn) -> WS.sendTextData conn message
 
 server ::
-  (Finitary l, Finitary cn, Finitary r, Ord l, Ord cn, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl) =>
+  (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord l, Ord cn, Ord r, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl, Show l, Show cn) =>
   Int ->
+  GameState l cn r ph pl ->
   GameController l cn r ph pl ->
   IO ()
-server numPlayers controller = do
+server numPlayers gs controller = do
   state <- newMVar (newServerState numPlayers)
-  WS.runServer "127.0.0.1" 9159 $ (application controller) state
+  WS.runServer "127.0.0.1" 9159 $ application gs controller state
 
 application ::
-  (Finitary l, Finitary cn, Finitary r, Ord l, Ord cn, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl) =>
+  forall l cn r ph pl.
+  (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord l, Ord cn, Ord r, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl, Show l, Show cn) =>
+  GameState l cn r ph pl ->
   GameController l cn r ph pl ->
   MVar ServerState ->
   PendingConnection ->
   IO ()
-application controller state pending = do
+application gs controller state pending = do
   conn <- WS.acceptRequest pending
   void $
     forkIO $
@@ -114,6 +125,14 @@ application controller state pending = do
               broadcast (T.pack (show (fst client)) <> " joined") s'
               return s'
 
+            -- Send InitMsg so clients can build obs/act spaces
+            let allNums   = map (\(Player pn) -> fromEnum pn) (S.toList (gs ^. #players))
+                objsView  = (viewGameStateAs' gs player') ^. #objectsView
+                obsSpace  = gameObjectsViewSpace objsView
+                actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
+                initMsg   = InitMsg allNums obsSpace actSpace
+            WS.sendTextData conn (encodeToLazyText (toJSON initMsg))
+
             forever $
               ifM
                 ((\ss -> ss ^. #serverStatus == Active) <$> readMVar state)
@@ -135,7 +154,7 @@ withWorker :: IO a -> IO a -> IO a
 withWorker outer inner = withAsync outer $ const inner
 
 runGame ::
-  (Finitary l, Finitary cn, Finitary r, Ord l, Ord cn, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl) =>
+  (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord l, Ord cn, Ord r, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl, Show l, Show cn) =>
   GameController l cn r ph pl ->
   MVar ServerState ->
   IO ()
@@ -148,7 +167,7 @@ exit :: e -> ExceptT e IO a
 exit = ExceptT . return . Left
 
 playerWorker ::
-  (Finitary l, Finitary cn, Finitary r, Ord l, Ord cn, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl) =>
+  (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord l, Ord cn, Ord r, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl, Show l, Show cn) =>
   GameController l cn r ph pl ->
   Player ->
   MVar ServerState ->
@@ -158,16 +177,27 @@ playerWorker controller p ss = forever $ do
   let conn = (ss' ^. #clients) M.! p
   let PlayerInterface fromGameChan toGameChan = (controller ^. #playerInterfaces) M.! p
   fromGameMsg <- readChan fromGameChan
-  -- WS.sendTextData conn (encodeToLazyText fromGameMsg)
   case fromGameMsg of
     SendState gsv -> do
       let gsvJSON = toJSON gsv
       WS.sendTextData conn (encodeToLazyText gsvJSON)
-    SendOptions _ _ -> do
+    SendOptions gsv opts -> do
+      let GameStateView _ objsView _ _ = gsv
+          Player agentPnum = opts ^. #owner
+          agentNum = fromEnum agentPnum
+          obs   = encodeGameObjectsObs objsView
+          legal = legalActionIndices opts
+          msg   = StepMsg "step" agentNum obs legal 0.0 False False
+      WS.sendTextData conn (encodeToLazyText (toJSON msg))
       void $ runExceptT $ forever $ do
-        -- loop with break
-        response <- lift (WS.receiveData conn)
+        response <- lift (WS.receiveData conn :: IO LBS.ByteString)
         case decode response of
-          Just (responseEncoded :: pl) -> lift (writeChan toGameChan responseEncoded) >> exit ()
-          Nothing -> lift (WS.sendTextData conn ("invalid play" :: Text))
+          Just (ActionMsg i) -> lift (writeChan toGameChan (decodeAction i)) >> exit ()
+          _                  -> lift $ WS.sendTextData conn ("invalid play" :: Text)
+    SendWinners winners -> do
+      let Player thisPnum = p
+          agentNum = fromEnum thisPnum
+          reward   = if p `elem` winners then 1.0 else -1.0 :: Float
+          msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False
+      WS.sendTextData conn (encodeToLazyText (toJSON msg))
     _ -> return ()

@@ -44,7 +44,7 @@ runServerMode = do
   interface <- buildInterface players
   withWorker
     (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
-    (server 3 interface)
+    (server 3 gs interface)
 
 runStdioMode :: IO ()
 runStdioMode = do
