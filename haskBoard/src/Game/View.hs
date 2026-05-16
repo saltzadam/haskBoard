@@ -9,6 +9,7 @@ import Control.Lens (to, (^.))
 import Control.Lens.TH (makeFields)
 import Control.Monad.Free (Free (..))
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, Value, decodeStrict, object, withObject, (.:), (.=))
+import Game.Constraints (GameCounter, GameLocation, GamePhase, GameResource)
 import Data.Finitary (Finitary (..), inhabitants)
 import Data.Text (pack)
 import Data.Maybe (fromJust)
@@ -117,22 +118,22 @@ buildView' Nothing gs =
     (gs ^. #objects . #locations . to (fmap Just))
     (gs ^. #objects . #counters . to (fmap Just))
 
-instance (Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn, Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l) => ToJSON (GameObjectsView l cn r) where
+instance (GameLocation l, GameCounter cn, GameResource r) => ToJSON (GameObjectsView l cn r) where
   toJSON (GameObjectsView locs cts) =
     object
       [ "locations" .= encodeLocationsView locs,
         "counters" .= encodeCountersView cts
       ]
 
-instance (FromJSON r, FromJSON l, FromJSON cn, Finitary l, Finitary r, Finitary cn, Ord cn, Ord l, FromJSONKey cn, Ord r, FromJSONKey l, FromJSONKey r) => FromJSON (GameObjectsView l cn r) where
+instance (GameLocation l, GameCounter cn, GameResource r) => FromJSON (GameObjectsView l cn r) where
   parseJSON = withObject "GameObjectsView" $ \v ->
     GameObjectsView
       <$> v .: "locations"
       <*> v .: "counters"
 
-deriving instance (FromJSON r, FromJSON l, FromJSON cn, Finitary l, Finitary r, Finitary cn, Ord cn, Ord l, FromJSONKey cn, Ord r, FromJSONKey l, FromJSONKey r, Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn, Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l, FromJSON ph) => FromJSON (GameStateView l cn r ph)
+deriving instance (GameLocation l, GameCounter cn, GameResource r, GamePhase ph) => FromJSON (GameStateView l cn r ph)
 
-deriving instance (ToJSON ph, Finitary cn, ToJSON cn, Ord cn, ToJSONKey cn, Finitary r, Finitary l, ToJSON r, ToJSON l, Ord l, ToJSONKey l) => ToJSON (GameStateView l cn r ph)
+deriving instance (GameLocation l, GameCounter cn, GameResource r, GamePhase ph) => ToJSON (GameStateView l cn r ph)
 
 viewGameStateAs' :: GameState l cn r ph pl -> Player -> GameStateView l cn r ph
 viewGameStateAs' gs p =
@@ -154,7 +155,7 @@ makeFields ''GameObjectsView
 -- placeholder so the observation vector has a fixed size regardless of
 -- visibility, but without allocating space for structure the agent can't see.
 gameObjectsViewSpace
-  :: forall l cn r. (Finitary l, Finitary cn, Finitary r, Show l, Show cn)
+  :: forall l cn r. (GameLocation l, GameCounter cn, GameResource r)
   => GameObjectsView l cn r -> GymSpace
 gameObjectsViewSpace (GameObjectsView locsView cnsView) = GymDict $
   [ (pack (show l), maybe (GymBox 0 0 [1]) locationShapeSpace (locsView !!! l))

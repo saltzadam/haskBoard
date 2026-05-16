@@ -3,6 +3,7 @@
 module Game.Visibility where
 
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey)
+import Game.Constraints (GameCounter, GameLocation)
 import Data.Finitary (Finitary, inhabitants)
 import Data.Map (Map)
 import qualified Data.Map as M
@@ -34,10 +35,10 @@ data VisData l cn ph
 newtype VisibilityMap l cn ph = VisibilityMap {canSee :: Player -> VisData l cn ph -> VisibilityType}
   deriving (Generic)
 
-instance (Finitary l, Finitary cn, ToJSON l, ToJSON cn) => ToJSON (VisibilityMap l cn ph) where
+instance (GameLocation l, GameCounter cn) => ToJSON (VisibilityMap l cn ph) where
   toJSON = toJSON . reifyVisibilityMap
 
-instance (Finitary l, Finitary cn, Ord l, Ord cn, FromJSON l, FromJSON cn) => FromJSON (VisibilityMap l cn ph) where
+instance (GameLocation l, GameCounter cn) => FromJSON (VisibilityMap l cn ph) where
   parseJSON = fmap unreifyVisibilityMap . parseJSON
 
 reifyVisibilityMap :: (Finitary l, Finitary cn) => VisibilityMap l cn ph -> Map Player (Map (VisData l cn ph) VisibilityType)

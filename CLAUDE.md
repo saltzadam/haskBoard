@@ -49,6 +49,10 @@ All of `l`, `cn`, `r` must be `Finitary` (from the `finitary` package) — they 
 - `Infinite` — unbounded supply
 - `Dummy` — no-op
 
+### Constraint synonyms (`Game.Constraints`)
+
+`Game.Constraints` provides `ConstraintKinds` synonyms for the full set of classes each type parameter must satisfy: `GameLocation l`, `GameCounter cn`, `GameResource r`, `GamePhase ph`, `GamePlay pl`. Use these in function signatures instead of enumerating 8–9 classes by hand. Note: these cannot be used in `deriving` clauses — the full list is still required there.
+
 ### Game rules DSL (`Game.Rules`, `Game.GameAction`)
 
 Games are defined as `GameRule l cn r ph pl a` — a free monad over `GameRuleF`. Game logic is written using combinators like `act`, `lookLocation`, `lookCounter`, `makeChoice`, `lookCurrentTurnOwner`, etc.
@@ -88,7 +92,27 @@ Agent types:
 ### Implementing a game
 
 See `Games/NoMerci/` as the reference implementation:
-1. `Objects.hs` — define `l`, `cn`, `r`, `ph`, `pl` types + initial `GameObjects`
+1. `Objects.hs` — define `l`, `cn`, `r`, `ph`, `pl` types + initial `GameObjects`. End the file with the standard type alias block (substituting your game's prefix and type names):
+   ```haskell
+   type MyGameObjects = GameObjects MyLocation MyCounters MyResource
+   type MyTurn        = Turn MyPhaseName
+   type MyPhase       = Phase MyPhaseName MyLocation MyCounters MyResource MyPlayName
+   type MyGameState   = GameState MyLocation MyCounters MyResource MyPhaseName MyPlayName
+   type MyOptions     = Options MyPlayName
+   type MyGameRules   = GameRules MyLocation MyCounters MyResource MyPhaseName MyPlayName
+   type MyM a         = GameRule MyLocation MyCounters MyResource MyPhaseName MyPlayName a
+   type MyView        = GameStateView MyLocation MyCounters MyResource MyPhaseName
+   type MyEvent       = BEvent MyLocation MyCounters MyResource MyPhaseName MyPlayName
+   ```
+   `MyM a` is the alias used most in game logic. Omitting any alias causes cryptic errors at module boundaries.
+
+   Each game type also needs a full deriving clause. Every `l`, `cn`, `r`, `pl` type requires:
+   ```haskell
+   deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
+   ```
+   Phase types (`ph`) do not need `Finitary` but otherwise need the same set. Missing any class causes cryptic errors far from the definition site.
+
+   When writing your own function signatures that range over game types, import constraint synonyms from `Game.Constraints` (`GameLocation l`, `GameCounter cn`, `GameResource r`, `GamePhase ph`, `GamePlay pl`) instead of enumerating all 8–9 classes by hand.
 2. `NoMerci.hs` — define phases, play runner, scoring, initial state; export `noMerci :: Int -> (NMGameState, NMGameRules)`
 3. `Tui.hs` — define a Brick `app` using `Brick.Game.Tui` helpers
 4. `Main.hs` — wire together with `buildInterface`, `runGameSeparateChannels`, and `server`

@@ -3,6 +3,7 @@ module Run where
 import Control.Concurrent (Chan)
 import Control.Lens (to, (^.))
 import Data.Finitary (Finitary)
+import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import qualified Data.Set as S
 import Effectful (runEff)
 import Effectful.Crypto.RNG
@@ -17,7 +18,7 @@ import Log
 import System.IO (IOMode (..), withFile)
 
 runGameCommonChannels ::
-  (Ord l, Ord r, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Eq ph, Finitary cn, Finitary l) =>
+  (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   FilePath ->
   Player ->
   GameState l cn r ph pl ->
@@ -42,7 +43,7 @@ runGameCommonChannels logFile p gameState gameRules chanGameToClient chanClientT
     thePlayers = gameState ^. #players . to S.toList
 
 runGameSeparateChannels ::
-  (Ord l, Ord r, Ord cn, Show ph, Show cn, Show l, Show r, Show pl, Eq ph, Finitary cn, Finitary l) =>
+  (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   FilePath ->
   GameController l cn r ph pl ->
   GameState l cn r ph pl ->
@@ -66,18 +67,7 @@ runGameSeparateChannels logFile controller gameState gameRules = do
 
 -- TODO: remove bounded, enum
 runGameFromInterfaces ::
-  ( Ord l,
-    Ord r,
-    Ord cn,
-    Show ph,
-    Show cn,
-    Show l,
-    Show r,
-    Show pl,
-    Eq ph,
-    Finitary cn,
-    Finitary l
-  ) =>
+  (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   FilePath ->
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->

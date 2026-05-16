@@ -7,6 +7,7 @@ import Control.Monad (void)
 import Data.Aeson (decodeStrict)
 import qualified Data.ByteString as BS
 import Data.Finitary (Finitary)
+import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import Game.GameState (GameRules, GameState)
 import Interface.Controller (GameController)
 import Interface.Stdio (InMsg (..), sendInit)
@@ -19,11 +20,7 @@ import System.IO (BufferMode (..), hSetBuffering, stdin, stdout)
 -- before starting the next episode.  The GameController (and its channels)
 -- is reused across episodes — build it once before calling this function.
 stdioTrainingLoop
-  :: ( Ord l, Ord r, Ord cn
-     , Show ph, Show cn, Show l, Show r, Show pl
-     , Eq ph
-     , Finitary cn, Finitary l, Finitary r, Finitary pl
-     )
+  :: (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl)
   => (GameState l cn r ph pl, GameRules l cn r ph pl)
   -> FilePath
   -> GameController l cn r ph pl

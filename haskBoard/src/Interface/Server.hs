@@ -16,6 +16,7 @@ import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Finitary (Finitary)
 import Data.Map (Map)
+import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import qualified Data.Map as M
 import Data.Proxy (Proxy (..))
 import qualified Data.Set as S
@@ -71,7 +72,7 @@ broadcast message server_ = do
   forM_ (M.toList $ server_ ^. #clients) $ \(_, conn) -> WS.sendTextData conn message
 
 server ::
-  (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord l, Ord cn, Ord r, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl, Show l, Show cn) =>
+  (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   Int ->
   GameState l cn r ph pl ->
   GameController l cn r ph pl ->
@@ -82,7 +83,7 @@ server numPlayers gs controller = do
 
 application ::
   forall l cn r ph pl.
-  (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord l, Ord cn, Ord r, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl, Show l, Show cn) =>
+  (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   GameState l cn r ph pl ->
   GameController l cn r ph pl ->
   MVar ServerState ->
@@ -154,7 +155,7 @@ withWorker :: IO a -> IO a -> IO a
 withWorker outer inner = withAsync outer $ const inner
 
 runGame ::
-  (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord l, Ord cn, Ord r, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl, Show l, Show cn) =>
+  (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   GameController l cn r ph pl ->
   MVar ServerState ->
   IO ()
@@ -167,7 +168,7 @@ exit :: e -> ExceptT e IO a
 exit = ExceptT . return . Left
 
 playerWorker ::
-  (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord l, Ord cn, Ord r, ToJSONKey r, ToJSONKey l, ToJSONKey cn, ToJSON ph, ToJSON l, ToJSON r, ToJSON cn, ToJSON pl, FromJSON pl, Show l, Show cn) =>
+  (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   GameController l cn r ph pl ->
   Player ->
   MVar ServerState ->

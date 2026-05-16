@@ -21,6 +21,7 @@ import Data.Aeson.Text (encodeToLazyText)
 import Data.Aeson.Types (Parser)
 import qualified Data.ByteString as BS
 import Data.Finitary (Finitary (..), inhabitants)
+import Game.Constraints (GameCounter, GameLocation, GamePlay, GameResource)
 import qualified Data.Map as M
 import Data.Proxy (Proxy (..))
 import qualified Data.Set as S
@@ -91,7 +92,7 @@ readAction = do
 -- ---- Observation encoding ----
 
 encodeGameObjectsObs
-  :: forall l cn r. (Finitary l, Finitary cn, Finitary r, Ord r, Show l, Show cn)
+  :: forall l cn r. (GameLocation l, GameCounter cn, GameResource r)
   => GameObjectsView l cn r -> Value
 encodeGameObjectsObs (GameObjectsView locsView cnsView) =
   toJSON $ M.fromList $
@@ -102,7 +103,7 @@ encodeGameObjectsObs (GameObjectsView locsView cnsView) =
 
 sendInit
   :: forall l cn r ph pl.
-     (Finitary l, Finitary cn, Finitary r, Finitary pl, Show l, Show cn)
+     (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
   => GameState l cn r ph pl -> IO ()
 sendInit gs = putJson msg
   where
@@ -124,7 +125,7 @@ sendInit gs = putJson msg
 -- On SendWinners: emits a terminal message with +1/-1 reward.
 runStdioAgent
   :: forall l cn r ph pl.
-     (Finitary l, Finitary cn, Finitary r, Finitary pl, Ord r, Show l, Show cn)
+     (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
   => Player
   -> MVar ()
   -> [Player]
