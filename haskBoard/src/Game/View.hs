@@ -54,6 +54,9 @@ viewRule' p c (Free (LookCurrentTurnOwner next)) = do
 viewRule' p c (Free (LookPlayers next)) = do
   players <- useGameState #players
   viewRule' p c (next players)
+viewRule' p c (Free (LookGameState next)) = do
+  gs <- getGameState
+  viewRule' p c (next gs)
 viewRule' _ _ (Pure a) = return (Just a)
 
 withVisible :: (GameInteract l cn r ph pl :> es) => Player -> VisData l cn ph -> Eff es (Maybe a) -> Eff es (Maybe a)

@@ -174,6 +174,11 @@ transferAll source target res = howManyAt source res >>= (`replicateM_` transfer
 whatsAt :: (Ord r, Eq l) => l -> GameRule l cn r ph pl (Set r)
 whatsAt loc = M.keysSet . M.filter (> 0) . inventory <$> lookLocation loc
 
+-- | Compose a list of functions left-to-right (first in list applied first).
+-- Useful for combining multiple visibility or state-update operations.
+composeAll :: [a -> a] -> a -> a
+composeAll = foldr (.) id
+
 (<+) :: (Enum a) => a -> Int -> a
 a <+ i
   | i > 0 = succ a <+ (i - 1)
@@ -209,3 +214,17 @@ activePlayer action = lookCurrentTurnOwner >>= action
 
 lookOtherPlayers :: Player -> GameRule l cn r ph pl (Set Player)
 lookOtherPlayers p = S.filter (/= p) <$> lookPlayers
+
+-- | Construct a 'Phase' from its name and its rule sequence.
+-- Avoids needing to know the 'Phase' record field names.
+mkPhase :: ph -> GameRule l cn r ph pl () -> Phase ph l cn r pl
+mkPhase ph rule = Phase { name = ph, seedNodes = rule }
+
+-- | Lift a pure scoring function into the 'GameRule' monad.
+-- Use this when your score can be computed directly from the game state
+-- without needing to sequence additional game actions.
+--
+-- Example:
+-- > score = simpleScore $ \p gs -> cardsScore gs p - chipScore gs p
+simpleScore :: (Player -> GameState l cn r ph pl -> Int) -> Player -> GameRule l cn r ph pl Int
+simpleScore f p = f p <$> lookGameState

@@ -53,6 +53,8 @@ module Game.Location
     infiniteUpperBound,
     encodeLocationObs,
     encodeCounterObs,
+    -- * Built-in counter-name type for games with no counters
+    NoCounters (..),
     -- * Smart constructors for LocationShape
     emptySlot,
     emptyPile,
@@ -340,6 +342,18 @@ makeCounter (a, b) = Counter a (a, b)
 
 dummyCounter :: Counter
 dummyCounter = Counter 0 (0, 0)
+
+-- | A counter-name type for games that have no counters.
+-- Use as the @cn@ type parameter instead of defining your own dummy type:
+--
+-- > type MyGameObjects = GameObjects MyLocation NoCounters MyResource
+--
+-- Initialize counters with @FTMap (const dummyCounter)@.
+data NoCounters = NoCounters
+  deriving (Eq, Ord, Show, Generic, Enum, Bounded,
+            FromJSON, ToJSON, FromJSONKey, ToJSONKey)
+
+instance Finitary NoCounters
 
 d6 :: Counter
 d6 = makeCounter (1, 6)

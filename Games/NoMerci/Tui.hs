@@ -9,14 +9,14 @@ import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
-import Game.Location (inventory, peek')
+import Game.Location (inventory, peek', NoCounters)
 import Game.Options (Options (..))
 import Game.Player (Player, displayPlayer)
 import qualified Graphics.Vty as V
 import Helpers
 import Objects
 
-type NMTUIState = TUIState NMLocation NMCounters NMResource NMPhaseName NMPlayName
+type NMTUIState = TUIState NMLocation NoCounters NMResource NMPhaseName NMPlayName
 
 type Name = ()
 

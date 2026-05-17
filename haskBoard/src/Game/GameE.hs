@@ -216,6 +216,7 @@ runRuleControl' (Free (LookCounter cn next)) = do
 runRuleControl' (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleControl' . next
 runRuleControl' (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleControl' . next
 runRuleControl' (Free (LookPlayers next)) = useGameState #players >>= runRuleControl' . next
+runRuleControl' (Free (LookGameState next)) = getGameState >>= runRuleControl' . next
 runRuleControl' (Pure _) = return PCContinue
 
 runRuleControl :: (Ord l, Ord r, Ord cn, Finitary cn, Show ph, Show cn, Show l, Show r, Show pl, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, GameRun l cn r ph pl :> es, RNG :> es, Log2 :> es, Eq ph) => GameRule l cn r ph pl a -> Eff es PhaseControl

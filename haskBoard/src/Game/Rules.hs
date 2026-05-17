@@ -7,6 +7,7 @@ import Control.Monad.Free
 import Data.Set (Set)
 import GHC.Generics (Generic)
 import Game.GameAction
+import Game.GameStateBase (GameState)
 import Game.Location
 import Game.Options
 import Game.Player (Player)
@@ -19,6 +20,7 @@ data GameRuleF l cn r ph pl next
   | LookCurrentPhase (ph -> next)
   | LookCurrentTurnOwner (Player -> next)
   | LookPlayers (Set Player -> next)
+  | LookGameState (GameState l cn r ph pl -> next)
   deriving (Functor)
 
 -- type GameRule l cn r ph pl = Free (GameRuleF l cn r ph pl)
@@ -64,3 +66,6 @@ lookCurrentPhase = liftF (LookCurrentPhase id)
 lookCurrentTurnOwner :: GameRule l cn r ph pl Player
 -- lookCurrentTurnOwner = (\(Turn p _) -> p) . view #currentTurn
 lookCurrentTurnOwner = liftF (LookCurrentTurnOwner id)
+
+lookGameState :: GameRule l cn r ph pl (GameState l cn r ph pl)
+lookGameState = liftF (LookGameState id)

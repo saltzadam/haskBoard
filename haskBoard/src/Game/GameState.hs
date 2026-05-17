@@ -5,7 +5,31 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Game.GameState where
+module Game.GameState
+  ( module Game.GameStateBase,
+    PhaseControl (..),
+    TurnControl (..),
+    Phase (..),
+    PlayRunner,
+    GameRules (..),
+    GameInteract,
+    GameRun,
+    counter,
+    counterVal,
+    location,
+    getsGameState,
+    getGameState,
+    useGameState,
+    getRunner,
+    getPhases,
+    getScore,
+    getSetupPhase,
+    modifyingGameState,
+    assignGameState,
+    getVisibility,
+    modifyVisibility,
+  )
+where
 
 import Control.Lens
   ( ASetter,
@@ -15,14 +39,12 @@ import Control.Lens
     over,
     view,
   )
-import Data.Aeson (FromJSON (..), ToJSON (..))
-import qualified Data.List.NonEmpty as NE
-import Data.Set (Set)
 import Effectful (Eff, (:>))
 import qualified Effectful.Reader.Static as Reader
 import qualified Effectful.State.Static.Shared as State
 import FinitaryMap (ftAt)
 import GHC.Generics (Generic)
+import Game.GameStateBase (GameState (..))
 import Game.Location
 import Game.Player
 import Game.Rules (GameRule)
@@ -39,17 +61,6 @@ data Phase phaseName l cn r playName = Phase
   deriving (Generic)
 
 type PlayRunner l cn r ph pl = pl -> GameRule l cn r ph pl ()
-
--- TODO: Add history
-data GameState l cn r ph pl = GameState
-  { players :: Set Player,
-    objects :: GameObjects l cn r,
-    currentPhase :: ph,
-    currentTurn :: Turn ph,
-    nextTurn :: Maybe (Turn ph),
-    visibility :: VisibilityMap l cn ph
-  }
-  deriving (Generic, FromJSON, ToJSON)
 
 data GameRules l cn r ph pl = GameRules
   { playRunner :: PlayRunner l cn r ph pl,

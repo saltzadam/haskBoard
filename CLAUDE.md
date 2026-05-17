@@ -34,7 +34,14 @@ Throughout the codebase, types are parameterized by:
 - `ph` — phase name (e.g. `NMPhaseName`)
 - `pl` — play/move type (e.g. `NMPlayName`: `Take`, `Decline`)
 
-All of `l`, `cn`, `r` must be `Finitary` (from the `finitary` package) — they are finite enumerable types used as map keys in `FTMap`.
+All of `l`, `cn`, `r` must be `Finitary` (from the `finitary` package) — they are finite enumerable types used as map keys in `FTMap`. `ph` and `pl` do not need to be `Finitary`, but `pl` must satisfy `GamePlay pl` (see `Game.Constraints`).
+
+**`Finitary` in practice:** Simple sum types (`data Foo = A | B | C`) get `Finitary` for free via `DeriveAnyClass` + `Generic`. The tricky case is structured constructors — e.g. a card type `data Card = Card (Finite 35)` uses `Finite n` from the `finite-typelits` package to represent a number in `[0, n)`. `Finite n` is itself `Finitary`, so `Card` is too. Key points:
+- Use `Finite n` (not `Int`) when you need a bounded integer in a `Finitary` type.
+- Convert with `toFinite :: a -> Finite (Cardinality a)` and `fromFinite`.
+- `inhabitants :: [a]` enumerates all values; import it explicitly from `Data.Finitary`.
+- `Int`, `Text`, and other unbounded types cannot be `Finitary` and cannot be used as `l`, `cn`, or `r`.
+- Games without counters can use the library-provided `NoCounters` type instead of defining their own.
 
 ### Game state (`Game.GameState`, `Game.Location`)
 

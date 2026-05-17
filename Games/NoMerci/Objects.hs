@@ -66,11 +66,11 @@ data NMLocation
   | BoxTop
   deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
-data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic, Enum, Bounded, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
+-- data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic, Enum, Bounded, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
-instance Finitary NMCounters
+-- instance Finitary NMCounters
 
-type NMGameObjects = GameObjects NMLocation NMCounters NMResource
+type NMGameObjects = GameObjects NMLocation NoCounters NMResource
 
 initLocations' :: Set Player -> NMLocation -> LocationShape NMResource
 initLocations' _ CenterOfTableCard = Slot Nothing
@@ -97,19 +97,19 @@ data NMPhaseName = Setup | NMTurnPhase Player deriving (Eq, Ord, Show, Generic, 
 
 type NMTurn = Turn NMPhaseName
 
-type NMPhase = Phase NMPhaseName NMLocation NMCounters NMResource NMPlayName
+type NMPhase = Phase NMPhaseName NMLocation NoCounters NMResource NMPlayName
 
-type NMGameState = GameState NMLocation NMCounters NMResource NMPhaseName NMPlayName
+type NMGameState = GameState NMLocation NoCounters NMResource NMPhaseName NMPlayName
 
 type NMOptions = Options NMPlayName
 
-type NMGameRules = GameRules NMLocation NMCounters NMResource NMPhaseName NMPlayName
+type NMGameRules = GameRules NMLocation NoCounters NMResource NMPhaseName NMPlayName
 
-type NMM a = GameRule NMLocation NMCounters NMResource NMPhaseName NMPlayName a
+type NMM a = GameRule NMLocation NoCounters NMResource NMPhaseName NMPlayName a
 
-type NMView = GameStateView NMLocation NMCounters NMResource NMPhaseName
+type NMView = GameStateView NMLocation NoCounters NMResource NMPhaseName
 
-type NMEvent = BEvent NMLocation NMCounters NMResource NMPhaseName NMPlayName
+type NMEvent = BEvent NMLocation NoCounters NMResource NMPhaseName NMPlayName
 
 playerTurn :: Player -> NMTurn
 playerTurn p = Turn p (NE.singleton (NMTurnPhase p))
