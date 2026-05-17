@@ -201,12 +201,15 @@ runRuleControl' (Free (Act action next)) = do
   case result of
     PCContinue -> runRuleControl' next
     _          -> return result
-runRuleControl' (Free (MakeChoice opts _)) = do
+runRuleControl' (Free (MakeChoice opts k)) = do
   gs <- getGameState
   pl <- choose gs opts
   runner <- getRunner
   let GameRule run = runner pl
-  runRuleControl' run
+  result <- runRuleControl' run
+  case result of
+    PCContinue -> runRuleControl' (k pl)
+    _          -> return result
 runRuleControl' (Free (LookLocation l next)) = do
   shape <- useGameState (#objects . #locations . ftAt l)
   runRuleControl' (next shape)

@@ -220,6 +220,12 @@ lookOtherPlayers p = S.filter (/= p) <$> lookPlayers
 mkPhase :: ph -> GameRule l cn r ph pl () -> Phase ph l cn r pl
 mkPhase ph rule = Phase { name = ph, seedNodes = rule }
 
+-- | Build a standard turn phase: runs prelude, presents a choice to the
+-- current player, then automatically advances the turn (unless a play calls
+-- advanceTurn or endGame first).
+simpleTurn :: (Player -> Turn ph) -> ph -> GameRule l cn r ph pl () -> Phase ph l cn r pl
+simpleTurn mkTurn ph prelude = mkPhase ph (setNextTurnCyclic mkTurn >> prelude >> advanceTurn)
+
 -- | Lift a pure scoring function into the 'GameRule' monad.
 -- Use this when your score can be computed directly from the game state
 -- without needing to sequence additional game actions.

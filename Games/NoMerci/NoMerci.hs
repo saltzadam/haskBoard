@@ -53,14 +53,14 @@ nmRunPlay Take = do
   checkEnd
   drawCard
   activePlayer chooseMove
-nmRunPlay Decline = activePlayer (\p -> transfer (PlayerStuff p) ChipPile Chip) >> advanceTurn
+nmRunPlay Decline = activePlayer (\p -> transfer (PlayerStuff p) ChipPile Chip)
 
 -- -- Initialization --
 nmPhases :: NMPhaseName -> NMPhase
 nmPhases (NMTurnPhase p) =
   Phase
     { name = NMTurnPhase p,
-      seedNodes = setNextTurnCyclic playerTurn >> chooseMove p
+      seedNodes = setNextTurnCyclic playerTurn >> chooseMove p >> advanceTurn
     }
 nmPhases Setup =
   Phase
