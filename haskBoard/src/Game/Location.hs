@@ -53,6 +53,13 @@ module Game.Location
     infiniteUpperBound,
     encodeLocationObs,
     encodeCounterObs,
+    -- * Smart constructors for LocationShape
+    emptySlot,
+    emptyPile,
+    emptyDeck,
+    deckOf,
+    pileOf,
+    infinite,
   )
 where
 
@@ -84,6 +91,30 @@ data LocationShape r
   deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON)
 
 type Locations names r = FTMap names (LocationShape r)
+
+-- | An empty slot (holds nothing).
+emptySlot :: LocationShape r
+emptySlot = Slot Nothing
+
+-- | An empty pile.
+emptyPile :: LocationShape r
+emptyPile = Pile M.empty
+
+-- | An empty deck.
+emptyDeck :: LocationShape r
+emptyDeck = Deck Seq.empty
+
+-- | A deck pre-loaded with the given items (first item will be on top).
+deckOf :: [r] -> LocationShape r
+deckOf = Deck . Seq.fromList
+
+-- | A pile with a given quantity of one resource.
+pileOf :: (Ord r) => r -> Int -> LocationShape r
+pileOf r n = Pile (M.singleton r n)
+
+-- | An infinite supply of one resource.
+infinite :: r -> LocationShape r
+infinite = Infinite
 
 data GymFundShape
   = Sequence (Seq Int)
