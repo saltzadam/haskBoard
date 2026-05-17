@@ -59,7 +59,7 @@ viewRule' p c (Free (LookGameState next)) = do
   viewRule' p c (next gs)
 viewRule' _ _ (Pure a) = return (Just a)
 
-withVisible :: (GameInteract l cn r ph pl :> es) => Player -> VisData l cn ph -> Eff es (Maybe a) -> Eff es (Maybe a)
+withVisible :: (GameInteract l cn r ph pl :> es) => Player -> VisData l cn -> Eff es (Maybe a) -> Eff es (Maybe a)
 withVisible p visData action = do
   VisibilityMap canSee <- getVisibility
   case canSee p visData of
@@ -104,7 +104,7 @@ data GameObjectsView l cn r = GameObjectsView
   }
   deriving (Generic, Show)
 
-viewObjectsAs' :: GameObjects l cn r -> VisibilityMap l cn ph -> Player -> GameObjectsView l cn r
+viewObjectsAs' :: GameObjects l cn r -> VisibilityMap l cn -> Player -> GameObjectsView l cn r
 viewObjectsAs' objs (VisibilityMap vis') p =
   let locs = objs ^. #locations
       locsVisMap = vis' p . VisLocation

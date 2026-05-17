@@ -117,8 +117,8 @@ modifyingGameState o = State.modify . over o
 assignGameState :: (GameInteract l cn r ph pl :> es) => ASetter (GameState l cn r ph pl) (GameState l cn r ph pl) a b -> b -> Eff es ()
 assignGameState l b = modifyingGameState l (const b)
 
-getVisibility :: (GameInteract l cn r ph pl :> es) => Eff es (VisibilityMap l cn ph)
+getVisibility :: (GameInteract l cn r ph pl :> es) => Eff es (VisibilityMap l cn)
 getVisibility = useGameState #visibility
 
-modifyVisibility :: (GameInteract l cn r ph pl :> es) => (VisibilityMap l cn ph -> VisibilityMap l cn ph) -> Eff es ()
+modifyVisibility :: (GameInteract l cn r ph pl :> es) => (VisibilityMap l cn -> VisibilityMap l cn) -> Eff es ()
 modifyVisibility = modifyingGameState #visibility

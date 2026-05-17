@@ -10,7 +10,7 @@ import Game.GameState (GameRules (..), GameState (..), Phase (..))
 import Game.Options (Options (..))
 import Game.Player (Player (..), mkPlayers)
 import Game.Rules
-import Game.Visibility (VisData (..), VisibilityMap (..), allVisible, makeInvisible)
+import Game.Visibility (VisData (..), VisibilityMap (..), allVisible, hideManyFromAll)
 import Helpers
 import Game.Location (NoCounters)
 import Objects
@@ -68,12 +68,8 @@ nmPhases Setup =
       seedNodes = shuffle CardDeck >> replicateM_ 9 (Cards.draw CardDeck BoxTop) >> drawCard
     }
 
-compose = foldr (.) id
-
-visibility :: Int -> VisibilityMap NMLocation NoCounters NMPhaseName
-visibility numPlayers = compose [\vis -> makeInvisible vis player (VisLocation loc) | player <- mkPlayers numPlayers, loc <- [BoxTop, CardDeck]] $ allVisible
-
--- visibility numPlayers = (\player -> makeInvisible player allVisible (VisLocation BoxTop)) <$> mkPlayers numPlayers
+visibility :: Int -> VisibilityMap NMLocation NoCounters
+visibility numPlayers = hideManyFromAll (mkPlayers numPlayers) [VisLocation BoxTop, VisLocation CardDeck] allVisible
 
 initGameState :: Int -> NMGameState
 initGameState numPlayers =

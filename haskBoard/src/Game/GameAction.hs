@@ -22,8 +22,8 @@ data GameAction l cn r ph
     EndPhase
   | AdvanceTurn
   | SetNextTurn (Maybe (Turn ph))
-  | MakeVisibleTo Player (VisData l cn ph)
-  | MakeInvisibleTo Player (VisData l cn ph)
+  | MakeVisibleTo Player (VisData l cn)
+  | MakeInvisibleTo Player (VisData l cn)
   | EndGame [Player]
   | MakeAnnouncement (Maybe Player) Text
   deriving (Eq, Ord, Show, Generic)
