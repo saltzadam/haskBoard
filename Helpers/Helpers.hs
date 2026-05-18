@@ -48,8 +48,8 @@ revealTo loc p = act (MakeVisibleTo p (VisLocation loc))
 unrevealTo :: l -> Player -> GameRule l cn r ph pl ()
 unrevealTo loc p = act (MakeInvisibleTo p (VisLocation loc))
 
-advanceTurn :: GameRule l cn r ph pl ()
-advanceTurn = act AdvanceTurn
+advanceTurn :: Turn ph -> GameRule l cn r ph pl ()
+advanceTurn t = act (AdvanceTurn t)
 
 shuffle :: l -> GameRule l cn r ph pl ()
 shuffle = act . Shuffle
@@ -59,9 +59,6 @@ endGame winners = act (EndGame winners)
 
 announceGame :: Text -> GameRule l cn r ph pl ()
 announceGame announcement = act (MakeAnnouncement Nothing announcement)
-
-setPlayerNextTurn :: (Player -> Turn ph) -> Player -> GameRule l cn r ph pl ()
-setPlayerNextTurn mkTurn nextP = act (SetNextTurn (Just $ mkTurn nextP))
 
 -- bulk operations
 unsafeSwapAll :: (Finitary l, Ord r, Ord l) => l -> l -> GameRule l cn r ph pl ()
@@ -74,12 +71,12 @@ unsafeSwapAll l0 l1 = do
 -- control ops
 --
 
-setNextTurnCyclic :: (Player -> Turn ph) -> GameRule l cn r ph pl ()
-setNextTurnCyclic mkTurn = do
+advanceTurnCyclic :: (Player -> Turn ph) -> GameRule l cn r ph pl ()
+advanceTurnCyclic mkTurn = do
   ps <- lookPlayers
-  p <- lookCurrentTurnOwner
-  let ps' = NE.fromList . S.toList $ ps
-  act (SetNextTurn (Just $ getNextTurn2 mkTurn ps' p))
+  p  <- lookCurrentTurnOwner
+  let next = getNextTurn2 mkTurn (NE.fromList . S.toList $ ps) p
+  advanceTurn next
 
 getNextTurn2 :: (Player -> Turn ph) -> NE.NonEmpty Player -> Player -> Turn ph
 getNextTurn2 mkTurn eligiblePlayers currentPlayer = mkTurn (fromJust (getNextCyclic currentPlayer eligiblePlayers))
@@ -224,7 +221,7 @@ mkPhase ph rule = Phase { name = ph, seedNodes = rule }
 -- current player, then automatically advances the turn (unless a play calls
 -- advanceTurn or endGame first).
 simpleTurn :: (Player -> Turn ph) -> ph -> GameRule l cn r ph pl () -> Phase ph l cn r pl
-simpleTurn mkTurn ph prelude = mkPhase ph (setNextTurnCyclic mkTurn >> prelude >> advanceTurn)
+simpleTurn mkTurn ph prelude = mkPhase ph (prelude >> advanceTurnCyclic mkTurn)
 
 -- | Lift a pure scoring function into the 'GameRule' monad.
 -- Use this when your score can be computed directly from the game state

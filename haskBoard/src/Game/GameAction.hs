@@ -20,8 +20,7 @@ data GameAction l cn r ph
     Shuffle l
   | -- | ChangePhase ph
     EndPhase
-  | AdvanceTurn
-  | SetNextTurn (Maybe (Turn ph))
+  | AdvanceTurn (Turn ph)
   | MakeVisibleTo Player (VisData l cn)
   | MakeInvisibleTo Player (VisData l cn)
   | EndGame [Player]

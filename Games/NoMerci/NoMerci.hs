@@ -64,7 +64,7 @@ nmPhases :: NMPhaseName -> NMPhase
 nmPhases (NMTurnPhase p) =
   Phase
     { name = NMTurnPhase p,
-      seedNodes = setNextTurnCyclic playerTurn >> chooseMove p >> advanceTurn
+      seedNodes = chooseMove p >> advanceTurnCyclic playerTurn
     }
 
 visibility :: Int -> VisibilityMap NMLocation NoCounters
@@ -78,8 +78,7 @@ initGameState numPlayers =
           objects = initGameObjects players,
           currentPhase = NMTurnPhase (head (S.toList players)),
           currentTurn = playerTurn (Player 1),
-          -- nextTurn = Just $ getNextTurn2 playerTurn (NE.fromList . S.toList $ players), -- TODO: how to make this safe?
-          nextTurn = Just $ playerTurn (Player 1),
+          nextTurn    = playerTurn (Player 1),   -- placeholder; overwritten by advanceTurnCyclic
           visibility = visibility numPlayers -- TODO: no, BoxTop is invisible
         }
 

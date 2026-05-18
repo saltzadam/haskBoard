@@ -21,7 +21,7 @@ data GameState l cn r ph pl = GameState
     objects :: GameObjects l cn r,
     currentPhase :: ph,
     currentTurn :: Turn ph,
-    nextTurn :: Maybe (Turn ph),
+    nextTurn :: Turn ph,
     visibility :: VisibilityMap l cn
   }
   deriving (Generic, FromJSON, ToJSON)

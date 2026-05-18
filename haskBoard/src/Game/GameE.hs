@@ -49,8 +49,7 @@ logAction2 (MakeVisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ " v
 logAction2 (MakeInvisibleTo l p) = logComponent (T.pack $ "Made " ++ show l ++ " invisible to " ++ show p)
 logAction2 EndPhase = logComponent (T.pack "Ended phase")
 logAction2 DoNothing = pure ()
-logAction2 AdvanceTurn = logComponent "advanced turn"
-logAction2 (SetNextTurn turn) = logComponent (T.pack $ "set next turn: " ++ show turn)
+logAction2 (AdvanceTurn (Turn p _)) = logComponent (T.pack $ "advanced turn to " ++ show p)
 logAction2 (EndGame winners) = logComponent (T.pack ("Game over! Winners: " ++ show winners))
 logAction2 (MkTransfer l l' r) = do
   invl <- show . inventory <$> useGameState (location l)
@@ -125,12 +124,10 @@ runGameAction a@(MakeInvisibleTo p lc) = do
 runGameAction a@EndPhase = do
   logAction2 a
   return PCEndPhase
-runGameAction a@AdvanceTurn = do
+runGameAction a@(AdvanceTurn t) = do
+  assignGameState #nextTurn t
   logAction2 a
   return PCEndTurn
-runGameAction a@(SetNextTurn turn) = do
-  assignGameState #nextTurn turn
-  logAndContinue a
 runGameAction a@(EndGame winners) = do
   announceWinners winners
   logAction2 a
@@ -181,15 +178,11 @@ playGameTurns setupRule = do
       case result of
         TEndGame winners -> return winners
         TEndTurn -> do
-          nextTurn <- useGameState #nextTurn
-          case nextTurn of
-            Nothing -> error "no next turn" -- TODO: enforce via types — AdvanceTurn could carry the next Turn as an argument, eliminating this runtime crash
-            Just t -> do
-              logGame "end of turn"
-              assignGameState #currentTurn t
-              assignGameState #nextTurn Nothing
-              updateGS
-              playGameTurns'
+          t <- useGameState #nextTurn
+          logGame "end of turn"
+          assignGameState #currentTurn t
+          updateGS
+          playGameTurns'
 
 -- Run rule and return appropriate PhaseControl
 runRuleControl' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Free (GameRuleF l cn r ph pl) a -> Eff es PhaseControl
