@@ -55,17 +55,16 @@ nmRunPlay Take = do
   activePlayer chooseMove
 nmRunPlay Decline = activePlayer (\p -> transfer (PlayerStuff p) ChipPile Chip)
 
--- -- Initialization --
+-- Initialization --
+
+nmSetup :: NMM ()
+nmSetup = shuffle CardDeck >> replicateM_ 9 (Cards.draw CardDeck BoxTop) >> drawCard
+
 nmPhases :: NMPhaseName -> NMPhase
 nmPhases (NMTurnPhase p) =
   Phase
     { name = NMTurnPhase p,
       seedNodes = setNextTurnCyclic playerTurn >> chooseMove p >> advanceTurn
-    }
-nmPhases Setup =
-  Phase
-    { name = Setup,
-      seedNodes = shuffle CardDeck >> replicateM_ 9 (Cards.draw CardDeck BoxTop) >> drawCard
     }
 
 visibility :: Int -> VisibilityMap NMLocation NoCounters
@@ -85,4 +84,4 @@ initGameState numPlayers =
         }
 
 noMerci :: Int -> (NMGameState, NMGameRules)
-noMerci numPlayers = (initGameState numPlayers, GameRules nmRunPlay nmPhases score (Just Setup))
+noMerci numPlayers = (initGameState numPlayers, GameRules nmRunPlay nmPhases score (Just nmSetup))

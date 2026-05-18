@@ -169,12 +169,9 @@ runFromPhases phases = fromMaybe TEndTurn . asum <$> traverse handlePhase phases
         PCEndPhase -> Nothing
         PCContinue -> Nothing
 
-playGameTurns :: forall l cn r ph pl es. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Maybe ph -> Eff es (GameState l cn r ph pl, [Player])
-playGameTurns setupPhaseName = do
-  phases <- getPhases
-  case phases <$> setupPhaseName of
-    Just (Phase _ nodes) -> void . runRuleControl $ nodes
-    Nothing -> return ()
+playGameTurns :: forall l cn r ph pl es. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Maybe (GameRule l cn r ph pl ()) -> Eff es (GameState l cn r ph pl, [Player])
+playGameTurns setupRule = do
+  mapM_ (void . runRuleControl) setupRule
   winners <- playGameTurns'
   liftA2 (,) getGameState (pure winners)
   where

@@ -66,7 +66,10 @@ data GameRules l cn r ph pl = GameRules
   { playRunner :: PlayRunner l cn r ph pl,
     phases :: ph -> Phase ph l cn r pl,
     score :: Player -> GameRule l cn r ph pl Int,
-    setupPhase :: Maybe ph
+    -- | Optional one-shot setup logic run before the first turn.
+    -- Stored as a 'GameRule' directly so the phase type 'ph' does not need
+    -- a dedicated setup constructor.
+    setupPhase :: Maybe (GameRule l cn r ph pl ())
   }
   deriving (Generic)
 
@@ -108,7 +111,7 @@ getPhases = Reader.asks (view #phases)
 getScore :: (GameRun l cn r ph pl :> es) => Eff es (Player -> GameRule l cn r ph pl Int)
 getScore = Reader.asks (view #score)
 
-getSetupPhase :: (GameRun l cn r ph pl :> es) => Eff es (Maybe ph)
+getSetupPhase :: (GameRun l cn r ph pl :> es) => Eff es (Maybe (GameRule l cn r ph pl ()))
 getSetupPhase = Reader.asks (view #setupPhase)
 
 modifyingGameState :: (GameInteract l cn r ph pl :> es) => ASetter (GameState l cn r ph pl) (GameState l cn r ph pl) a b -> (a -> b) -> Eff es ()
