@@ -120,6 +120,15 @@ See `Games/NoMerci/` as the reference implementation:
    Phase types (`ph`) do not need `Finitary` but otherwise need the same set. Missing any class causes cryptic errors far from the definition site.
 
    When writing your own function signatures that range over game types, import constraint synonyms from `Game.Constraints` (`GameLocation l`, `GameCounter cn`, `GameResource r`, `GamePhase ph`, `GamePlay pl`) instead of enumerating all 8–9 classes by hand.
+
+   **Numbered resources:** For pieces identified by a number (e.g. cards in a deck),
+   use `NumberedPiece n` from the `Helpers` library instead of raw `Finite n`. It has
+   explicit `Show`/`Read` instances (displays as the integer) and `ToJSON`/`FromJSON`
+   (serialises as a plain JSON number). Example:
+   ```haskell
+   data NMResource = Chip | Card (NumberedPiece 35)
+     deriving (Eq, Ord, Show, Generic, Finitary, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
+   ```
 2. `NoMerci.hs` — define phases, play runner, scoring, initial state; export `noMerci :: Int -> (NMGameState, NMGameRules)`
 3. `Tui.hs` — define a Brick `app` using `Brick.Game.Tui` helpers
 4. `Main.hs` — wire together with `buildInterface`, `runGameSeparateChannels`, and `server`

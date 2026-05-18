@@ -4,17 +4,16 @@
 
 module Objects where
 
-import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, Value (..))
+import Data.Aeson (FromJSON, FromJSONKey, ToJSON, ToJSONKey)
 import Data.Finitary
-import Data.Finite (Finite)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust, isJust)
 import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as S
-import qualified Data.Text as T
 import FinitaryMap (FTMap (..))
+import NumberedPiece (NumberedPiece (..))
 import GHC.Generics (Generic)
 import Game.Agent
 import Game.GameState (GameRules, GameState, Phase)
@@ -25,17 +24,11 @@ import Game.Rules
 import Game.View (GameStateView)
 
 -- don't derive Functor so it's not easy to modify card nums
-data NMResource = Chip | Card (Finite 35) deriving (Eq, Ord, Show, Read, Generic, Finitary, ToJSONKey, FromJSONKey)
-
-instance ToJSON NMResource where
-  toJSON r = String (T.pack . show $ r)
-
-instance FromJSON NMResource where
-  parseJSON (String s) = return . read . T.unpack $ s
-  parseJSON _ = error $ "invalid JSON: NMResource"
+data NMResource = Chip | Card (NumberedPiece 35)
+  deriving (Eq, Ord, Show, Generic, Finitary, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
 
 extractCard :: NMResource -> Maybe Int
-extractCard (Card i) = Just (fromEnum i)
+extractCard (Card (NumberedPiece i)) = Just (fromEnum i)
 extractCard _ = Nothing
 
 isCard :: NMResource -> Bool
