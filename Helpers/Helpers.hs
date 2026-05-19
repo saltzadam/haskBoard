@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -12,6 +13,7 @@ import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
+import Data.Set.NonEmpty (NESet)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
 import Data.Set (Set)
@@ -112,6 +114,9 @@ queryResources lfilt rfilt = invertNestedMaps <$> queryLocations lfilt rfilt
 queryResourcesAt :: (Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl (Map r [l])
 queryResourcesAt lfilt rfilt = fmap M.keys <$> queryResources lfilt rfilt
 
+resourcesAt :: (Ord r, Eq l, Finitary l, Ord l) => l -> GameRule l cn r ph pl (Map r Int)
+resourcesAt l = (head . M.elems) <$> queryLocations (== l) (const True) 
+
 listResAtF :: (Ord r, Eq l, Finitary l, Ord l) => l -> (r -> Bool) -> GameRule l cn r ph pl [r]
 listResAtF l filt = M.keys <$> queryResourcesAt (== l) filt
 
@@ -165,8 +170,14 @@ anyHas l = fmap or . traverse (has l)
 hasAny :: (Ord r, Eq l) => l -> [r] -> GameRule l cn r ph pl Bool
 hasAny = anyHas
 
-transferAll :: (Ord r, Eq l) => l -> l -> r -> GameRule l cn r ph pl ()
-transferAll source target res = howManyAt source res >>= (`replicateM_` transfer source target res)
+transferAll :: forall l r cn ph pl . (Ord r, Eq l, Finitary l, Ord l) => l -> l  -> GameRule l cn r ph pl ()
+transferAll source target = do
+  resourceMap <- resourcesAt source :: GameRule l cn r ph pl (Map r Int)
+  _ <- M.traverseWithKey (\r i -> replicateM_ i (transfer source target r)) (resourceMap :: Map r Int)
+  return ()
+
+transferAllOf  :: (Ord r, Eq l) => l -> l -> r -> GameRule l cn r ph pl ()
+transferAllOf source target res = howManyAt source res >>= (`replicateM_` transfer source target res)
 
 whatsAt :: (Ord r, Eq l) => l -> GameRule l cn r ph pl (Set r)
 whatsAt loc = M.keysSet . M.filter (> 0) . inventory <$> lookLocation loc
@@ -184,7 +195,7 @@ a <+ i
 
 ----- Options stuff
 
-baseOptions :: Player -> NonEmpty pl -> Options pl
+baseOptions :: Ord pl => Player -> NESet pl -> Options pl
 baseOptions p legals = Options legals p
 
 counterAtMax :: (Eq cn) => cn -> GameRule l cn r ph pl Bool
@@ -231,3 +242,5 @@ simpleTurn mkTurn ph prelude = mkPhase ph (prelude >> advanceTurnCyclic mkTurn)
 -- > score = simpleScore $ \p gs -> cardsScore gs p - chipScore gs p
 simpleScore :: (Player -> GameState l cn r ph pl -> Int) -> Player -> GameRule l cn r ph pl Int
 simpleScore f p = f p <$> lookGameState
+
+

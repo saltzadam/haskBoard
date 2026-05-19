@@ -1,20 +1,21 @@
+{-# LANGUAGE OverloadedLists #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module NoMerci (noMerci) where
 
 import qualified Cards
 import Control.Monad (replicateM_)
-import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as S
 import Game.GameState (GameRules (..), GameState (..), Phase (..))
 import Game.Options (Options (..))
 import Game.Player (Player (..), mkPlayers)
 import Game.Rules
-import Game.Visibility (VisData (..), VisibilityMap (..), allVisible, hideManyFromAll)
+import Game.Visibility (VisData (..), VisibilityMap (..), hideManyFromAll)
 import Helpers
 import Game.Location (NoCounters)
 import Objects
 import Util (ifM, maximaByScoreM)
+
 
 -- Plays --
 
@@ -23,23 +24,23 @@ drawCard = Cards.draw CardDeck CenterOfTableCard
 
 chooseMove :: Player -> NMM ()
 chooseMove p = do
-  pHasChips <- has (PlayerStuff p) Chip
+  pHasChips <- (PlayerStuff p) `has` Chip
   let options =
-        if pHasChips -- TODO: improve
-          then Options (Take NE.:| [Decline]) p
-          else Options (NE.singleton Take) p
+        if pHasChips 
+          then Options [Take, Decline] p
+          else Options [Take] p
   makeChoice_ options
 
 score :: Player -> NMM Int
 score p =
   let cardScore = scoreCards <$> whatsAt (PlayerStuff p)
-      chipScore = fromEnum <$> howManyAt (PlayerStuff p) Chip
+      chipScore = howManyAt (PlayerStuff p) Chip
    in cardScore - chipScore
 
 checkEnd :: NMM ()
 checkEnd =
   ifM
-    (anyHas CardDeck cards)
+    (CardDeck `hasAny` cards)
     justDoNothing
     ( do
         winners <- maximaByScoreM score . S.toList =<< lookPlayers
@@ -48,8 +49,9 @@ checkEnd =
 
 nmRunPlay :: NMPlayName -> NMM ()
 nmRunPlay Take = do
+  -- todo: ergonomics
   activePlayer (\p -> Cards.draw CenterOfTableCard (PlayerStuff p))
-  activePlayer (\p -> transferAll ChipPile (PlayerStuff p) Chip)
+  activePlayer (\p -> transferAll ChipPile (PlayerStuff p))
   checkEnd
   drawCard
   activePlayer chooseMove
@@ -57,18 +59,8 @@ nmRunPlay Decline = activePlayer (\p -> transfer (PlayerStuff p) ChipPile Chip)
 
 -- Initialization --
 
-nmSetup :: NMM ()
-nmSetup = shuffle CardDeck >> replicateM_ 9 (Cards.draw CardDeck BoxTop) >> drawCard
-
-nmPhases :: NMPhaseName -> NMPhase
-nmPhases (NMTurnPhase p) =
-  Phase
-    { name = NMTurnPhase p,
-      seedNodes = chooseMove p >> advanceTurnCyclic playerTurn
-    }
-
 visibility :: Int -> VisibilityMap NMLocation NoCounters
-visibility numPlayers = hideManyFromAll (mkPlayers numPlayers) [VisLocation BoxTop, VisLocation CardDeck] allVisible
+visibility numPlayers = hideManyFromAll (mkPlayers numPlayers) [VisLocation BoxTop, VisLocation CardDeck]
 
 initGameState :: Int -> NMGameState
 initGameState numPlayers =
@@ -78,9 +70,21 @@ initGameState numPlayers =
           objects = initGameObjects players,
           currentPhase = NMTurnPhase (head (S.toList players)),
           currentTurn = playerTurn (Player 1),
-          nextTurn    = playerTurn (Player 1),   -- placeholder; overwritten by advanceTurnCyclic
-          visibility = visibility numPlayers -- TODO: no, BoxTop is invisible
+          nextTurn    = playerTurn (Player 2),   -- will be overwritten by advanceTurnCyclic
+          visibility = visibility numPlayers 
         }
+
+
+nmSetup :: NMM ()
+nmSetup = do 
+  shuffle CardDeck
+  replicateM_ 9 (Cards.draw CardDeck BoxTop) 
+  drawCard
+
+nmPhases :: NMPhaseName -> NMPhase
+nmPhases name@(NMTurnPhase p) = mkPhase name (chooseMove p >> advanceTurnCyclic playerTurn)
+
+-- The game
 
 noMerci :: Int -> (NMGameState, NMGameRules)
 noMerci numPlayers = (initGameState numPlayers, GameRules nmRunPlay nmPhases score (Just nmSetup))

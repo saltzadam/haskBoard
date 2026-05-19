@@ -41,15 +41,23 @@ scoreCards :: Set NMResource -> Int
 scoreCards = scoreCards' . S.map fromJust . S.filter isJust . S.map extractCard
 
 -- could be fun to rewrite as a fold with accumulator like (sum, prev_element)
+-- scoreCards' :: Set Int -> Int
+-- scoreCards' cardValues = scoreSorted (S.toAscList cardValues) 0
+--   where
+--     scoreSorted (x : y : zs) currentScore =
+--       if y - x == 1
+--         then scoreSorted (y : zs) currentScore
+--         else scoreSorted (y : zs) (currentScore + x)
+--     scoreSorted [y] currentScore = currentScore + y
+--     scoreSorted [] currentScore = currentScore
+
+-- It was fun!
 scoreCards' :: Set Int -> Int
-scoreCards' cardValues = scoreSorted (S.toAscList cardValues) 0
+scoreCards' cardValues = fst $ foldr go (0, Nothing) (S.toDescList cardValues) -- toDescList because foldr works from the right side
   where
-    scoreSorted (x : y : zs) currentScore =
-      if y - x == 1
-        then scoreSorted (y : zs) currentScore
-        else scoreSorted (y : zs) (currentScore + x)
-    scoreSorted [y] currentScore = currentScore + y
-    scoreSorted [] currentScore = currentScore
+    go :: Int -> (Int, Maybe Int) -> (Int, Maybe Int)
+    go i (agg, Nothing)  = (agg + i, Just i)
+    go i (agg, Just prev)  = (agg + if i - prev == 1 then 0 else i, Just i)
 
 data NMLocation
   = CenterOfTableCard
@@ -59,21 +67,18 @@ data NMLocation
   | BoxTop
   deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
--- data NMCounters = DummyCounter deriving (Eq, Ord, Show, Generic, Enum, Bounded, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
-
--- instance Finitary NMCounters
-
 type NMGameObjects = GameObjects NMLocation NoCounters NMResource
 
 initLocations' :: Set Player -> NMLocation -> LocationShape NMResource
-initLocations' _ CenterOfTableCard = Slot Nothing
-initLocations' _ ChipPile = Pile M.empty
-initLocations' _ CardDeck = Deck (Seq.fromList cards)
+initLocations' _ CenterOfTableCard = emptySlot
+initLocations' _ ChipPile = emptyPile
+initLocations' _ CardDeck = deckOf cards 
 initLocations' players (PlayerStuff player)
-  | player `S.member` players = Pile (M.singleton Chip 11)
-  | otherwise = Dummy
-initLocations' _ BoxTop = Pile M.empty
+  | player `S.member` players = pileOf Chip 11
+  | otherwise =  dummy
+initLocations' _ BoxTop = emptyPile
 
+-- todo: ergonomic
 initLocations :: Set Player -> FTMap NMLocation (LocationShape NMResource)
 initLocations ps = FTMap (initLocations' ps)
 
@@ -81,6 +86,7 @@ initGameObjects :: Set Player -> NMGameObjects
 initGameObjects ps =
   GameObjects
     { locations = initLocations ps,
+      -- todo: ergonomic
       counters = FTMap (const dummyCounter)
     }
 
@@ -104,5 +110,7 @@ type NMView = GameStateView NMLocation NoCounters NMResource NMPhaseName
 
 type NMEvent = BEvent NMLocation NoCounters NMResource NMPhaseName NMPlayName
 
+
+-- todo: ergoonomic
 playerTurn :: Player -> NMTurn
 playerTurn p = Turn p (NE.singleton (NMTurnPhase p))

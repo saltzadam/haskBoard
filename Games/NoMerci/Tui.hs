@@ -3,7 +3,6 @@ module Tui where
 import Brick
 import Brick.Game.Tui
 import Control.Lens
-import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import qualified Data.Set as S
@@ -103,7 +102,7 @@ drawChips i =
 
 printOptions :: NMOptions -> Text
 printOptions (Options legal' _) =
-  let legal = NE.toList legal'
+  let legal = foldr (:) [] legal'
       printEnumeratedPlay :: (Int, NMPlayName) -> Text
       printEnumeratedPlay (i, play) = T.pack (show i ++ ") ") <> printPlay play
    in T.unlines . fmap printEnumeratedPlay $ zip [1 ..] legal

@@ -6,10 +6,10 @@ import Control.Lens ((^.))
 import Control.Monad (forever)
 import Control.Monad.Random (randomRIO)
 import Data.Finitary (Finitary)
-import qualified Data.List.NonEmpty as NE
 import Game.Agent
 import Game.Choose
 import Game.Options
+import qualified Data.Set.NonEmpty as NESet
 
 -- Runs Agents, plus a few examples.
 
@@ -42,7 +42,7 @@ termAgent fromGameChan toGameChan =
     { playChooser = \_ options@(Options plays' _) -> do
         print options
         choice <- getLine
-        return (NE.toList plays' !! (read choice :: Int)),
+        return (foldr (:) [] plays' !! (read choice :: Int)),
       stateHandler = const (return ()),
       winnersHandler = const (return ()),
       announceHandler = \_ _ -> return (),
@@ -86,7 +86,7 @@ randomAgent fromGameChan toGameChan =
   where
     chooseRandom :: p -> Options b -> IO b
     chooseRandom _ (Options legal _) =
-      let numOptions = length legal
+      let n = NESet.size legal
        in do
-            choice <- randomRIO (0, numOptions - 1)
-            return (legal NE.!! choice)
+            i <- randomRIO (0, n - 1)
+            return (foldr (:) [] legal !! i)

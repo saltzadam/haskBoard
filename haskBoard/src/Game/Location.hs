@@ -62,6 +62,7 @@ module Game.Location
     deckOf,
     pileOf,
     infinite,
+    dummy
   )
 where
 
@@ -117,6 +118,9 @@ pileOf r n = Pile (M.singleton r n)
 -- | An infinite supply of one resource.
 infinite :: r -> LocationShape r
 infinite = Infinite
+
+dummy :: LocationShape r
+dummy = Dummy
 
 data GymFundShape
   = Sequence (Seq Int)

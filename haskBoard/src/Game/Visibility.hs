@@ -83,8 +83,12 @@ showToAll :: (Eq l, Eq cn) => [Player] -> VisData l cn -> VisibilityMap l cn -> 
 showToAll players vd vm = foldr (\p v -> makeVisible v p vd) vm players
 
 -- | Hide multiple 'VisData' from all of the given players.
-hideManyFromAll :: (Eq l, Eq cn) => [Player] -> [VisData l cn] -> VisibilityMap l cn -> VisibilityMap l cn
-hideManyFromAll players vds vm = foldr (\vd v -> hideFromAll players vd v) vm vds
+hideManyFromAllOn :: (Eq l, Eq cn) => [Player] -> [VisData l cn] -> VisibilityMap l cn -> VisibilityMap l cn
+hideManyFromAllOn players vds vm = foldr (\vd v -> hideFromAll players vd v) vm vds
+
+hideManyFromAll :: (Eq l, Eq cn) => [Player] -> [VisData l cn] -> VisibilityMap l cn
+hideManyFromAll players vds = hideManyFromAllOn players vds allVisible
+
 
 -- | Show multiple 'VisData' to all of the given players.
 showManyToAll :: (Eq l, Eq cn) => [Player] -> [VisData l cn] -> VisibilityMap l cn -> VisibilityMap l cn

@@ -28,7 +28,7 @@ extra-source-files: CHANGELOG.md
 
 library
     hs-source-dirs: .
-    build-depends: base, haskBoard, effectful-plugin, effectful-core, containers, text, finitary, lens, free, aeson, finite-typelits
+    build-depends: base, haskBoard, effectful-plugin, effectful-core, containers, text, finitary, lens, free, aeson, finite-typelits, nonempty-containers
     exposed-modules: Helpers, Track, Cards, NumberedPiece
     default-language: Haskell2010
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses
