@@ -11,11 +11,12 @@ import Control.Lens
 import Control.Monad
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Effectful (MonadIO (..))
 import GHC.Generics (Generic)
 import Game.Agent (BEvent (..), extractReceive)
 import Game.Options (Options)
-import Game.Player (Player)
+import Game.Player (Player, displayPlayer, displayPlayerT)
 import Game.View (GameStateView)
 import qualified Graphics.Vty as V
 import Safe (readMay)
@@ -133,3 +134,27 @@ basicHandler =
 
 simpleHandler :: TUIEventHandler name l cn r ph pl
 simpleHandler = basicHandler <> simpleOptionKeyHandler
+
+-- | Numbered list of legal plays. Pass a function that renders a single play.
+drawOptions :: (pl -> Text) -> Options pl -> Widget n
+drawOptions renderPlay opts =
+  txtWrap . T.unlines . zipWith renderItem [1 ..] . foldr (:) [] $ opts ^. #legal
+  where
+    renderItem i play = T.pack (show (i :: Int) ++ ") ") <> renderPlay play
+
+-- | Current player label.
+drawCurrentPlayer :: Player -> Widget n
+drawCurrentPlayer = str . displayPlayer
+
+-- | Announcement log, most recent first (pass `announcements` from TUIState).
+drawAnnouncements :: [(Maybe Player, Text)] -> Widget n
+drawAnnouncements [] = emptyWidget
+drawAnnouncements as = vBox $ map renderAnn as
+  where
+    renderAnn (Nothing, msg) = txtWrap msg
+    renderAnn (Just p, msg) = txtWrap (displayPlayerT p <> T.pack ": " <> msg)
+
+-- | End-of-game result panel.
+drawEndGame :: Maybe Player -> Widget n
+drawEndGame Nothing = str "Game over."
+drawEndGame (Just p) = str ("The winner is " ++ displayPlayer p ++ ".")

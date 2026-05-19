@@ -4,12 +4,12 @@ import Brick
 import Brick.Game.Tui
 import Control.Lens
 import qualified Data.Map as M
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import Game.Location (inventory, peek', NoCounters)
-import Game.Options (Options (..))
+import Game.Options ()
 import Game.Player (Player, displayPlayer)
 import qualified Graphics.Vty as V
 import Helpers
@@ -75,12 +75,11 @@ drawCard i chips =
 drawMenu :: NMTUIState -> Widget Name
 drawMenu tui =
   let p = tui ^. #gameStateView . #currentPlayerView
-      playerW = strWrap (displayPlayer p)
    in padTop (Pad 1) . hLimit 15 . vLimit 15 $
         case tui ^. #tuiMode of
-          Ask options -> playerW <=> txtWrap (printOptions options)
-          ShowState -> playerW <=> fill ' '
-          EndGame -> strWrap $ ("The winner is Player " ++ show (view #num . fromJust $ tui ^. #winner))
+          Ask options -> drawCurrentPlayer p <=> drawOptions printPlay options
+          ShowState -> drawCurrentPlayer p <=> fill ' '
+          EndGame -> drawEndGame (tui ^. #winner)
 
 chipsDict =
   [ (0, ""),
@@ -99,13 +98,6 @@ drawChips i =
       remainder = i `rem` 8
    in concat (replicate full "\x28FF")
         ++ fromMaybe "" (lookup remainder chipsDict)
-
-printOptions :: NMOptions -> Text
-printOptions (Options legal' _) =
-  let legal = foldr (:) [] legal'
-      printEnumeratedPlay :: (Int, NMPlayName) -> Text
-      printEnumeratedPlay (i, play) = T.pack (show i ++ ") ") <> printPlay play
-   in T.unlines . fmap printEnumeratedPlay $ zip [1 ..] legal
 
 printPlay :: NMPlayName -> Text
 printPlay Take = T.pack "Take card"
