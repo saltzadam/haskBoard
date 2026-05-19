@@ -59,7 +59,6 @@ receiveHandler = TUIEventHandler receiveHandler'
   where
     receiveHandler' (AppEvent (Receive gsv)) =
       Just <$> do
-        assign #gameStateView gsv
         doBatch <- use #batchUpdates
         -- in batch, add items to front
         if doBatch
