@@ -88,3 +88,4 @@ nmPhases name@(NMTurnPhase p) = mkPhase name (chooseMove p >> advanceTurnCyclic 
 
 noMerci :: Int -> (NMGameState, NMGameRules)
 noMerci numPlayers = (initGameState numPlayers, GameRules nmRunPlay nmPhases score (Just nmSetup))
+
