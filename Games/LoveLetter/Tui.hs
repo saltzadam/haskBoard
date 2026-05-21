@@ -2,15 +2,14 @@ module Tui where
 
 import Agent
 import Brick
-import Brick.Game.Tui (TUIMode (..), TUIState (..), runHandler, simpleHandler)
+import Brick.Game.Tui
 import Brick.Widgets.Border (border)
 import Brick.Widgets.TextStream
-import Control.Lens (view, (^.))
+import Control.Lens ((^.))
 import Data.List (intercalate)
-import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Maybe (fromJust, fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -18,8 +17,7 @@ import Data.Void (Void)
 import FinitaryMap (ftAt)
 import GHC.Generics (Generic)
 import Game.Location (inventory)
-import Game.Options (Options (..))
-import Game.Player (Player (..), displayPlayer)
+import Game.Player (Player, displayPlayer)
 import Graphics.Vty (defAttr)
 import Objects
 import Text
@@ -43,33 +41,11 @@ drawUIView tui@(TUIState {gameStateView = gsv, announcements = announcements}) =
   [ hBox [vBox [playerView gsv, choiceView tui], logView announcements] -- <+> instructionsView
   ]
 
-player1Attr, player2Attr, player3Attr, player4Attr :: AttrName
-player1Attr = attrName "player0"
-player2Attr = attrName "player1"
-player3Attr = attrName "player2"
-player4Attr = attrName "player3"
-
-playerAttrs :: [AttrName]
-playerAttrs = [player1Attr, player2Attr, player3Attr, player4Attr]
-
-playerToColor :: Player -> AttrName
-playerToColor (Player i) = playerAttrs !! (fromEnum i)
-
-printOptions :: LLOptions -> Text
-printOptions (Options legal' _ _) =
-  let legal = NE.toList legal'
-      printEnumeratedPlay :: (Int, LLPlayName) -> Text
-      printEnumeratedPlay (i, play) = T.pack (show i ++ ") ") <> (T.pack . show $ play)
-   in T.unlines . fmap printEnumeratedPlay $ zip [1 ..] legal
 
 choiceView tui =
   (border . hLimit 30) $
     let p = tui ^. #gameStateView . #currentPlayerView
-        playerW = withAttr (playerToColor p) (txtWrap (T.pack . show $ p))
-     in case tui ^. #tuiMode of
-          Ask options -> playerW <=> txtWrap (printOptions options)
-          ShowState -> playerW <=> fill ' '
-          EndGame -> strWrap ("The winner is Player " ++ show (view #num . fromJust $ tui ^. #winner))
+     in simpleMenuBody (coloredPlayerWidget p) (drawOptions (T.pack . show)) tui
 
 logView :: [(Maybe Player, T.Text)] -> Widget Name
 logView = border . textStream LogView 40 20 . fmap snd

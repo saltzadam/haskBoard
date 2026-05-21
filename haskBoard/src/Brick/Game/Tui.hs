@@ -16,7 +16,7 @@ import Effectful (MonadIO (..))
 import GHC.Generics (Generic)
 import Game.Agent (BEvent (..), extractReceive)
 import Game.Options (Options)
-import Game.Player (Player, displayPlayer, displayPlayerT)
+import Game.Player (Player (..), displayPlayer, displayPlayerT)
 import Game.View (GameStateView)
 import qualified Graphics.Vty as V
 import Safe (readMay)
@@ -158,3 +158,32 @@ drawAnnouncements as = vBox $ map renderAnn as
 drawEndGame :: Maybe Player -> Widget n
 drawEndGame Nothing = str "Game over."
 drawEndGame (Just p) = strWrap ("The winner is " ++ displayPlayer p ++ ".")
+
+-- | Canonical player attribute names ("player0".."player3"). Games put their
+-- chosen colours in their AttrMap using these names as keys.
+defaultPlayerAttrs :: [AttrName]
+defaultPlayerAttrs = map (\i -> attrName ("player" ++ show i)) [0 .. 3 :: Int]
+
+-- | Map a player to one of the 'defaultPlayerAttrs' (0-based).
+playerToColor :: Player -> AttrName
+playerToColor (Player pn) = defaultPlayerAttrs !! fromEnum pn
+
+-- | Colored player label using a caller-supplied attr lookup.
+coloredPlayerWidget' :: (Player -> AttrName) -> Player -> Widget n
+coloredPlayerWidget' toAttr p = withAttr (toAttr p) (txtWrap (T.pack (show p)))
+
+-- | Colored player label using 'defaultPlayerAttrs'.
+coloredPlayerWidget :: Player -> Widget n
+coloredPlayerWidget = coloredPlayerWidget' playerToColor
+
+-- | Standard Ask/ShowState/EndGame menu body. Wrap with border/padding as needed.
+simpleMenuBody ::
+  Widget n ->
+  (Options pl -> Widget n) ->
+  TUIState l cn r ph pl ->
+  Widget n
+simpleMenuBody playerW optW (TUIState {tuiMode = mode, winner = w}) =
+  case mode of
+    Ask options -> playerW <=> optW options
+    ShowState -> playerW <=> fill ' '
+    EndGame -> drawEndGame w

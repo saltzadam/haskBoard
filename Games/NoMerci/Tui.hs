@@ -76,10 +76,7 @@ drawMenu :: NMTUIState -> Widget Name
 drawMenu tui =
   let p = tui ^. #gameStateView . #currentPlayerView
    in padTop (Pad 1) . hLimit 40 . vLimit 15 $
-        case tui ^. #tuiMode of
-          Ask options -> drawCurrentPlayer p <=> drawOptions printPlay options
-          ShowState -> drawCurrentPlayer p <=> fill ' '
-          EndGame -> drawEndGame (tui ^. #winner)
+        simpleMenuBody (drawCurrentPlayer p) (drawOptions printPlay) tui
 
 chipsDict =
   [ (0, ""),

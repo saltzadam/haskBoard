@@ -15,7 +15,7 @@ import Data.Finitary (inhabitants)
 import qualified Data.Foldable as F
 import Data.List (sort)
 import qualified Data.Map as M
-import Data.Maybe (fromJust, listToMaybe, mapMaybe, maybeToList)
+import Data.Maybe (listToMaybe, mapMaybe, maybeToList)
 import qualified Data.Set as S
 import qualified Data.Text as T
 import Dice (renderDice)
@@ -62,12 +62,8 @@ drawDice csv =
 drawMenu :: CSTUIState -> Widget Name
 drawMenu tui =
   let p = tui ^. #gameStateView . #currentPlayerView
-      playerW = withAttr (playerToColor p) (txtWrap (T.pack . show $ p))
-   in border . padBottom Max $
-        case tui ^. #tuiMode of
-          Ask options -> playerW <=> txtWrap (printOptions options)
-          ShowState -> playerW <=> fill ' '
-          EndGame -> strWrap ("The winner is Player " ++ show (view #num . fromJust $ tui ^. #winner))
+      playerW = coloredPlayerWidget p
+   in border . padBottom Max $ simpleMenuBody playerW (drawOptions printPlay) tui
 
 boxTable :: [[Widget n]] -> Table n
 boxTable =
