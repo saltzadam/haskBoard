@@ -114,8 +114,8 @@ queryResources lfilt rfilt = invertNestedMaps <$> queryLocations lfilt rfilt
 queryResourcesAt :: (Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl (Map r [l])
 queryResourcesAt lfilt rfilt = fmap M.keys <$> queryResources lfilt rfilt
 
-resourcesAt :: (Ord r, Eq l, Finitary l, Ord l) => l -> GameRule l cn r ph pl (Map r Int)
-resourcesAt l = (head . M.elems) <$> queryLocations (== l) (const True) 
+resourcesAt :: (Ord r, Eq l) => l -> GameRule l cn r ph pl (Map r Int)
+resourcesAt l = inventory <$> lookLocation l
 
 listResAtF :: (Ord r, Eq l, Finitary l, Ord l) => l -> (r -> Bool) -> GameRule l cn r ph pl [r]
 listResAtF l filt = M.keys <$> queryResourcesAt (== l) filt

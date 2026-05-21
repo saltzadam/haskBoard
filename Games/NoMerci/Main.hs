@@ -32,9 +32,10 @@ withWorker outer inner = withAsync outer $ const inner
 main :: IO ()
 main = do
   args <- getArgs
-  if "--stdio" `elem` args
-    then runStdioMode
-    else runServerMode
+  case () of
+    _ | "--stdio" `elem` args -> runStdioMode
+      | "--tui"   `elem` args -> runTUIMode
+      | otherwise              -> runServerMode
 
 runServerMode :: IO ()
 runServerMode = do
@@ -57,31 +58,22 @@ runStdioMode = do
     void $ forkIO $ runStdioAgent p lock players fromChan toChan
   stdioTrainingLoop (gs, gr) "training.log" interface
 
--- -- need to start writing to channels before reading them
--- main :: IO ()
--- main = do
---   let gs = fst (noMerci 3)
---   let gr = snd (noMerci 3)
---   let players = S.toList (gs ^. #players)
---   interface <- buildInterface players
---   let channels = fmap (\(PlayerInterface fromChan toChan) -> (fromChan, toChan)) (interface ^. #playerInterfaces)
---   gameToBrickBChan <- newBChan 100
---   brickToGameBChan <- newBChan 100
---   let playerAgent = brickAgent (fst $ channels M.! Player 1) gameToBrickBChan (snd $ channels M.! Player 1) brickToGameBChan
---   let ai1 = uncurry randomAgent (channels M.! (Player 2))
---   let ai2 = uncurry randomAgent (channels M.! (Player 3))
---
---   let gsv = viewGameStateAs' gs (Player 1)
---   let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True []
---
---   withWorker (runAgentIO playerAgent)
---     $ withWorker (runAgentIO ai1)
---     $ withWorker (runAgentIO ai2)
---     $ withWorker
---       ( void $
---           runGameSeparateChannels
---             interface
---             gs
---             gr
---       )
---     $ (void $ customMainWithDefaultVty (Just gameToBrickBChan) app initTUI)
+runTUIMode :: IO ()
+runTUIMode = do
+  let gs = fst (noMerci 3)
+  let gr = snd (noMerci 3)
+  let players = S.toList (gs ^. #players)
+  interface <- buildInterface players
+  let channels = fmap (\(PlayerInterface fromChan toChan) -> (fromChan, toChan)) (interface ^. #playerInterfaces)
+  gameToBrickBChan <- newBChan 100
+  brickToGameBChan <- newBChan 100
+  let playerAgent = brickAgent (fst $ channels M.! Player 1) gameToBrickBChan (snd $ channels M.! Player 1) brickToGameBChan
+  let ai1 = uncurry randomAgent (channels M.! Player 2)
+  let ai2 = uncurry randomAgent (channels M.! Player 3)
+  let gsv = viewGameStateAs' gs (Player 1)
+  let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True []
+  withWorker (runAgentIO playerAgent)
+    $ withWorker (runAgentIO ai1)
+    $ withWorker (runAgentIO ai2)
+    $ withWorker (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
+    $ void (customMainWithDefaultVty (Just gameToBrickBChan) app initTUI)

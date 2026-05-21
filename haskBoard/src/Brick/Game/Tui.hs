@@ -157,4 +157,4 @@ drawAnnouncements as = vBox $ map renderAnn as
 -- | End-of-game result panel.
 drawEndGame :: Maybe Player -> Widget n
 drawEndGame Nothing = str "Game over."
-drawEndGame (Just p) = str ("The winner is " ++ displayPlayer p ++ ".")
+drawEndGame (Just p) = strWrap ("The winner is " ++ displayPlayer p ++ ".")
