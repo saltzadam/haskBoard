@@ -3,9 +3,8 @@
 
 module Game.GameE (playGameTurns) where
 
-import Control.Applicative (asum, liftA2)
+import Control.Applicative (asum)
 import Control.Lens (to, (^.))
-import Control.Monad (void)
 import Control.Monad.Free
 import Data.Finitary (Finitary)
 import qualified Data.Foldable as F
@@ -111,7 +110,7 @@ runGameAction a@(Shuffle l) = do
       -- [0..n-i]"
       -- let makeSample_r i = randomR (0,length cards - i)
       -- sample <- traverse makeSample_r  [1..(length cards - 1)]
-      shuffled <- (Seq.fromList) <$> shuffleRNG (F.toList cards)
+      shuffled <- Seq.fromList <$> shuffleRNG (F.toList cards)
       assignGameState (#objects . #locations . ftAt l) (Deck shuffled)
     _ -> pure ()
   logAndContinue a
@@ -168,7 +167,7 @@ runFromPhases phases = fromMaybe TEndTurn . asum <$> traverse handlePhase phases
 
 playGameTurns :: forall l cn r ph pl es. (Ord l, Ord r, Ord cn, Finitary cn, RNG :> es, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Maybe (GameRule l cn r ph pl ()) -> Eff es (GameState l cn r ph pl, [Player])
 playGameTurns setupRule = do
-  mapM_ (void . runRuleControl) setupRule
+  mapM_ runRuleControl setupRule
   winners <- playGameTurns'
   liftA2 (,) getGameState (pure winners)
   where
@@ -185,7 +184,7 @@ playGameTurns setupRule = do
           playGameTurns'
 
 -- Run rule and return appropriate PhaseControl
-runRuleControl' :: forall l r cn ph pl es i a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Free (GameRuleF l cn r ph pl) a -> Eff es PhaseControl
+runRuleControl' :: forall l r cn ph pl es a. (Ord l, Ord r, Ord cn, Finitary cn, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, RNG :> es, Show ph, Show cn, Show l, Show r, Show pl, Log2 :> es, Eq ph, GameRun l cn r ph pl :> es) => Free (GameRuleF l cn r ph pl) a -> Eff es PhaseControl
 runRuleControl' (Free (Act action next)) = do
   result <- runGameAction action
   case result of

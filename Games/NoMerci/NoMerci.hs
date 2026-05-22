@@ -6,14 +6,14 @@ module NoMerci (noMerci) where
 import qualified Cards
 import Control.Monad (replicateM_)
 import qualified Data.Set as S
-import Game.GameState (GameRules (..), GameState (..), Phase (..))
+import Game.GameState (GameRules (..), GameState (..))
 import Game.Options (Options (..))
 import Game.Player (Player (..), mkPlayers)
 import Game.Rules
 import Game.Visibility (VisData (..), VisibilityMap (..), hideManyFromAll)
 import Helpers
 import Game.Location (NoCounters)
-import Objects
+import Objects 
 import Util (ifM, maximaByScoreM)
 
 
@@ -24,7 +24,7 @@ drawCard = Cards.draw CardDeck CenterOfTableCard
 
 chooseMove :: Player -> NMM ()
 chooseMove p = do
-  pHasChips <- (PlayerStuff p) `has` Chip
+  pHasChips <- PlayerStuff p `has` Chip
   let options =
         if pHasChips 
           then Options [Take, Decline] p
@@ -50,8 +50,8 @@ checkEnd =
 nmRunPlay :: NMPlayName -> NMM ()
 nmRunPlay Take = do
   -- todo: ergonomics
-  activePlayer (\p -> Cards.draw CenterOfTableCard (PlayerStuff p))
-  activePlayer (\p -> transferAll ChipPile (PlayerStuff p))
+  activePlayer (Cards.draw CenterOfTableCard . PlayerStuff)
+  activePlayer (transferAll ChipPile . PlayerStuff)
   checkEnd
   drawCard
   activePlayer chooseMove
@@ -68,7 +68,7 @@ initGameState numPlayers =
    in GameState
         { players = players,
           objects = initGameObjects players,
-          currentPhase = NMTurnPhase (head (S.toList players)),
+          currentPhase = NMTurnPhase (Player 1),
           currentTurn = playerTurn (Player 1),
           nextTurn    = playerTurn (Player 2),   -- will be overwritten by advanceTurnCyclic
           visibility = visibility numPlayers 

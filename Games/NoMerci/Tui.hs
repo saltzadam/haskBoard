@@ -3,7 +3,6 @@ module Tui where
 import Brick
 import Brick.Game.Tui
 import Control.Lens
-import qualified Data.Map as M
 import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)

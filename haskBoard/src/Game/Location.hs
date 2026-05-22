@@ -42,10 +42,10 @@ module Game.Location
     transferCounter',
     transferCounter,
     encodeLocations,
+    fromGymShape,
     toGymShape,
     encodeLocationShape,
     encodeCounter,
-    fromGymShape,
     decodeLocationShape,
     decodeCounter,
     GymSpace (..),
@@ -141,31 +141,31 @@ toGymShape (Infinite r) = DiscreteInf r
 toGymShape Dummy = DummyShape
 
 encodeLocations :: (Finitary name, Finitary r, ToJSON r, ToJSONKey name, ToJSONKey r) => Locations name r -> Value
-encodeLocations locs = toJSON $ (fmap toGymShape) . fmap encodeLocationShape . FT.reifyFn $ locs
+encodeLocations locs = toJSON $ fmap (toGymShape . encodeLocationShape) . FT.reifyFn $ locs
 
 encodeLocationShape :: (Finitary r, ToJSON r) => LocationShape r -> LocationShape Int
-encodeLocationShape (Deck seq') = Deck ((fromIntegral . toFinite <$> seq' :: Seq Int))
-encodeLocationShape (Pile mri) = Pile (((M.mapKeys (fromIntegral . toFinite) mri) :: Map Int Int))
-encodeLocationShape (Slot s) = Slot (((fromIntegral . toFinite <$> s) :: Maybe Int))
-encodeLocationShape (Infinite inf) = Infinite (((fromIntegral . toFinite $ inf) :: Int))
+encodeLocationShape (Deck seq') = Deck (fromIntegral . toFinite <$> seq' :: Seq Int)
+encodeLocationShape (Pile mri) = Pile (M.mapKeys (fromIntegral . toFinite) mri :: Map Int Int)
+encodeLocationShape (Slot s) = Slot ((fromIntegral . toFinite <$> s) :: Maybe Int)
+encodeLocationShape (Infinite inf) = Infinite ((fromIntegral . toFinite $ inf) :: Int)
 encodeLocationShape Dummy = Dummy
-
+--
 fromGymShape (Sequence s) = Deck s
 fromGymShape (MultiDiscrete p) = Pile p
 fromGymShape (DiscreteM s) = Slot s
 fromGymShape (DiscreteInf r) = Infinite r
 fromGymShape DummyShape = Dummy
-
+--
 decodeLocationShape :: (Finitary r, Ord r) => LocationShape Int -> LocationShape r
-decodeLocationShape (Deck seq) = Deck (fromFinite . fromIntegral <$> seq)
-decodeLocationShape (Pile mri) = Pile (((M.mapKeys (fromFinite . fromIntegral) mri)))
+decodeLocationShape (Deck seq') = Deck (fromFinite . fromIntegral <$> seq')
+decodeLocationShape (Pile mri) = Pile (M.mapKeys (fromFinite . fromIntegral) mri)
 decodeLocationShape (Slot (Just s)) = Slot (Just (fromFinite . fromIntegral $ s))
 decodeLocationShape (Slot Nothing) = Slot Nothing
 decodeLocationShape (Infinite inf) = Infinite (fromFinite . fromIntegral $ inf)
 decodeLocationShape Dummy = Dummy
 
-decodeLocations :: forall name r. (Ord r, Ord name, FromJSONKey name, FromJSONKey r, FromJSON r, Finitary r, Finitary name) => Text -> Locations name r
-decodeLocations val = FT.unsafeUnreify . fmap decodeLocationShape . fmap (fromGymShape) . fromJust $ (decodeStrict . T.encodeUtf8 $ val :: Maybe (Map name GymFundShape))
+-- decodeLocations :: forall name r. (Ord r, Ord name, FromJSONKey name, FromJSONKey r, FromJSON r, Finitary r, Finitary name) => Text -> Locations name r
+-- decodeLocations val = FT.unsafeUnreify . fmap (decodeLocationShape . fromGymShape) . fromJust $ (decodeStrict . T.encodeUtf8 $ val :: Maybe (Map name GymFundShape))
 
 -- instance (Finitary names, Finitary r, ToJSON r, ToJSONKey names, ToJSONKey r) => ToJSON (Locations names r) where
 -- toJSON = encodeLocations
@@ -340,11 +340,9 @@ encodeCounter (Counter val bounds) = toJSON $ Discrete bounds val
 decodeCounter :: Text -> Counter
 decodeCounter t = case (fromJust (decodeStrict . T.encodeUtf8 $ t) :: GymFundShape) of
   Discrete bounds val -> Counter val bounds
+  _ -> error "tried to decodeCounter a non-counter"
 
 type Counters name = FTMap name Counter
-
-encodeCounters :: (Finitary name, Ord name, ToJSON name, ToJSONKey name) => Counters name -> Value
-encodeCounters = toJSON . fmap encodeCounter
 
 makeCounter :: (Int, Int) -> Counter
 makeCounter (a, b) = Counter a (a, b)

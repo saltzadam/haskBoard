@@ -41,7 +41,7 @@ peekN n loc = do
 
 -- | Deal one card from a deck to each of the given players.
 dealTo :: (Eq l, Show r) => l -> (Player -> l) -> [Player] -> GameRule l cn r ph pl ()
-dealTo deck playerLoc players = traverse_ (\p -> draw deck (playerLoc p)) players
+dealTo deck playerLoc = traverse_ (\p -> draw deck (playerLoc p))
 
 -- | Deal N cards from a deck to each of the given players (round-robin).
 dealNTo :: (Eq l, Show r) => Int -> l -> (Player -> l) -> [Player] -> GameRule l cn r ph pl ()

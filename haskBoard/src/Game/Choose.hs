@@ -1,18 +1,12 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Game.Choose where
 
 import Control.Monad.Free (liftF)
-import Data.Aeson (FromJSON, ToJSON (..), ToJSONKey, Value)
-import Data.Aeson.Text (encodeToLazyText)
-import Data.Finitary (Finitary)
 import Data.Text
-import Data.Text.Lazy (toStrict)
 import Effectful
 import Effectful.Dispatch.Dynamic
 import GHC.Generics (Generic)
-import Game.GameAction (GameAction)
 import Game.GameState
 import Game.Options (Options)
 import Game.Player

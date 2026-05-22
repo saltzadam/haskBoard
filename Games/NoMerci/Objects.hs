@@ -2,14 +2,13 @@
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module Objects where
+module Objects 
+where
 
 import Data.Aeson (FromJSON, FromJSONKey, ToJSON, ToJSONKey)
 import Data.Finitary
 import qualified Data.List.NonEmpty as NE
-import qualified Data.Map as M
 import Data.Maybe (fromJust, isJust)
-import qualified Data.Sequence as Seq
 import Data.Set (Set)
 import qualified Data.Set as S
 import FinitaryMap (FTMap (..))

@@ -5,7 +5,6 @@
 module Util where
 
 import Control.Monad (foldM, (>=>))
-import qualified Data.Aeson.Types as Aeson
 import Data.Finitary (Finitary, inhabitants)
 import qualified Data.Foldable as F
 import Data.Foldable1 (foldMap1)
@@ -17,7 +16,6 @@ import Data.Tuple (swap)
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
-import Data.Text (Text)
 
 
 -- TODO: assess whether these two are ever actually necessary

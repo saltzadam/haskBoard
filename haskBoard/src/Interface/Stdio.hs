@@ -19,8 +19,8 @@ import Control.Monad (forever)
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, decodeStrict, withObject, (.:))
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Aeson.Types (Parser)
-import qualified Data.ByteString as BS
-import Data.Finitary (Finitary (..), inhabitants)
+import qualified Data.ByteString.Char8 as BS
+import Data.Finitary (inhabitants)
 import Game.Constraints (GameCounter, GameLocation, GamePlay, GameResource)
 import qualified Data.Map as M
 import Data.Proxy (Proxy (..))
@@ -35,12 +35,12 @@ import GHC.Generics (Generic)
 import Game.Choose (GameToInterfacePayload (..))
 import Game.GameState (GameState)
 import Game.Location
-  ( Counter (..),
+  ( 
     GymSpace (..),
     encodeCounterObs,
     encodeLocationObs,
   )
-import Game.Options (Options (..), actionSpaceSize, decodeAction, legalActionIndices)
+import Game.Options ( actionSpaceSize, decodeAction, legalActionIndices)
 import Game.Player (Player (..))
 import Game.View (GameObjectsView (..), GameStateView (..), gameObjectsViewSpace, viewGameStateAs')
 
@@ -112,7 +112,7 @@ sendInit gs = putJson msg
     agentNums = map toAgentNum players
     -- Use a player's view so invisible locations get a 1-dim placeholder
     -- rather than their full (but always-zero) space.
-    objsView  = (viewGameStateAs' gs (head players)) ^. #objectsView
+    objsView  = viewGameStateAs' gs (head players) ^. #objectsView
     obsSpace  = gameObjectsViewSpace objsView
     actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
     msg       = InitMsg agentNums obsSpace actSpace

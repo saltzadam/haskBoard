@@ -11,10 +11,9 @@ import Control.Lens (makeFields, over, (^.))
 import Control.Monad (forM_, forever, void)
 import Control.Monad.Except (ExceptT (..), runExceptT)
 import Control.Monad.Trans (lift)
-import Data.Aeson (FromJSON (..), ToJSON (..), ToJSONKey, decode, toJSON)
+import Data.Aeson (ToJSON (..),  decode, toJSON)
 import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.ByteString.Lazy as LBS
-import Data.Finitary (Finitary)
 import Data.Map (Map)
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import qualified Data.Map as M
@@ -50,13 +49,13 @@ data ServerState = ServerState
 makeFields ''ServerState
 
 newServerState :: Int -> ServerState
-newServerState n = ServerState M.empty NotEnoughClients n
+newServerState = ServerState M.empty NotEnoughClients
 
 serverNumPlayers :: ServerState -> Int
 serverNumPlayers server_ = length (server_ ^. #clients)
 
 clientExists :: Player -> ServerState -> Bool
-clientExists client server_ = any (== client) (M.keys $ server_ ^. #clients)
+clientExists client server_ = client `elem` (M.keys $ server_ ^. #clients)
 
 addClient' :: Player -> Connection -> ServerState -> ServerState
 addClient' p conn = over #clients (M.insert p conn)
@@ -97,8 +96,8 @@ application gs controller state pending = do
         runExceptT $
           forever $
             ifM
-              (lift ((\ss -> (ss ^. #expectedPlayers) == (serverNumPlayers ss)) <$> readMVar state))
-              (lift ((modifyMVar_ state (\ss -> return (ss {serverStatus = Active})))) >> exit ())
+              (lift ((\ss -> (ss ^. #expectedPlayers) == serverNumPlayers ss) <$> readMVar state))
+              (lift (modifyMVar_ state (\ss -> return (ss {serverStatus = Active}))) >> exit ())
               (return ())
 
   WS.withPingThread conn 30 (return ()) $ do
@@ -128,7 +127,7 @@ application gs controller state pending = do
 
             -- Send InitMsg so clients can build obs/act spaces
             let allNums   = map (\(Player pn) -> fromEnum pn) (S.toList (gs ^. #players))
-                objsView  = (viewGameStateAs' gs player') ^. #objectsView
+                objsView  = viewGameStateAs' gs player' ^. #objectsView
                 obsSpace  = gameObjectsViewSpace objsView
                 actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
                 initMsg   = InitMsg allNums obsSpace actSpace

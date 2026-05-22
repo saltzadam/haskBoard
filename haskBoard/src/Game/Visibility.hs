@@ -66,13 +66,13 @@ makeVisible :: (Eq l, Eq cn) => VisibilityMap l cn -> Player -> VisData l cn -> 
 makeVisible (VisibilityMap vis) player lc = VisibilityMap (makeVisible' vis player lc)
   where
     makeVisible' :: (Eq lc) => (Player -> lc -> VisibilityType) -> Player -> lc -> (Player -> lc -> VisibilityType)
-    makeVisible' vis' p lc p' l' = if p == p' && lc == l' then Visible else vis' p' l'
+    makeVisible' vis' p lc' p' l' = if p == p' && lc' == l' then Visible else vis' p' l'
 
 makeInvisible :: (Eq l, Eq cn) => VisibilityMap l cn -> Player -> VisData l cn -> VisibilityMap l cn
 makeInvisible (VisibilityMap vis) player lc = VisibilityMap (makeInvisible' vis player lc)
   where
     makeInvisible' :: (Eq lc) => (Player -> lc -> VisibilityType) -> Player -> lc -> (Player -> lc -> VisibilityType)
-    makeInvisible' vis' p lc p' l' = if p == p' && lc == l' then Invisible else vis' p' l'
+    makeInvisible' vis' p lc' p' l' = if p == p' && lc' == l' then Invisible else vis' p' l'
 
 -- | Hide one piece of 'VisData' from all of the given players.
 hideFromAll :: (Eq l, Eq cn) => [Player] -> VisData l cn -> VisibilityMap l cn -> VisibilityMap l cn
@@ -84,7 +84,7 @@ showToAll players vd vm = foldr (\p v -> makeVisible v p vd) vm players
 
 -- | Hide multiple 'VisData' from all of the given players.
 hideManyFromAllOn :: (Eq l, Eq cn) => [Player] -> [VisData l cn] -> VisibilityMap l cn -> VisibilityMap l cn
-hideManyFromAllOn players vds vm = foldr (\vd v -> hideFromAll players vd v) vm vds
+hideManyFromAllOn players vds vm = foldr (hideFromAll players) vm vds
 
 hideManyFromAll :: (Eq l, Eq cn) => [Player] -> [VisData l cn] -> VisibilityMap l cn
 hideManyFromAll players vds = hideManyFromAllOn players vds allVisible
@@ -92,4 +92,4 @@ hideManyFromAll players vds = hideManyFromAllOn players vds allVisible
 
 -- | Show multiple 'VisData' to all of the given players.
 showManyToAll :: (Eq l, Eq cn) => [Player] -> [VisData l cn] -> VisibilityMap l cn -> VisibilityMap l cn
-showManyToAll players vds vm = foldr (\vd v -> showToAll players vd v) vm vds
+showManyToAll players vds vm = foldr (showToAll players) vm vds

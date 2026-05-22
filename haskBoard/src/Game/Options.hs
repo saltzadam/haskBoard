@@ -55,12 +55,12 @@ exceptIf mfilt mopts = do
 
 help :: (pl -> pl -> Bool) -> [pl] -> [pl]
 help comparer list =
-  let filters x = all (($ x) . comparer) list
+  let filters x = all (`comparer` x) list
    in filter filters list
 
 helpM :: (Applicative m) => (pl -> pl -> m Bool) -> [pl] -> m [pl]
 helpM mcomparer list = do
-  let filters x = and <$> traverse (($ x) . mcomparer) list
+  let filters x = and <$> traverse (`mcomparer` x) list
   filterM filters list
 
 -- mcomparer a b = if a is in mopts then remove b

@@ -23,7 +23,6 @@ import Data.Foldable (traverse_)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Text
-import qualified Debug.Trace as Debug
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)
 import GHC.Generics (Generic)
@@ -74,10 +73,10 @@ sendUpdate :: (IOE :> es) => GameController l cn r ph pl -> GameState l cn r ph 
 sendUpdate gc gs = liftIO $ traverse_ (sendUpdate' gs) (gc ^. #playerInterfaces . to M.toList)
   where
     sendUpdate' :: GameState l cn r ph pl -> (Player, PlayerInterface l cn r ph pl) -> IO ()
-    sendUpdate' gs (p, interface) =
+    sendUpdate' gs' (p, interface) =
       writeChan
         (interface ^. #fromGameChannel)
-        (SendState (viewGameStateAs gs (LookAs p)))
+        (SendState (viewGameStateAs gs' (LookAs p)))
 
 -- TODO: use some other idiom w/ throw
 sendChoice :: forall l cn r ph pl es. (IOE :> es) => GameController l cn r ph pl -> GameState l cn r ph pl -> Options pl -> Eff es pl
@@ -94,8 +93,7 @@ sendChoice' gc gs opts = case gc ^. #playerInterfaces . at chooser of
   Just interface -> liftIO $ do
     let gsv = viewGameStateAs gs (LookAs chooser)
     writeChan (interface ^. #fromGameChannel) (SendOptions gsv opts)
-    x <- readChan (interface ^. #toGameChannel)
-    return x
+    readChan (interface ^. #toGameChannel)
   where
     chooser = opts ^. #owner
 
@@ -112,7 +110,7 @@ sendAnnouncement gc speaker announcement = liftIO $ traverse_ sendAnnouncement' 
     sendAnnouncement' interface = writeChan (interface ^. #fromGameChannel) (SendAnnouncement speaker announcement)
 
 buildInterface :: [Player] -> IO (GameController l cn r ph pl)
-buildInterface ps = fmap (GameController . M.fromList) $ traverse go $ ps
+buildInterface ps = fmap (GameController . M.fromList) $ traverse go ps
   where
     go :: Player -> IO (Player, PlayerInterface l cn r ph pl)
     go p = do

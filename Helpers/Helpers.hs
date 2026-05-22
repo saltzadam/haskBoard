@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -8,7 +7,7 @@ module Helpers where
 import Control.Lens (view, (^.))
 import Control.Monad (replicateM_)
 import Control.Monad.Free (liftF)
-import Data.Finitary
+import Data.Finitary (Finitary)
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NE

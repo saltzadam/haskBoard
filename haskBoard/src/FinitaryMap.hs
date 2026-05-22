@@ -20,7 +20,7 @@ import Data.Aeson (FromJSON (..), ToJSON (..))
 import Data.Aeson.Types (FromJSONKey, ToJSONKey)
 import Data.Digits (digits, unDigits)
 import Data.Finitary (Finitary (..), inhabitants)
-import Data.Finite (Finite, finite, getFinite)
+import Data.Finite (finite, getFinite)
 import Data.Map (Map)
 import qualified Data.Map as M
 import GHC.Generics (Generic)

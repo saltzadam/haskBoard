@@ -1,6 +1,5 @@
 module Game.Rules where
 
-import Control.Applicative
 import Control.Lens (view)
 import Control.Monad (void)
 import Control.Monad.Free

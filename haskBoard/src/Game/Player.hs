@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Game.Player where
@@ -24,6 +23,7 @@ displayPlayerNum PlayerSix = "Player Six"
 displayPlayer :: Player -> String
 displayPlayer (Player pnum) = displayPlayerNum pnum
 
+displayPlayerT :: Player -> T.Text
 displayPlayerT = T.pack . displayPlayer
 
 newtype Player = Player {num :: PlayerNum} deriving (Eq, Ord, Show, Generic, Read, Bounded, Finitary, Enum, FromJSON, ToJSON, FromJSONKey, ToJSONKey)

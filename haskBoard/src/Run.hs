@@ -2,7 +2,6 @@ module Run where
 
 import Control.Concurrent (Chan)
 import Control.Lens (to, (^.))
-import Data.Finitary (Finitary)
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import qualified Data.Set as S
 import Effectful (runEff)
@@ -13,22 +12,21 @@ import Game.Choose
 import Game.GameE
 import Game.GameState
 import Game.Player (Player)
-import Interface.Controller (GameController, buildInterface, chooseInterface, commonInterface)
+import Interface.Controller (GameController, chooseInterface, commonInterface)
 import Log
 import System.IO (IOMode (..), withFile)
 
 runGameCommonChannels ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   FilePath ->
-  Player ->
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->
   Chan (GameToInterfacePayload l cn r ph pl) ->
   Chan pl ->
   IO (GameState l cn r ph pl, [Player])
-runGameCommonChannels logFile p gameState gameRules chanGameToClient chanClientToGame = do
+runGameCommonChannels logFile gameState gameRules chanGameToClient chanClientToGame = do
   gen <- newCryptoRNGState
-  withFile logFile WriteMode $
+  withFile logFile WriteMode
     ( \handle ->
         runEff
           . evalState gameState
@@ -37,7 +35,7 @@ runGameCommonChannels logFile p gameState gameRules chanGameToClient chanClientT
           -- . chooseChan (LookAs p) chanGameToClient chanClientToGame
           . chooseInterface (commonInterface thePlayers chanGameToClient chanClientToGame)
           . logToFile DebugLevel handle
-          $ (playGameTurns (gameRules ^. #setupPhase))
+          $ playGameTurns (gameRules ^. #setupPhase)
     )
   where
     thePlayers = gameState ^. #players . to S.toList
@@ -51,7 +49,7 @@ runGameSeparateChannels ::
   IO (GameState l cn r ph pl, [Player])
 runGameSeparateChannels logFile controller gameState gameRules = do
   gen <- newCryptoRNGState
-  withFile logFile WriteMode $
+  withFile logFile WriteMode 
     ( \handle ->
         runEff
           . evalState gameState
@@ -60,10 +58,8 @@ runGameSeparateChannels logFile controller gameState gameRules = do
           -- . chooseChan (LookAs p) chanGameToClient chanClientToGame
           . chooseInterface controller
           . logToFile DebugLevel handle
-          $ (playGameTurns (gameRules ^. #setupPhase))
+          $ playGameTurns (gameRules ^. #setupPhase)
     )
-   where
-    thePlayers = gameState ^. #players . to S.toList
 
 -- TODO: remove bounded, enum
 runGameFromInterfaces ::

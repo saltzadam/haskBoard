@@ -5,8 +5,7 @@ where
 
 import Control.Monad (void)
 import Data.Aeson (decodeStrict)
-import qualified Data.ByteString as BS
-import Data.Finitary (Finitary)
+import qualified Data.ByteString.Char8 as BS
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import Game.GameState (GameRules, GameState)
 import Interface.Controller (GameController)
