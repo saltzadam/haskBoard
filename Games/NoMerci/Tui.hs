@@ -8,7 +8,7 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
-import Game.Location (inventory, peek', NoCounters)
+import Game.Location (inventoryItems, peek', NoCounters)
 import Game.Options ()
 import Game.Player (Player, displayPlayer)
 import qualified Graphics.Vty as V
@@ -36,7 +36,10 @@ drawUIView tui =
 
 drawBoardView :: NMView -> Widget Name
 drawBoardView g =
-  let card = (g `viewLocation` CenterOfTableCard) >>= peek' >>= extractCard
+  let card = do
+          center <- g `viewLocation` CenterOfTableCard
+          whatsThere <- peek' center
+          extractCard whatsThere
       chips = viewHowManyAt g ChipPile Chip
    in fromMaybe drawNothing (drawCard <$> card <*> chips)
 
@@ -88,13 +91,13 @@ drawPlayers g = vBox (drawPlayer g <$> g ^. #playersView . to S.toList)
     drawPlayer :: NMView -> Player -> Widget Name
     drawPlayer g p =
       padTop (Pad 1) $
-        str (displayPlayer p ++ maybe " " (drawCards . filter isCard . M.keys . inventory) (viewLocation g (PlayerStuff p)))
+        str (displayPlayer p ++ maybe " " (drawCards . filter isCard . inventoryItems) (viewLocation g (PlayerStuff p)))
           <=> str ("Chips: " ++ maybe "" show (viewHowManyAt g (PlayerStuff p) Chip))
 
 drawCards :: [NMResource] -> String
 drawCards xs = surround (unwords . fmap show . mapMaybe extractCard $ xs)
   where
-    surround string = if not . null $ string then "[" ++ string ++ "]" else string
+    surround string = if not (null string) then "[" ++ string ++ "]" else string
 
 theAttrMap :: AttrMap
 theAttrMap = attrMap (V.white `on` V.black) []

@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
 
 module Game.Location
   ( LocationShape (..),
@@ -19,6 +20,7 @@ module Game.Location
     inventory,
     howMany',
     has',
+    inventoryItems,
     findResourceWithin,
     histogram,
     listAll,
@@ -278,6 +280,9 @@ inventory (Slot Nothing) = M.empty
 inventory (Slot (Just r)) = M.singleton r 1
 inventory Dummy = M.empty
 inventory (Infinite r) = M.singleton r maxBound
+
+inventoryItems :: (Ord r) => LocationShape r -> [r]
+inventoryItems = M.keys . inventory
 
 howManyF :: (Ord r) => LocationShape r -> (r -> Bool) -> Int
 howManyF loc filt = sum . M.filterWithKey (\k _ -> filt k) . inventory $ loc
