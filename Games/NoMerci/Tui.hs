@@ -78,24 +78,6 @@ drawMenu tui =
    in padTop (Pad 1) . hLimit 40 . vLimit 15 $
         simpleMenuBody (drawCurrentPlayer p) (drawOptions printPlay) tui
 
-chipsDict =
-  [ (0, ""),
-    (1, "\x2840"),
-    (2, "\x28C0"),
-    (3, "\x28C4"),
-    (4, "\x28E4"),
-    (5, "\x28E6"),
-    (6, "\x28F6"),
-    (7, "\x28F7")
-  ]
-
-drawChips :: Int -> String
-drawChips i =
-  let full = i `div` 8
-      remainder = i `rem` 8
-   in concat (replicate full "\x28FF")
-        ++ fromMaybe "" (lookup remainder chipsDict)
-
 printPlay :: NMPlayName -> Text
 printPlay Take = T.pack "Take card"
 printPlay Decline = T.pack "Pay chip"

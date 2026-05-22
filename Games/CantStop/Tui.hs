@@ -65,15 +65,6 @@ drawMenu tui =
       playerW = coloredPlayerWidget p
    in border . padBottom Max $ simpleMenuBody playerW (drawOptions printPlay) tui
 
-boxTable :: [[Widget n]] -> Table n
-boxTable =
-  rowBorders False
-    . columnBorders False
-    . surroundingBorder False
-    . setDefaultRowAlignment AlignBottom
-    . setDefaultColAlignment AlignCenter
-    . table
-
 square :: Widget Name
 square = str "\x02588"
 

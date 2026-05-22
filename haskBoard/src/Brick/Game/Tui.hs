@@ -6,6 +6,7 @@ module Brick.Game.Tui where
 
 import Brick
 import Brick.BChan
+import Brick.Widgets.Table
 import Control.Applicative
 import Control.Lens
 import Control.Monad
@@ -187,3 +188,32 @@ simpleMenuBody playerW optW (TUIState {tuiMode = mode, winner = w}) =
     Ask options -> playerW <=> optW options
     ShowState -> playerW <=> fill ' '
     EndGame -> drawEndGame w
+
+-- | Braille dot encoding of a count (8 dots per full character).
+chipsDict :: [(Int, String)]
+chipsDict =
+  [ (0, ""),
+    (1, "\x2840"),
+    (2, "\x28C0"),
+    (3, "\x28C4"),
+    (4, "\x28E4"),
+    (5, "\x28E6"),
+    (6, "\x28F6"),
+    (7, "\x28F7")
+  ]
+
+drawChips :: Int -> String
+drawChips i =
+  concat (replicate (i `div` 8) "\x28FF")
+    ++ fromMaybe "" (lookup (i `rem` 8) chipsDict)
+
+-- | Brick Table with no internal/surrounding borders, bottom-aligned rows,
+-- centre-aligned columns. Suitable for game boards rendered as grids.
+boxTable :: [[Widget n]] -> Table n
+boxTable =
+  rowBorders False
+    . columnBorders False
+    . surroundingBorder False
+    . setDefaultRowAlignment AlignBottom
+    . setDefaultColAlignment AlignCenter
+    . table
