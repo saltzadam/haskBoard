@@ -1,293 +1,131 @@
-"""
-IPPO training script for haskboard games using AgileRL 2.x.
-
-Usage (after building the Haskell binary):
-    cabal build NoMerci
-    uv run python main.py --binary $(cabal exec which NoMerci)
-
-Docs:
-    https://docs.agilerl.com/en/latest/api/algorithms/ippo.html
-"""
-
-from __future__ import annotations
-
-import argparse
-import csv
+from agilerl.training.train_multi_agent_off_policy import train_multi_agent_off_policy
+from agilerl.training.train_multi_agent_on_policy import train_multi_agent_on_policy
+from agilerl.components.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from agilerl.algorithms import IPPO
+from agilerl.utils.utils import create_population
+from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
+from agilerl.algorithms.core.registry import HyperparameterConfig, RLParameter
+from agilerl.hpo.mutation import Mutations
+from agilerl.hpo.tournament import TournamentSelection
 import sys
-import time
-from pathlib import Path
 
-import gymnasium
-import numpy as np
-from agilerl.algorithms.ippo import IPPO
+from haskboard_env import HaskboardEnv, make
 
-from haskboard_env import HaskboardEnv
+sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+device='cpu'
+population_size=6
 
-# ---------------------------------------------------------------------------
-# Observation flattening
-# Dict + Sequence obs spaces → flat float32 vector suitable for MLP networks.
-# ---------------------------------------------------------------------------
+env = make("/home/adam/haskell/haskboard/dist-newstyle/build/x86_64-linux/ghc-9.10.1/NoMerci-0.1.0.0/x/NoMerci/build/NoMerci/NoMerci"
+            ,shared=False)
+_ = env.reset()
 
-def _space_flat_dim(space: gymnasium.Space, max_seq_len: int) -> int:
-    if isinstance(space, gymnasium.spaces.Dict):
-        return sum(_space_flat_dim(s, max_seq_len) for s in space.spaces.values())
-    if isinstance(space, gymnasium.spaces.Sequence):
-        return max_seq_len * _space_flat_dim(space.feature_space, max_seq_len)
-    from gymnasium.spaces.utils import flatdim
-    return flatdim(space)
+def get_memory(size:int =500,device:str ='cpu'):
+    return MultiAgentReplayBuffer(memory_size=size,
+field_names=["state", "action", "reward", "next_state", "done"],
+                                  agent_ids = [f"player{i}_{i}" for i in range(3)],
+                      device=device)
 
+def get_algo():
+    return IPPO( observation_spaces = env.observation_spaces, action_spaces = env.action_spaces,)
 
-def flatten_obs(obs, space: gymnasium.Space, max_seq_len: int) -> np.ndarray:
-    """Flatten a nested Dict/Sequence observation to a 1-D float32 array.
+INIT_HP = {}
+INIT_HP['AGENT_IDS'] = env.agents
 
-    - Dict sub-spaces are concatenated in insertion order.
-    - Sequence sub-spaces are zero-padded / truncated to *max_seq_len* elements.
-    - None (hidden location) becomes a zero vector matching the sub-space dim.
-    """
-    if obs is None:
-        return np.zeros(_space_flat_dim(space, max_seq_len), dtype=np.float32)
+NET_CONFIG = {agent: {
+        "encoder_config": {"hidden_size": [32, 32], "activation": "ReLU"},
+        "head_config": {"hidden_size": [32]},
+    }
+for agent in env.agents}
 
-    if isinstance(space, gymnasium.spaces.Dict):
-        return np.concatenate(
-            [flatten_obs(obs[k], s, max_seq_len) for k, s in space.spaces.items()]
-        ).astype(np.float32)
+HP_CONFIG = HyperparameterConfig(
+    lr = RLParameter(min=1e-4, max=1e-2),
+    batch_size = RLParameter(min=8, max=1024),
+    learn_step = RLParameter(min=256, max=8192, grow_factor=1.5, shrink_factor=0.75)
+)
 
-    if isinstance(space, gymnasium.spaces.Sequence):
-        inner_dim = _space_flat_dim(space.feature_space, max_seq_len)
-        out = np.zeros(max_seq_len * inner_dim, dtype=np.float32)
-        for i, item in enumerate(list(obs)[:max_seq_len]):
-            out[i * inner_dim : (i + 1) * inner_dim] = flatten_obs(
-                item, space.feature_space, max_seq_len
-            )
-        return out
+# TODO: more defaults
+MUTATION_PARAMS = {
+    # Relative probabilities
+    'NO_MUT': 0.4,                              # No mutation
+    'ARCH_MUT': 0.2,                            # Architecture mutation
+    'NEW_LAYER': 0.2,                           # New layer mutation
+    'PARAMS_MUT': 0.2,                          # Network parameters mutation
+    'ACT_MUT': 0,                               # Activation layer mutation
+    'RL_HP_MUT': 0.2,                           # Learning HP mutation
+    'MUT_SD': 0.1,                              # Mutation strength
+    'RAND_SEED': 1,                             # Random seed
+}
 
-    from gymnasium.spaces.utils import flatten as gym_flatten
-    return gym_flatten(space, obs).astype(np.float32)
+# TODO: some default
+mutations = Mutations(
+    no_mutation=0.2,  # Probability of no mutation
+    architecture=0.2,  # Probability of architecture mutation
+    new_layer_prob=0.2,  # Probability of new layer mutation
+    parameters=0.2,  # Probability of parameter mutation
+    activation=0,  # Probability of activation function mutation
+    rl_hp=0.2,  # Probability of RL hyperparameter mutation
+    mutation_sd=0.1,  # Mutation strength
+    device=device,
+)
 
-
-# ---------------------------------------------------------------------------
-# Training
-# ---------------------------------------------------------------------------
-
-def train(
-    binary: str,
-    n_episodes: int = 1000,
-    max_steps: int = 500,
-    device: str = "cpu",
-    max_seq_len: int = 64,
-    log_dir: str = "runs",
-    checkpoint_interval: int = 100,
-    resume: str | None = None,
-) -> None:
-    run_dir = Path(log_dir) / time.strftime("%Y%m%d_%H%M%S")
-    ckpt_dir = run_dir / "checkpoints"
-    ckpt_dir.mkdir(parents=True, exist_ok=True)
-
-    metrics_file = (run_dir / "metrics.csv").open("w", newline="")
-    metrics_writer = csv.writer(metrics_file)
-    metrics_writer.writerow(["episode", "steps", "total_reward", "mean_reward_50"])
-    print(f"Logging to {run_dir}")
-
-    env = HaskboardEnv(binary)
-
-    native_obs_space = env.observation_space(env.possible_agents[0])
-    native_act_space = env.action_space(env.possible_agents[0])
-    obs_dim = _space_flat_dim(native_obs_space, max_seq_len)
-
-    # IPPO needs flat Box obs spaces for its default MLP networks
-    flat_obs_space = gymnasium.spaces.Box(
-        low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
-    )
-
-    print(f"Agents:   {env.possible_agents}")
-    print(f"Obs dim:  {obs_dim}  (flattened)")
-    print(f"Act dim:  {native_act_space.n}")  # type: ignore[attr-defined]
-
-    if resume:
-        agent = IPPO.load(resume, device=device)
-        print(f"Resumed from {resume}")
-    else:
-        agent = IPPO(
-            observation_spaces=[flat_obs_space] * len(env.possible_agents),
-            action_spaces=[native_act_space] * len(env.possible_agents),
-            agent_ids=env.possible_agents,
-            device=device,
+tournament = TournamentSelection(
+        tournament_size=3,
+        elitism=True,
+        population_size=population_size,
+        eval_loop=1
         )
-    learn_step: int = agent.learn_step
 
-    def flat(obs) -> np.ndarray:
-        return flatten_obs(obs, native_obs_space, max_seq_len)
 
-    # Per-step rollout buffers — each list will contain one entry per step.
-    # IPPO.learn() expects a tuple of 8 dicts:
-    #   (states, actions, log_probs, rewards, dones, values, next_states, next_dones)
-    # where each dict maps agent_id → np.ndarray of shape [T, ...].
-    buf_states:    list[dict[str, np.ndarray]] = []
-    buf_actions:   list[dict[str, np.ndarray]] = []
-    buf_log_probs: list[dict[str, np.ndarray]] = []
-    buf_rewards:   list[dict[str, np.ndarray]] = []
-    buf_dones:     list[dict[str, np.ndarray]] = []
-    buf_values:    list[dict[str, np.ndarray]] = []
+pop = create_population(
+        algo="IPPO",
+        net_config=None,
+        INIT_HP=INIT_HP,
+        observation_space=env.observation_spaces,
+        action_space=env.action_spaces,
+        hp_config=HP_CONFIG,
+        population_size=population_size,
+        num_envs=1,
+        device=device
 
-    def flush(final_states: dict[str, np.ndarray], final_done: bool) -> None:
-        """Stack buffers and call agent.learn()."""
-        T = len(buf_states)
-        if T == 0:
-            return
-
-        def col(buf: list[dict], a: str) -> np.ndarray:
-            return np.stack([buf[t][a] for t in range(T)])
-
-        ids = agent.agent_ids
-        experiences = (
-            {a: col(buf_states,    a)           for a in ids},
-            {a: col(buf_actions,   a).squeeze(-1) for a in ids},  # [T]
-            {a: col(buf_log_probs, a).squeeze(-1) for a in ids},  # [T]
-            {a: col(buf_rewards,   a)           for a in ids},
-            {a: col(buf_dones,     a)           for a in ids},
-            {a: col(buf_values,    a).squeeze(-1) for a in ids},  # [T]
-            {a: final_states[a]                 for a in ids},
-            {a: np.array([float(final_done)])   for a in ids},
         )
-        agent.learn(experiences)
-        for buf in (buf_states, buf_actions, buf_log_probs,
-                    buf_rewards, buf_dones, buf_values):
-            buf.clear()
 
-    ep_rewards: list[float] = []
-    steps_since_flush = 0
-    states: dict[str, np.ndarray] = {a: np.zeros(obs_dim, dtype=np.float32) for a in env.possible_agents}
-    final_done = False
-    best_mean_reward = float("-inf")
+(trained_pop, fitnesses) = train_multi_agent_on_policy(
+    env,
+    env_name='NoMerci',  # Environment name
+    algo="IPPO",  # Algorithm
+    pop=pop,  # Population of agents
+    sum_scores=False,
+    INIT_HP=INIT_HP,
+    MUT_P=MUTATION_PARAMS,
+    max_steps=100000,  # Max number of training steps
+    evo_steps=1000,  # Evolution frequency
+    eval_steps=None,  # Number of steps in evaluation episode
+    eval_loop=1,  # Number of evaluation episodes
+    # target=-30.0,  # Target score for early stopping
+    tournament=tournament,  # Tournament selection object
+    mutation=mutations,  # Mutations object
+    checkpoint_path="/home/adam/haskell/haskboard/python/runs/",
+    checkpoint=1000
+)
 
-    for episode in range(1, n_episodes + 1):
-        observations, _ = env.reset()
-        states = {a: flat(observations[a]) for a in env.possible_agents}
-        ep_reward = {a: 0.0 for a in env.possible_agents}
+# (algo, fitnesses) =  train_multi_agent_on_policy(
+#     env=env,
+#     env_name="NoMerci",
+#     algo="IPPO",
+#     pop=pop,
+#     memory=get_memory(),
+#     sum_scores=False,
+#     INIT_HP=None, # TODO: add hp
+#     MUT_P=None, # TODO: add hp
+#     max_steps=100,
+#     evo_steps=25, # TODO: this is the default
+#     eval_loop=1, # TODO: this is the default
+#     tournament=None, # TODO: add tournament
+#     mutation=None, # TODO: add mutation
+#     checkpoint=50,
+#     checkpoint_path="runs/checkpoints"
+# )
 
-        step = 0
-        final_done = False
-        ep_start = time.monotonic()
-        while env.agents and step < max_steps:
-            current = env.agent_selection
-
-            obs_dict = {a: states[a] for a in env.possible_agents}
-            actions_dict, log_probs_dict, _, values_dict = agent.get_action(obs_dict)
-
-            # Only current agent acts; others get zero reward this step
-            chosen_action = int(actions_dict[current][0])
-            env.step(chosen_action)
-            obs, reward, terminated, truncated, _ = env.last()
-
-            ep_reward[current] += reward
-            final_done = terminated or truncated
-            states[current] = flat(obs)
-
-            # Record step for all agents; non-acting agents get zero reward
-            buf_states.append(dict(obs_dict))
-            buf_actions.append({a: actions_dict[a] for a in env.possible_agents})
-            buf_log_probs.append({a: log_probs_dict[a] for a in env.possible_agents})
-            buf_rewards.append({a: np.array([reward if a == current else 0.0])
-                                for a in env.possible_agents})
-            buf_dones.append({a: np.array([float(terminated)])
-                              for a in env.possible_agents})
-            buf_values.append({a: values_dict[a] for a in env.possible_agents})
-
-            steps_since_flush += 1
-            if steps_since_flush >= learn_step:
-                flush(states, final_done)
-                steps_since_flush = 0
-
-            step += 1
-            if final_done:
-                break
-
-        ep_duration = time.monotonic() - ep_start
-        total_reward = sum(ep_reward.values())
-        ep_rewards.append(total_reward)
-        mean_r = float(np.mean(ep_rewards[-50:]))
-        steps_per_sec = step / ep_duration if ep_duration > 0 else 0.0
-
-        metrics_writer.writerow([episode, step, f"{total_reward:.3f}", f"{mean_r:.3f}"])
-        metrics_file.flush()
-
-        if episode % 1 == 0:
-            print(
-                f"Episode {episode:>5} | steps {step:>4} | "
-                f"reward {total_reward:+.2f} | mean50 {mean_r:+.3f} | "
-                f"{steps_per_sec:.1f} steps/s"
-            )
-
-        # Periodic checkpoint
-        if episode % checkpoint_interval == 0:
-            ckpt_path = str(ckpt_dir / f"ep{episode}.pt")
-            agent.save_checkpoint(ckpt_path)
-            print(f"  → checkpoint saved: {ckpt_path}")
-
-        # Best checkpoint
-        if mean_r > best_mean_reward and episode >= 50:
-            best_mean_reward = mean_r
-            agent.save_checkpoint(str(run_dir / "best.pt"))
-
-    # Final flush for any remaining experience
-    flush(states, final_done)
-    agent.save_checkpoint(str(run_dir / "final.pt"))
-    metrics_file.close()
-    env.close()
-    print(f"Training complete. Best mean reward: {best_mean_reward:+.3f}")
-    print(f"Artifacts in {run_dir}")
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Train IPPO on a haskboard game")
-    parser.add_argument(
-        "--binary",
-        required=True,
-        help="Path to compiled haskboard executable (must support --stdio)",
-    )
-    parser.add_argument("--episodes", type=int, default=1000)
-    parser.add_argument("--max-steps", type=int, default=500)
-    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "mps"])
-    parser.add_argument(
-        "--max-seq-len",
-        type=int,
-        default=64,
-        help="Pad length for variable-length Sequence obs (Deck locations)",
-    )
-    parser.add_argument(
-        "--log-dir",
-        default="runs",
-        help="Directory for metrics CSV and checkpoints (default: runs/)",
-    )
-    parser.add_argument(
-        "--checkpoint-interval",
-        type=int,
-        default=100,
-        help="Save a checkpoint every N episodes (default: 100)",
-    )
-    parser.add_argument(
-        "--resume",
-        default=None,
-        help="Path to a checkpoint .pt file to resume training from",
-    )
-    args = parser.parse_args()
-
-    train(
-        binary=args.binary,
-        n_episodes=args.episodes,
-        max_steps=args.max_steps,
-        device=args.device,
-        max_seq_len=args.max_seq_len,
-        log_dir=args.log_dir,
-        checkpoint_interval=args.checkpoint_interval,
-        resume=args.resume,
-    )
-
-
-if __name__ == "__main__":
-    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
-    main()
+# if __name__ == "__main__":
+#     sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+#     main()

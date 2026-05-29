@@ -154,15 +154,13 @@ makeFields ''GameStateView
 makeFields ''GameObjectsView
 
 -- | Derive a GymSpace descriptor from a player's view of the game objects.
--- Invisible locations/counters (Nothing in the view) become a 1-dim zero
--- placeholder so the observation vector has a fixed size regardless of
--- visibility, but without allocating space for structure the agent can't see.
+-- Hidden locations/counters (Nothing in the view) are omitted entirely.
 gameObjectsViewSpace
   :: forall l cn r. (GameLocation l, GameCounter cn, GameResource r)
   => GameObjectsView l cn r -> GymSpace
 gameObjectsViewSpace (GameObjectsView locsView cnsView) = GymDict $
-  [ (pack (show l), maybe (GymBox 0 0 [1]) locationShapeSpace (locsView !!! l))
-  | l <- inhabitants @l ]
+  [ (pack (show l), locationShapeSpace loc)
+  | l <- inhabitants @l, Just loc <- [locsView !!! l] ]
   ++
-  [ (pack (show cn), maybe (GymBox 0 0 [1]) counterSpace (cnsView !!! cn))
-  | cn <- inhabitants @cn ]
+  [ (pack (show cn), counterSpace c)
+  | cn <- inhabitants @cn, Just c <- [cnsView !!! cn] ]

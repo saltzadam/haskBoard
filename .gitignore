@@ -26,4 +26,6 @@ log
 python/__pycache__/
 python/runs
 game_gaps.md
+report.html
+warnings.txt
 

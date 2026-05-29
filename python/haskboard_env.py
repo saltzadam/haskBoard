@@ -5,7 +5,7 @@ The Haskell binary is spawned as a subprocess; communication happens over
 stdio with newline-delimited JSON.
 
 Protocol (Haskell → Python):
-  InitMsg:  {"agents":[0,1,2], "observationSpace":{...}, "actionSpace":{...}}
+  InitMsg:  {"agents":[0,1,2], "observationSpaces":{"0":{...},"1":{...}}, "actionSpace":{...}}
   StepMsg:  {"msgType":"step",     "agent":0, "observation":{...},
              "legalActions":[0,1], "reward":0.0, "terminated":false, "truncated":false}
   StepMsg:  {"msgType":"terminal", "agent":0, "observation":null,
@@ -24,8 +24,7 @@ from typing import Any
 
 import gymnasium
 import numpy as np
-from pettingzoo import AECEnv
-from pettingzoo.utils import agent_selector
+from pettingzoo import ParallelEnv
 
 
 def _build_space(spec: dict) -> gymnasium.Space:
@@ -34,10 +33,11 @@ def _build_space(spec: dict) -> gymnasium.Space:
     if t == "Discrete":
         return gymnasium.spaces.Discrete(spec["n"])
     elif t == "Box":
+        shape = tuple(spec["shape"])
         return gymnasium.spaces.Box(
             low=np.float32(spec["low"]),
             high=np.float32(spec["high"]),
-            shape=tuple(spec["shape"]),
+            shape=shape,
             dtype=np.float32,
         )
     elif t == "MultiDiscrete":
@@ -45,7 +45,11 @@ def _build_space(spec: dict) -> gymnasium.Space:
     elif t == "MultiBinary":
         return gymnasium.spaces.MultiBinary(spec["n"])
     elif t == "Sequence":
-        return gymnasium.spaces.Sequence(_build_space(spec["space"]))
+        inner = _build_space(spec["space"])
+        if isinstance(inner, gymnasium.spaces.Discrete):
+            # agilerl doesn't support Sequence spaces; convert to MultiBinary histogram
+            return gymnasium.spaces.MultiBinary(int(inner.n))
+        return gymnasium.spaces.Sequence(inner)
     elif t == "Dict":
         return gymnasium.spaces.Dict(
             {k: _build_space(v) for k, v in spec["spaces"].items()}
@@ -62,13 +66,23 @@ def _obs_to_numpy(obs: Any, space: gymnasium.Space) -> Any:
     if obs is None:
         return _zeros(space)
     if isinstance(space, gymnasium.spaces.Discrete):
-        return np.int64(obs)
+        return np.array([obs], dtype=np.int64)
     elif isinstance(space, gymnasium.spaces.Box):
-        return np.array(obs, dtype=space.dtype).reshape(space.shape)
+        result = np.zeros(space.shape, dtype=space.dtype)
+        flat = np.array(obs, dtype=space.dtype).flatten()
+        n = min(flat.size, result.size)
+        result.flat[:n] = flat[:n]
+        return result
     elif isinstance(space, gymnasium.spaces.MultiDiscrete):
         return np.array(obs, dtype=np.int64)
     elif isinstance(space, gymnasium.spaces.MultiBinary):
-        return np.array(obs, dtype=np.int8)
+        # MultiBinary is only produced by converting a Sequence(Discrete(n));
+        # obs is a list of resource indices present in the deck.
+        arr = np.zeros(space.n, dtype=np.int8)
+        for idx in obs:
+            if 0 <= int(idx) < space.n:
+                arr[int(idx)] = 1
+        return arr
     elif isinstance(space, gymnasium.spaces.Sequence):
         return tuple(_obs_to_numpy(x, space.feature_space) for x in obs)
     elif isinstance(space, gymnasium.spaces.Dict):
@@ -79,7 +93,7 @@ def _obs_to_numpy(obs: Any, space: gymnasium.Space) -> Any:
 def _zeros(space: gymnasium.Space) -> Any:
     """Return a zero-valued sample compatible with *space*."""
     if isinstance(space, gymnasium.spaces.Discrete):
-        return np.int64(0)
+        return np.array([0], dtype=np.int64)
     elif isinstance(space, gymnasium.spaces.Box):
         return np.zeros(space.shape, dtype=space.dtype)
     elif isinstance(space, gymnasium.spaces.MultiDiscrete):
@@ -93,8 +107,8 @@ def _zeros(space: gymnasium.Space) -> Any:
     return None
 
 
-class HaskboardEnv(AECEnv):
-    """PettingZoo AEC environment backed by a haskboard Haskell process.
+class HaskboardEnv(ParallelEnv):
+    """PettingZoo Parallel environment backed by a haskboard Haskell process.
 
     Parameters
     ----------
@@ -106,7 +120,7 @@ class HaskboardEnv(AECEnv):
 
     metadata = {"render_modes": [], "name": "haskboard_v0"}
 
-    def __init__(self, binary_path: str, extra_args: list[str] | None = None):
+    def __init__(self, binary_path: str, extra_args: list[str] | None = None, shared: bool = True):
         super().__init__()
         self._binary_path = binary_path
         self._extra_args = extra_args or []
@@ -124,20 +138,28 @@ class HaskboardEnv(AECEnv):
         init_msg = self._read_msg()
         agent_ids: list[int] = init_msg["agents"]
 
-        self.possible_agents = [f"player_{i}" for i in agent_ids]
-        self.agents = list(self.possible_agents)
-        self._agent_id_map = {f"player_{i}": i for i in agent_ids}
+        # Shared: "player_0", "player_1" → group "player" → one shared network.
+        # Independent: "player0_0", "player1_1" → groups "player0","player1" → separate networks.
+        self._player_fmt = lambda i: f"player_{i}" if shared else f"player{i}_{i}"
 
-        obs_space = _build_space(init_msg["observationSpace"])
+        self.possible_agents = [self._player_fmt(i) for i in agent_ids]
+        self.agents = list(self.possible_agents)
+        self._agent_id_map = {self._player_fmt(i): i for i in agent_ids}
+
+        obs_spaces_raw = init_msg["observationSpaces"]  # {"0": {...}, "1": {...}, ...}
         act_space = _build_space(init_msg["actionSpace"])
-        self.observation_spaces = {a: obs_space for a in self.possible_agents}
+        self.observation_spaces = {
+            self._player_fmt(int(i)): _build_space(s)
+            for i, s in obs_spaces_raw.items()
+        }
         self.action_spaces = {a: act_space for a in self.possible_agents}
         self._action_space_size: int = act_space.n  # type: ignore[attr-defined]
 
         # Per-agent state
-        self._observations: dict[str, Any] = {a: _zeros(obs_space) for a in self.agents}
+        self._observations: dict[str, Any] = {a: _zeros(self.observation_spaces[a]) for a in self.agents}
         self._rewards: dict[str, float] = {a: 0.0 for a in self.agents}
-        self._terminations: dict[str, bool] = {a: False for a in self.agents}
+        # True = no game in progress (so first reset() skips the drain check)
+        self._terminations: dict[str, bool] = {a: True for a in self.agents}
         self._truncations: dict[str, bool] = {a: False for a in self.agents}
         self._infos: dict[str, dict] = {a: {} for a in self.agents}
         self._legal_actions: dict[str, list[int]] = {a: [] for a in self.agents}
@@ -167,7 +189,7 @@ class HaskboardEnv(AECEnv):
     def _advance(self) -> None:
         """Read the next message from Haskell and update internal state."""
         msg = self._read_msg()
-        agent_name = f"player_{msg['agent']}"
+        agent_name = self._player_fmt(msg['agent'])
         obs_space = self.observation_spaces[agent_name]
         self._observations[agent_name] = _obs_to_numpy(msg["observation"], obs_space)
         self._legal_actions[agent_name] = msg["legalActions"]
@@ -180,12 +202,24 @@ class HaskboardEnv(AECEnv):
             # If all agents are terminated, drain remaining terminal messages
             while not all(self._terminations.values()):
                 msg2 = self._read_msg()
-                a2 = f"player_{msg2['agent']}"
+                a2 = self._player_fmt(msg2['agent'])
                 self._rewards[a2] = msg2["reward"]
                 self._terminations[a2] = True
                 self._truncations[a2] = msg2["truncated"]
         else:
             self.agent_selection = agent_name
+
+    def _drain_to_terminal(self) -> None:
+        """Send legal actions until Haskell reaches a terminal state.
+
+        Called when max_steps truncates an episode mid-game: Haskell is still
+        blocked in readAction, so we must satisfy it before sending a reset.
+        """
+        while not all(self._terminations.values()):
+            legal = self._legal_actions.get(self.agent_selection, [])
+            action = legal[0] if legal else 0
+            self._send({"type": "action", "action": action})
+            self._advance()
 
     def _action_mask(self, agent: str) -> np.ndarray:
         mask = np.zeros(self._action_space_size, dtype=np.int8)
@@ -194,7 +228,7 @@ class HaskboardEnv(AECEnv):
         return mask
 
     # ------------------------------------------------------------------
-    # PettingZoo AEC API
+    # PettingZoo Parallel API
     # ------------------------------------------------------------------
 
     def observation_space(self, agent: str) -> gymnasium.Space:
@@ -211,10 +245,11 @@ class HaskboardEnv(AECEnv):
         seed: int | None = None,
         options: dict | None = None,
     ) -> tuple[dict[str, Any], dict[str, dict]]:
+        if not all(self._terminations.values()):
+            self._drain_to_terminal()
         self._send({"type": "reset"})
         self.agents = list(self.possible_agents)
-        obs_space = self.observation_spaces[self.agents[0]]
-        self._observations = {a: _zeros(obs_space) for a in self.agents}
+        self._observations = {a: _zeros(self.observation_spaces[a]) for a in self.agents}
         self._rewards = {a: 0.0 for a in self.agents}
         self._terminations = {a: False for a in self.agents}
         self._truncations = {a: False for a in self.agents}
@@ -224,30 +259,18 @@ class HaskboardEnv(AECEnv):
         self._advance()
         return {a: self._observations[a] for a in self.agents}, dict(self._infos)
 
-    def step(self, action: int) -> None:
-        if self._terminations.get(self.agent_selection, False):
-            # Dead-step: agent already done
-            self._was_dead_step(action)
-            return
+    def step(self, actions: dict[str, Any]) -> tuple[dict, dict, dict, dict, dict]:
+        if all(self._terminations.values()):
+            obs = {a: self._observations[a] for a in self.possible_agents}
+            return obs, dict(self._rewards), dict(self._terminations), dict(self._truncations), dict(self._infos)
 
-        self._send({"type": "action", "action": int(action)})
-        # Reset reward for current agent before reading next message
+        action = int(actions[self.agent_selection])
+        self._send({"type": "action", "action": action})
         self._rewards[self.agent_selection] = 0.0
         self._advance()
 
-    def last(
-        self,
-        observe: bool = True,
-    ) -> tuple[Any, float, bool, bool, dict]:
-        agent = self.agent_selection
-        obs = self.observe(agent) if observe else None
-        return (
-            obs,
-            self._rewards[agent],
-            self._terminations[agent],
-            self._truncations[agent],
-            self._infos[agent],
-        )
+        obs = {a: self._observations[a] for a in self.possible_agents}
+        return obs, dict(self._rewards), dict(self._terminations), dict(self._truncations), dict(self._infos)
 
     def close(self) -> None:
         if self._proc is not None:

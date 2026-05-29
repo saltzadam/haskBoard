@@ -126,11 +126,13 @@ application gs controller state pending = do
               return s'
 
             -- Send InitMsg so clients can build obs/act spaces
-            let allNums   = map (\(Player pn) -> fromEnum pn) (S.toList (gs ^. #players))
-                objsView  = viewGameStateAs' gs player' ^. #objectsView
-                obsSpace  = gameObjectsViewSpace objsView
+            let players'  = S.toList (gs ^. #players)
+                allNums   = map (\(Player pn) -> fromEnum pn) players'
+                obsSpaces = M.fromList
+                  [ ((\(Player pn) -> fromEnum pn) p, gameObjectsViewSpace (viewGameStateAs' gs p ^. #objectsView))
+                  | p <- players' ]
                 actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
-                initMsg   = InitMsg allNums obsSpace actSpace
+                initMsg   = InitMsg allNums obsSpaces actSpace
             WS.sendTextData conn (encodeToLazyText (toJSON initMsg))
 
             forever $

@@ -5,9 +5,12 @@ description = "Python training interface for haskboard MARL games"
 requires-python = ">=3.10"
 dependencies = [
     "agilerl",
+    "basedpyright>=1.39.6",
     "gymnasium",
     "numpy",
     "pettingzoo",
+    "setuptools==81.0.0",
+    "tensorboard",
     "torch",
     "websockets",
 ]

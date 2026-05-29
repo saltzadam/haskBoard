@@ -21,32 +21,32 @@ type Name = ()
 app :: App NMTUIState NMEvent Name
 app =
   App
-    { appDraw = drawUIView,
+    { appDraw = renderUIView,
       appChooseCursor = neverShowCursor,
       appHandleEvent = runHandler simpleHandler,
       appStartEvent = return (),
       appAttrMap = const theAttrMap
     }
 
-drawUIView :: NMTUIState -> [Widget Name]
-drawUIView tui =
+renderUIView :: NMTUIState -> [Widget Name]
+renderUIView tui =
   let g = tui ^. #gameStateView
-   in [hLimit 85 $ (drawBoardView g <=> drawMenu tui) <+> drawPlayers g]
+   in [hLimit 85 $ (renderBoardView g <=> renderMenu tui) <+> renderPlayers g]
 
-drawBoardView :: NMView -> Widget Name
-drawBoardView g =
+renderBoardView :: NMView -> Widget Name
+renderBoardView g =
   let card = do
           center <- g `viewLocation` CenterOfTableCard
           whatsThere <- peek' center
           extractCard whatsThere
       chips = viewHowManyAt g ChipPile Chip
-   in fromMaybe drawNothing (drawCard <$> card <*> chips)
+   in fromMaybe renderNothing (renderCard <$> card <*> chips)
 
-drawNothing :: Widget Name
-drawNothing = str $ unlines (replicate 9 (replicate 9 ' '))
+renderNothing :: Widget Name
+renderNothing = str $ unlines (replicate 9 (replicate 9 ' '))
 
-drawCard :: Int -> Int -> Widget Name
-drawCard i chips =
+renderCard :: Int -> Int -> Widget Name
+renderCard i chips =
   str $
     unlines
       [ " ------- ",
@@ -74,8 +74,8 @@ drawCard i chips =
             ++ replicate rightSpace ' '
             ++ "|"
 
-drawMenu :: NMTUIState -> Widget Name
-drawMenu tui =
+renderMenu :: NMTUIState -> Widget Name
+renderMenu tui =
   let p = tui ^. #gameStateView . #currentPlayerView
    in padTop (Pad 1) . hLimit 40 . vLimit 15 $
         simpleMenuBody (drawCurrentPlayer p) (drawOptions printPlay) tui
@@ -84,17 +84,17 @@ printPlay :: NMPlayName -> Text
 printPlay Take = T.pack "Take card"
 printPlay Decline = T.pack "Pay chip"
 
-drawPlayers :: NMView -> Widget Name
-drawPlayers g = vBox (drawPlayer g <$> g ^. #playersView . to S.toList)
+renderPlayers :: NMView -> Widget Name
+renderPlayers g = vBox (drawPlayer g <$> g ^. #playersView . to S.toList)
   where
     drawPlayer :: NMView -> Player -> Widget Name
     drawPlayer g p =
       padTop (Pad 1) $
-        str (displayPlayer p ++ maybe " " (drawCards . filter isCard . inventoryItems) (viewLocation g (PlayerStuff p)))
+        str (displayPlayer p ++ maybe " " (printCards . filter isCard . inventoryItems) (viewLocation g (PlayerStuff p)))
           <=> str ("Chips: " ++ maybe "" show (viewHowManyAt g (PlayerStuff p) Chip))
 
-drawCards :: [NMResource] -> String
-drawCards xs = surround (unwords . fmap show . mapMaybe extractCard $ xs)
+printCards :: [NMResource] -> String
+printCards xs = surround (unwords . fmap show . mapMaybe extractCard $ xs)
   where
     surround string = if not (null string) then "[" ++ string ++ "]" else string
 

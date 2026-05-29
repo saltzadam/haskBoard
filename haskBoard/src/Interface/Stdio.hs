@@ -14,7 +14,9 @@ module Interface.Stdio
 where
 
 import Control.Concurrent (Chan, MVar, readChan, withMVar, writeChan)
+import Control.Exception (IOException, catch)
 import Control.Lens ((^.))
+import System.Exit (exitSuccess)
 import Control.Monad (forever)
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, decodeStrict, withObject, (.:))
 import Data.Aeson.Text (encodeToLazyText)
@@ -48,7 +50,7 @@ import Game.View (GameObjectsView (..), GameStateView (..), gameObjectsViewSpace
 
 data InitMsg = InitMsg
   { agents :: [Int],
-    observationSpace :: GymSpace,
+    observationSpaces :: M.Map Int GymSpace,
     actionSpace :: GymSpace
   }
   deriving (Generic, ToJSON)
@@ -83,11 +85,13 @@ putJson :: (ToJSON a) => a -> IO ()
 putJson = TIO.putStrLn . TL.toStrict . encodeToLazyText
 
 readAction :: IO Int
-readAction = do
-  line <- BS.getLine
-  case decodeStrict line of
-    Just (ActionMsg i) -> return i
-    _                  -> readAction
+readAction =
+  (do
+    line <- BS.getLine
+    case decodeStrict line of
+      Just (ActionMsg i) -> return i
+      _                  -> readAction)
+  `catch` (\(_ :: IOException) -> exitSuccess)
 
 -- ---- Observation encoding ----
 
@@ -96,8 +100,8 @@ encodeGameObjectsObs
   => GameObjectsView l cn r -> Value
 encodeGameObjectsObs (GameObjectsView locsView cnsView) =
   toJSON $ M.fromList $
-    [(T.pack (show l), encodeLocationObs (locsView !!! l)) | l <- inhabitants @l]
-    ++ [(T.pack (show cn), encodeCounterObs (cnsView !!! cn)) | cn <- inhabitants @cn]
+    [(T.pack (show l), encodeLocationObs (Just loc)) | l <- inhabitants @l, Just loc <- [locsView !!! l]]
+    ++ [(T.pack (show cn), encodeCounterObs (Just c)) | cn <- inhabitants @cn, Just c <- [cnsView !!! cn]]
 
 -- ---- Initialization ----
 
@@ -110,12 +114,11 @@ sendInit gs = putJson msg
     toAgentNum (Player pnum) = fromEnum pnum
     players   = S.toList (gs ^. #players)
     agentNums = map toAgentNum players
-    -- Use a player's view so invisible locations get a 1-dim placeholder
-    -- rather than their full (but always-zero) space.
-    objsView  = viewGameStateAs' gs (head players) ^. #objectsView
-    obsSpace  = gameObjectsViewSpace objsView
+    obsSpaces = M.fromList
+      [ (toAgentNum p, gameObjectsViewSpace (viewGameStateAs' gs p ^. #objectsView))
+      | p <- players ]
     actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
-    msg       = InitMsg agentNums obsSpace actSpace
+    msg       = InitMsg agentNums obsSpaces actSpace
 
 -- ---- Stdio agent ----
 

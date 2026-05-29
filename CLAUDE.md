@@ -96,6 +96,11 @@ Agent types:
 
 `TUIState` and composable `TUIEventHandler`s (a `Monoid`) handle Brick events. `basicHandler` covers state updates, options requests, winner announcements, and ESC. `simpleHandler` adds numeric key selection. Games provide their own `app` using these primitives.
 
+**TUI naming conventions:**
+- Use `renderX` for a function that produces a `Widget` representing X (e.g. `renderCard`, `renderBoardView`).
+- Use `printX` for a function that produces a `String` or `Text` from X (e.g. `printPlay`, `printCards`).
+- Do not use `draw` as a prefix — it conflicts with the game-domain meaning of "draw" (drawing a card from a deck).
+
 ### Implementing a game
 
 See `Games/NoMerci/` as the reference implementation:

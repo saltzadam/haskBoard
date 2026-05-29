@@ -441,7 +441,7 @@ locationShapeSpace (Infinite _) = GymDiscrete infiniteUpperBound
 locationShapeSpace Dummy        = GymDiscrete 1
 
 counterSpace :: Counter -> GymSpace
-counterSpace (Counter _ (lo, hi)) = GymBox (fromIntegral lo) (fromIntegral hi) [1]
+counterSpace (Counter _ (lo, hi)) = GymDiscrete (hi - lo + 1)
 
 gameObjectsSpace
   :: forall l cn r. (Finitary l, Finitary cn, Finitary r, Show l, Show cn)
@@ -460,5 +460,5 @@ encodeLocationObs (Just (Infinite _))    = toJSON [infiniteUpperBound :: Int]
 encodeLocationObs (Just Dummy)           = toJSON (0 :: Int)
 
 encodeCounterObs :: Maybe Counter -> Value
-encodeCounterObs Nothing              = toJSON [0 :: Int]
-encodeCounterObs (Just (Counter v _)) = toJSON [v]
+encodeCounterObs Nothing                    = toJSON (0 :: Int)
+encodeCounterObs (Just (Counter v (lo, _))) = toJSON (v - lo)

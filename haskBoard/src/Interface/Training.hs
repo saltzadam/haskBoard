@@ -3,6 +3,7 @@ module Interface.Training
   )
 where
 
+import Control.Exception (IOException, catch)
 import Control.Monad (void)
 import Data.Aeson (decodeStrict)
 import qualified Data.ByteString.Char8 as BS
@@ -11,6 +12,7 @@ import Game.GameState (GameRules, GameState)
 import Interface.Controller (GameController)
 import Interface.Stdio (InMsg (..), sendInit)
 import Run (runGameSeparateChannels)
+import System.Exit (exitSuccess)
 import System.IO (BufferMode (..), hSetBuffering, stdin, stdout)
 
 -- | Run the game in a loop for MARL training.
@@ -37,8 +39,10 @@ stdioTrainingLoop (gs0, gr0) logFile controller = do
       loop
 
 waitForReset :: IO ()
-waitForReset = do
-  line <- BS.getLine
-  case decodeStrict line :: Maybe InMsg of
-    Just ResetMsg -> return ()
-    _             -> waitForReset
+waitForReset =
+  (do
+    line <- BS.getLine
+    case decodeStrict line :: Maybe InMsg of
+      Just ResetMsg -> return ()
+      _             -> waitForReset)
+  `catch` (\(_ :: IOException) -> exitSuccess)
