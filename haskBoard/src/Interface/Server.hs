@@ -5,6 +5,7 @@
 module Interface.Server where
 
 import Control.Concurrent (MVar, forkIO, modifyMVar, modifyMVar_, newMVar, readChan, readMVar, threadDelay, writeChan)
+import System.Process (ProcessHandle, spawnProcess)
 import Control.Concurrent.Async (withAsync)
 import Control.Exception (finally)
 import Control.Lens (makeFields, over, (^.))
@@ -104,7 +105,7 @@ application gs controller state pending = do
     -- When a client is succesfully connected, we read the first message. This should
     -- be in the format of "Hi! I am Jasper", where Jasper is the requested username.
     msg <- WS.receiveData conn
-    case readMaybe (T.unpack msg) :: Maybe PlayerNum of
+    case toEnum <$> (readMaybe (T.unpack msg) :: Maybe Int) of
       -- Check that the first message has the right format:
       Nothing -> WS.sendTextData conn ("Not a player number" :: Text)
       Just playerNum
@@ -203,3 +204,17 @@ playerWorker controller p ss = forever $ do
           msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False
       WS.sendTextData conn (encodeToLazyText (toJSON msg))
     _ -> return ()
+
+-- | Spawn a Python WebSocket agent that connects to the server and plays
+-- using a trained agilerl IPPO checkpoint.
+spawnAgileRLAgent
+  :: FilePath     -- ^ Path to ws_agent.py
+  -> FilePath     -- ^ Path to checkpoint (.pt file)
+  -> PlayerNum    -- ^ Player slot to fill
+  -> IO ProcessHandle
+spawnAgileRLAgent scriptPath checkpointPath playerNum =
+  spawnProcess "uv"
+    [ "run", "--project", "python", "python", scriptPath
+    , "--checkpoint", checkpointPath
+    , "--player", show (fromEnum playerNum)
+    ]

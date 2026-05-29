@@ -12,13 +12,15 @@ import Control.Concurrent (MVar, forkIO, newMVar)
 import Control.Concurrent.Async (withAsync)
 import Control.Lens ((^.))
 import Control.Monad (forM_, void)
+import Data.List (delete, elemIndex)
 import qualified Data.Map as M
+import Data.Maybe (fromJust)
 import qualified Data.Set as S
 import Game.Player (Player (..))
 import Game.View (viewGameStateAs')
 import Interface.Agent (brickAgent, randomAgent, runAgentIO)
 import Interface.Controller (PlayerInterface (..), buildInterface)
-import Interface.Server (server)
+import Interface.Server (server, spawnAgileRLAgent)
 import Interface.Stdio (runStdioAgent)
 import Interface.Training (stdioTrainingLoop)
 import NoMerci
@@ -33,9 +35,13 @@ main :: IO ()
 main = do
   args <- getArgs
   case () of
-    _ | "--stdio" `elem` args -> runStdioMode
-      | "--tui"   `elem` args -> runTUIMode
-      | otherwise              -> runServerMode
+    _ | "--stdio"     `elem` args -> runStdioMode
+      | "--tui"       `elem` args -> runTUIMode
+      | "--ws-agents" `elem` args ->
+          let checkpoint = args !! succ (fromJust (elemIndex "--ws-agents" args))
+              humanN     = maybe 0 read (lookup "--human-player" (zip args (drop 1 args)))
+          in runWSAgentsMode checkpoint humanN
+      | otherwise -> runServerMode
 
 runServerMode :: IO ()
 runServerMode = do
@@ -76,4 +82,26 @@ runTUIMode = do
     $ withWorker (runAgentIO ai1)
     $ withWorker (runAgentIO ai2)
     $ withWorker (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
+    $ void (customMainWithDefaultVty (Just gameToBrickBChan) app initTUI)
+
+runWSAgentsMode :: FilePath -> Int -> IO ()
+runWSAgentsMode checkpoint humanN = do
+  let (gs, gr) = noMerci 3
+      players      = S.toList (gs ^. #players)
+      script       = "python/ws_agent.py"
+      humanPlayer  = Player (toEnum humanN)
+      aiPlayerNums = fromEnum . (\(Player p) -> p) <$> delete humanPlayer players
+  interface <- buildInterface players
+  let channels = fmap (\(PlayerInterface fc tc) -> (fc, tc)) (interface ^. #playerInterfaces)
+  gameToBrickBChan <- newBChan 100
+  brickToGameBChan <- newBChan 100
+  let playerAgent = brickAgent (fst $ channels M.! humanPlayer) gameToBrickBChan
+                                (snd $ channels M.! humanPlayer) brickToGameBChan
+      gsv     = viewGameStateAs' gs humanPlayer
+      initTUI = TUIState gsv humanPlayer ShowState [] brickToGameBChan Nothing True []
+  forM_ aiPlayerNums $ \n ->
+    void $ forkIO $ void $ spawnAgileRLAgent script checkpoint (toEnum n)
+  withWorker (runAgentIO playerAgent)
+    $ withWorker (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
+    $ withWorker (server (length aiPlayerNums) gs interface)
     $ void (customMainWithDefaultVty (Just gameToBrickBChan) app initTUI)
