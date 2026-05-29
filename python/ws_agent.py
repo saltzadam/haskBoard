@@ -42,6 +42,12 @@ async def run(checkpoint: str, player_num: int, port: int) -> None:
                 n_actions = _build_space(init["actionSpace"]).n
                 obs = _zeros(obs_space)
 
+                # Warm up the model so the first real inference is fast
+                algo.get_action(
+                    {agent_id: obs},
+                    infos={agent_id: {"action_mask": [1] * n_actions}},
+                )
+
                 ep_reward = 0.0
                 while True:
                     try:
