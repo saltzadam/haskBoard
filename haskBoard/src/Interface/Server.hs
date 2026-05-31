@@ -18,19 +18,16 @@ import qualified Data.ByteString.Lazy as LBS
 import Data.Map (Map)
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import qualified Data.Map as M
-import Data.Proxy (Proxy (..))
-import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Game.Choose (GameToInterfacePayload (..))
-import Game.GameState (GameState)
-import Game.Location (GymSpace (..))
-import Game.Options (actionSpaceSize, decodeAction, legalActionIndices)
+import Game.GameState (GameRules, GameState)
+import Game.Options (decodeAction, legalActionIndices)
 import Game.Player (Player (..), PlayerNum, mkPlayers)
-import Game.View (GameStateView (..), gameObjectsViewSpace, viewGameStateAs')
+import Game.View (GameStateView (..))
 import Interface.Controller (GameController, PlayerInterface (..))
-import Interface.Stdio (InitMsg (..), InMsg (..), StepMsg (..), encodeGameObjectsObs)
+import Interface.Stdio (InMsg (..), StepMsg (..), buildInitMsg, encodeGameObjectsObs)
 import Network.WebSockets as WS
 import Text.Read (readMaybe)
 import Util (ifM)
@@ -75,21 +72,23 @@ server ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   Int ->
   GameState l cn r ph pl ->
+  GameRules l cn r ph pl ->
   GameController l cn r ph pl ->
   IO ()
-server numPlayers gs controller = do
+server numPlayers gs gr controller = do
   state <- newMVar (newServerState numPlayers)
-  WS.runServer "127.0.0.1" 9159 $ application gs controller state
+  WS.runServer "127.0.0.1" 9159 $ application gs gr controller state
 
 application ::
   forall l cn r ph pl.
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   GameState l cn r ph pl ->
+  GameRules l cn r ph pl ->
   GameController l cn r ph pl ->
   MVar ServerState ->
   PendingConnection ->
   IO ()
-application gs controller state pending = do
+application gs gr controller state pending = do
   conn <- WS.acceptRequest pending
   void $
     forkIO $
@@ -127,13 +126,7 @@ application gs controller state pending = do
               return s'
 
             -- Send InitMsg so clients can build obs/act spaces
-            let players'  = S.toList (gs ^. #players)
-                allNums   = map (\(Player pn) -> fromEnum pn) players'
-                obsSpaces = M.fromList
-                  [ ((\(Player pn) -> fromEnum pn) p, gameObjectsViewSpace (viewGameStateAs' gs p ^. #objectsView))
-                  | p <- players' ]
-                actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
-                initMsg   = InitMsg allNums obsSpaces actSpace
+            let initMsg = buildInitMsg gs gr
             WS.sendTextData conn (encodeToLazyText (toJSON initMsg))
 
             forever $

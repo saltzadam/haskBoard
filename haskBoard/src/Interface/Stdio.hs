@@ -7,6 +7,7 @@ module Interface.Stdio
     InMsg (..),
     putJson,
     readAction,
+    buildInitMsg,
     sendInit,
     encodeGameObjectsObs,
     runStdioAgent,
@@ -106,30 +107,32 @@ encodeGameObjectsObs (GameObjectsView locsView cnsView) =
     [(T.pack (show l), encodeLocationObs (Just loc)) | l <- inhabitants @l, Just loc <- [locsView !!! l]]
     ++ [(T.pack (show cn), encodeCounterObs (Just c)) | cn <- inhabitants @cn, Just c <- [cnsView !!! cn]]
 
--- | Merge score entries into an existing observation Value (a JSON object).
--- When isPublic=True, includes all players' scores; otherwise only thisPlayer's.
+-- | Merge a "scores" array into an existing observation Value (a JSON object).
+-- When isPublic=True, the array contains all players' scores (ascending player order).
+-- When isPublic=False, it contains only thisPlayer's score (length 1).
 addScoresToObs :: M.Map Player Int -> Bool -> Player -> Value -> Value
 addScoresToObs allScores isPublic thisPlayer (Object km) =
-  let relevant = if isPublic then allScores else M.filterWithKey (\p _ -> p == thisPlayer) allScores
-      scoreKVs = KM.fromList
-        [ (fromText ("score_" <> T.pack (show (fromEnum pnum))), toJSON v)
-        | (Player pnum, v) <- M.toList relevant ]
-  in Object (km <> scoreKVs)
+  let scoreList = if isPublic
+                  then map snd (M.toAscList allScores)
+                  else case M.lookup thisPlayer allScores of
+                         Nothing -> []
+                         Just s  -> [s]
+  in Object (KM.insert (fromText "scores") (toJSON scoreList) km)
 addScoresToObs _ _ _ v = v
 
 -- ---- Initialization ----
 
-sendInit
+buildInitMsg
   :: forall l cn r ph pl.
      (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
-  => GameState l cn r ph pl -> GameRules l cn r ph pl -> IO ()
-sendInit gs gr = putJson msg
+  => GameState l cn r ph pl -> GameRules l cn r ph pl -> InitMsg
+buildInitMsg gs gr = InitMsg agentNums obsSpaces actSpace
   where
     toAgentNum (Player pnum) = fromEnum pnum
-    players   = S.toList (gs ^. #players)
-    agentNums = map toAgentNum players
-    (lo, hi)  = gr ^. #scoreBounds
-    isPublic  = gr ^. #scorePublic
+    players    = S.toList (gs ^. #players)
+    agentNums  = map toAgentNum players
+    (lo, hi)   = gr ^. #scoreBounds
+    isPublic   = gr ^. #scorePublic
     numPlayers = length players
     scoreCount p = if isPublic then numPlayers else const 1 p
     scoreSpace p  = GymBox (fromIntegral lo) (fromIntegral hi) [scoreCount p]
@@ -139,7 +142,12 @@ sendInit gs gr = putJson msg
       [ (toAgentNum p, addScores p (gameObjectsViewSpace (viewGameStateAs' gs p ^. #objectsView)))
       | p <- players ]
     actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
-    msg       = InitMsg agentNums obsSpaces actSpace
+
+sendInit
+  :: forall l cn r ph pl.
+     (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
+  => GameState l cn r ph pl -> GameRules l cn r ph pl -> IO ()
+sendInit gs gr = putJson (buildInitMsg gs gr)
 
 -- ---- Stdio agent ----
 

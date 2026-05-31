@@ -51,7 +51,7 @@ runServerMode = do
   interface <- buildInterface players
   withWorker
     (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
-    (server 3 gs interface)
+    (server 3 gs gr interface)
 
 runStdioMode :: IO ()
 runStdioMode = do
@@ -107,5 +107,5 @@ runWSAgentsMode checkpoint humanN = do
         gameLoop
   withWorker (runAgentIO playerAgent)
     $ withWorker gameLoop
-    $ withWorker (server (length aiPlayerNums) gs interface)
+    $ withWorker (server (length aiPlayerNums) gs gr interface)
     $ void (customMainWithDefaultVty (Just gameToBrickBChan) app initTUI)
