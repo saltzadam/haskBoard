@@ -35,7 +35,7 @@ score :: Player -> NMM Int
 score p =
   let cardScore = scoreCards <$> whatsAt (PlayerStuff p)
       chipScore = howManyAt (PlayerStuff p) Chip
-   in cardScore - chipScore
+   in -(cardScore - chipScore)
 
 checkEnd :: NMM ()
 checkEnd =
@@ -87,5 +87,15 @@ nmPhases name@(NMTurnPhase p) = mkPhase name (chooseMove p >> advanceTurnCyclic 
 -- The game
 
 noMerci :: Int -> (NMGameState, NMGameRules)
-noMerci numPlayers = (initGameState numPlayers, GameRules nmRunPlay nmPhases score (Just nmSetup))
+noMerci numPlayers =
+  ( initGameState numPlayers
+  , GameRules
+      { playRunner  = nmRunPlay
+      , phases      = nmPhases
+      , score       = score
+      , scoreBounds = (-50, 50)
+      , scorePublic = True
+      , setupPhase  = Just nmSetup
+      }
+  )
 

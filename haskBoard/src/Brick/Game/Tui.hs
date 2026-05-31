@@ -15,7 +15,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Effectful (MonadIO (..))
 import GHC.Generics (Generic)
-import Game.Agent (BEvent (..), extractReceive)
+import Game.Agent (BEvent (..), extractReceive, extractRequest)
 import Game.Options (Options)
 import Game.Player (Player (..), displayPlayer, displayPlayerT)
 import Game.View (GameStateView)
@@ -61,12 +61,16 @@ receiveHandler = TUIEventHandler receiveHandler'
   where
     receiveHandler' (AppEvent (Receive gsv)) =
       Just <$> do
-        doBatch <- use #batchUpdates
-        -- in batch, add items to front
-        if doBatch
-          then modifying #eventQueue (Receive gsv :)
-          else assign #gameStateView gsv
-        assign #tuiMode ShowState
+        mode <- use #tuiMode
+        case mode of
+          EndGame -> modifying #eventQueue (Receive gsv :)
+          _ -> do
+            doBatch <- use #batchUpdates
+            -- in batch, add items to front
+            if doBatch
+              then modifying #eventQueue (Receive gsv :)
+              else assign #gameStateView gsv
+            assign #tuiMode ShowState
     receiveHandler' _ = return Nothing
 
 requestHandler :: TUIEventHandler name l cn r ph pl
@@ -74,19 +78,21 @@ requestHandler = TUIEventHandler requestHandler'
   where
     requestHandler' (AppEvent (Request opts)) =
       Just <$> do
-        -- assign #lastEvent (Just (Request opts))
-        -- in batch, just read first item
-        doBatch <- use #batchUpdates
-        when
-          doBatch
-          ( do
-              queue <- use #eventQueue
-              let rQueue = mapMaybe extractReceive queue
-              let endState = listToMaybe rQueue
-              maybe (return ()) (assign #gameStateView) endState
-              assign #eventQueue []
-          )
-        assign #tuiMode (Ask opts)
+        mode <- use #tuiMode
+        case mode of
+          EndGame -> modifying #eventQueue (Request opts :)
+          _ -> do
+            -- in batch, just read first item
+            doBatch <- use #batchUpdates
+            when
+              doBatch
+              ( do
+                  queue <- use #eventQueue
+                  let endState = listToMaybe (mapMaybe extractReceive queue)
+                  maybe (return ()) (assign #gameStateView) endState
+                  assign #eventQueue []
+              )
+            assign #tuiMode (Ask opts)
     requestHandler' _ = return Nothing
 
 announceWinnersHandler :: TUIEventHandler name l cn r ph pl
@@ -107,6 +113,28 @@ announceEventHandler =
           Just <$> modifying #announcements ((speaker, announcement) :)
         _ -> return Nothing
     )
+
+endGameContinueHandler :: TUIEventHandler name l cn r ph pl
+endGameContinueHandler = TUIEventHandler $ \case
+  VtyEvent (V.EvKey V.KEnter []) -> do
+    mode <- use #tuiMode
+    case mode of
+      EndGame -> Just <$> do
+        queue <- use #eventQueue
+        let latestState   = listToMaybe (mapMaybe extractReceive queue)
+            latestRequest = listToMaybe (mapMaybe extractRequest queue)
+        maybe (return ()) (assign #gameStateView) latestState
+        assign #eventQueue []
+        assign #winner Nothing
+        assign #announcements []
+        assign #tuiMode $ maybe ShowState Ask latestRequest
+      _ -> return Nothing
+  VtyEvent (V.EvKey (V.KChar 'q') []) -> do
+    mode <- use #tuiMode
+    case mode of
+      EndGame -> Just <$> halt
+      _       -> return Nothing
+  _ -> return Nothing
 
 simpleOptionKeyHandler :: TUIEventHandler name l cn r ph pl
 simpleOptionKeyHandler = TUIEventHandler $ \case
@@ -132,6 +160,7 @@ basicHandler =
     <> requestHandler
     <> announceWinnersHandler
     <> announceEventHandler
+    <> endGameContinueHandler
 
 simpleHandler :: TUIEventHandler name l cn r ph pl
 simpleHandler = basicHandler <> simpleOptionKeyHandler

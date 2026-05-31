@@ -76,9 +76,26 @@ renderCard i chips =
 
 renderMenu :: NMTUIState -> Widget Name
 renderMenu tui =
-  let p = tui ^. #gameStateView . #currentPlayerView
-   in padTop (Pad 1) . hLimit 40 . vLimit 15 $
-        simpleMenuBody (drawCurrentPlayer p) (drawOptions printPlay) tui
+  padTop (Pad 1) . hLimit 40 . vLimit 15 $
+    case tui ^. #tuiMode of
+      EndGame -> renderEndGame tui
+      _ ->
+        let p = tui ^. #gameStateView . #currentPlayerView
+         in simpleMenuBody (drawCurrentPlayer p) (drawOptions printPlay) tui
+
+renderEndGame :: NMTUIState -> Widget Name
+renderEndGame tui =
+  let g = tui ^. #gameStateView
+      players = S.toList (g ^. #playersView)
+      playerScore p =
+        let chips = fromMaybe 0 (viewHowManyAt g (PlayerStuff p) Chip)
+            cardTotal = maybe 0 (scoreCards . S.fromList . inventoryItems) (viewLocation g (PlayerStuff p))
+         in cardTotal - chips
+   in drawEndGame (tui ^. #winner)
+        <=> str " "
+        <=> vBox [str (displayPlayer p ++ ": " ++ show (playerScore p)) | p <- players]
+        <=> str " "
+        <=> str "[Enter] new game  [q] quit"
 
 printPlay :: NMPlayName -> Text
 printPlay Take = T.pack "Take card"

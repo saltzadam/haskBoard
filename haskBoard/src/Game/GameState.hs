@@ -66,6 +66,11 @@ data GameRules l cn r ph pl = GameRules
   { playRunner :: PlayRunner l cn r ph pl,
     phases :: ph -> Phase ph l cn r pl,
     score :: Player -> GameRule l cn r ph pl Int,
+    -- | (lo, hi) bounds used to describe the score observation space.
+    scoreBounds :: (Int, Int),
+    -- | When True, all players' scores are included in every agent's observation.
+    -- When False, each agent sees only their own score.
+    scorePublic :: Bool,
     -- | Optional one-shot setup logic run before the first turn.
     -- Stored as a 'GameRule' directly so the phase type 'ph' does not need
     -- a dedicated setup constructor.

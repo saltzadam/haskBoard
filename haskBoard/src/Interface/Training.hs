@@ -29,7 +29,7 @@ stdioTrainingLoop
 stdioTrainingLoop (gs0, gr0) logFile controller = do
   hSetBuffering stdout LineBuffering
   hSetBuffering stdin LineBuffering
-  sendInit gs0
+  sendInit gs0 gr0
   waitForReset  -- wait for Python's first reset() before starting
   loop
   where

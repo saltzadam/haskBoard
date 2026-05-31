@@ -181,7 +181,7 @@ playerWorker controller p ss = forever $ do
   let PlayerInterface fromGameChan toGameChan = (controller ^. #playerInterfaces) M.! p
   fromGameMsg <- readChan fromGameChan
   case fromGameMsg of
-    SendState gsv -> do
+    SendState gsv _scores -> do
       let gsvJSON = toJSON gsv
       WS.sendTextData conn (encodeToLazyText gsvJSON)
     SendOptions gsv opts -> do

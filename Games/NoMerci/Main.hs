@@ -61,7 +61,7 @@ runStdioMode = do
   interface <- buildInterface players
   lock <- newMVar ()
   forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
-    void $ forkIO $ runStdioAgent p lock players fromChan toChan
+    void $ forkIO $ runStdioAgent p lock players gr fromChan toChan
   stdioTrainingLoop (gs, gr) "training.log" interface
 
 runTUIMode :: IO ()
@@ -101,7 +101,11 @@ runWSAgentsMode checkpoint humanN = do
       initTUI = TUIState gsv humanPlayer ShowState [] brickToGameBChan Nothing True []
   forM_ aiPlayerNums $ \n ->
     void $ forkIO $ void $ spawnAgileRLAgent script checkpoint (toEnum n)
+  let gameLoop = do
+        let (gs', gr') = noMerci 3
+        void $ runGameSeparateChannels "nomerci.log" interface gs' gr'
+        gameLoop
   withWorker (runAgentIO playerAgent)
-    $ withWorker (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
+    $ withWorker gameLoop
     $ withWorker (server (length aiPlayerNums) gs interface)
     $ void (customMainWithDefaultVty (Just gameToBrickBChan) app initTUI)

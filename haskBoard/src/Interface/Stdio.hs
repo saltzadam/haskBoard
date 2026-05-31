@@ -18,12 +18,15 @@ import Control.Exception (IOException, catch)
 import Control.Lens ((^.))
 import System.Exit (exitSuccess)
 import Control.Monad (forever)
-import Data.Aeson (FromJSON (..), ToJSON (..), Value, decodeStrict, withObject, (.:))
+import Data.Aeson (FromJSON (..), ToJSON (..), Value (..), decodeStrict, withObject, (.:))
+import Data.Aeson.Key (fromText)
+import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Aeson.Types (Parser)
 import qualified Data.ByteString.Char8 as BS
 import Data.Finitary (inhabitants)
 import Game.Constraints (GameCounter, GameLocation, GamePlay, GameResource)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import qualified Data.Map as M
 import Data.Proxy (Proxy (..))
 import qualified Data.Set as S
@@ -35,9 +38,9 @@ import Data.Generics.Labels ()
 import FinitaryMap ((!!!))
 import GHC.Generics (Generic)
 import Game.Choose (GameToInterfacePayload (..))
-import Game.GameState (GameState)
+import Game.GameState (GameRules, GameState)
 import Game.Location
-  ( 
+  (
     GymSpace (..),
     encodeCounterObs,
     encodeLocationObs,
@@ -103,19 +106,37 @@ encodeGameObjectsObs (GameObjectsView locsView cnsView) =
     [(T.pack (show l), encodeLocationObs (Just loc)) | l <- inhabitants @l, Just loc <- [locsView !!! l]]
     ++ [(T.pack (show cn), encodeCounterObs (Just c)) | cn <- inhabitants @cn, Just c <- [cnsView !!! cn]]
 
+-- | Merge score entries into an existing observation Value (a JSON object).
+-- When isPublic=True, includes all players' scores; otherwise only thisPlayer's.
+addScoresToObs :: M.Map Player Int -> Bool -> Player -> Value -> Value
+addScoresToObs allScores isPublic thisPlayer (Object km) =
+  let relevant = if isPublic then allScores else M.filterWithKey (\p _ -> p == thisPlayer) allScores
+      scoreKVs = KM.fromList
+        [ (fromText ("score_" <> T.pack (show (fromEnum pnum))), toJSON v)
+        | (Player pnum, v) <- M.toList relevant ]
+  in Object (km <> scoreKVs)
+addScoresToObs _ _ _ v = v
+
 -- ---- Initialization ----
 
 sendInit
   :: forall l cn r ph pl.
      (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
-  => GameState l cn r ph pl -> IO ()
-sendInit gs = putJson msg
+  => GameState l cn r ph pl -> GameRules l cn r ph pl -> IO ()
+sendInit gs gr = putJson msg
   where
     toAgentNum (Player pnum) = fromEnum pnum
     players   = S.toList (gs ^. #players)
     agentNums = map toAgentNum players
+    (lo, hi)  = gr ^. #scoreBounds
+    isPublic  = gr ^. #scorePublic
+    numPlayers = length players
+    scoreCount p = if isPublic then numPlayers else const 1 p
+    scoreSpace p  = GymBox (fromIntegral lo) (fromIntegral hi) [scoreCount p]
+    addScores p (GymDict pairs) = GymDict (pairs ++ [("scores", scoreSpace p)])
+    addScores _ other = other
     obsSpaces = M.fromList
-      [ (toAgentNum p, gameObjectsViewSpace (viewGameStateAs' gs p ^. #objectsView))
+      [ (toAgentNum p, addScores p (gameObjectsViewSpace (viewGameStateAs' gs p ^. #objectsView)))
       | p <- players ]
     actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
     msg       = InitMsg agentNums obsSpaces actSpace
@@ -123,8 +144,7 @@ sendInit gs = putJson msg
 -- ---- Stdio agent ----
 
 -- One agent per player; agents share a stdout lock (MVar ()).
--- Ignores SendState and SendAnnouncement (not needed for training).
--- On SendOptions: emits a step message and reads one action from stdin.
+-- Caches scores from SendState; merges them into obs on SendOptions.
 -- On SendWinners: emits a terminal message with +1/-1 reward.
 runStdioAgent
   :: forall l cn r ph pl.
@@ -132,27 +152,32 @@ runStdioAgent
   => Player
   -> MVar ()
   -> [Player]
+  -> GameRules l cn r ph pl
   -> Chan (GameToInterfacePayload l cn r ph pl)
   -> Chan pl
   -> IO ()
-runStdioAgent thisPlayer lock _allPlayers fromChan toChan = forever $ do
-  payload <- readChan fromChan
-  case payload of
-    SendState _          -> return ()
-    SendAnnouncement _ _ -> return ()
-    SendOptions gsv opts -> do
-      let GameStateView _ objsView _ _ = gsv
-      let Player agentPnum = opts ^. #owner
-      let agentNum = fromEnum agentPnum
-      let obs      = encodeGameObjectsObs objsView
-      let legal    = legalActionIndices opts
-      let msg      = StepMsg "step" agentNum obs legal 0.0 False False
-      withMVar lock $ \_ -> putJson msg
-      i <- readAction
-      writeChan toChan (decodeAction i)
-    SendWinners winners -> do
-      let Player thisPnum = thisPlayer
-      let agentNum = fromEnum thisPnum
-      let reward   = if thisPlayer `elem` winners then 1.0 else -1.0
-      let msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False
-      withMVar lock $ \_ -> putJson msg
+runStdioAgent thisPlayer lock _allPlayers gr fromChan toChan = do
+  scoreRef <- newIORef (M.empty :: M.Map Player Int)
+  forever $ do
+    payload <- readChan fromChan
+    case payload of
+      SendState _ scores   -> writeIORef scoreRef scores
+      SendAnnouncement _ _ -> return ()
+      SendOptions gsv opts -> do
+        let GameStateView _ objsView _ _ = gsv
+        let Player agentPnum = opts ^. #owner
+        let agentNum = fromEnum agentPnum
+        scores <- readIORef scoreRef
+        let obs      = addScoresToObs scores (gr ^. #scorePublic) thisPlayer
+                         (encodeGameObjectsObs objsView)
+        let legal    = legalActionIndices opts
+        let msg      = StepMsg "step" agentNum obs legal 0.0 False False
+        withMVar lock $ \_ -> putJson msg
+        i <- readAction
+        writeChan toChan (decodeAction i)
+      SendWinners winners -> do
+        let Player thisPnum = thisPlayer
+        let agentNum = fromEnum thisPnum
+        let reward   = if thisPlayer `elem` winners then 1.0 else -1.0
+        let msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False
+        withMVar lock $ \_ -> putJson msg

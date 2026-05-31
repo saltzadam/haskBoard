@@ -59,7 +59,7 @@ chooseInterface ::
   Eff (Interface l cn r ph pl : es) a ->
   Eff es a
 chooseInterface controller = interpret $ \_ -> \case
-  Update gs -> sendUpdate controller gs
+  Update gs scores -> sendUpdate controller gs scores
   Choose gs opts -> sendChoice controller gs opts
   AnnounceWinners winners -> sendWinners controller winners
   Announce speaker announcement -> sendAnnouncement controller speaker announcement
@@ -69,14 +69,14 @@ data ControllerException = NoSuchInterface Player deriving (Eq, Ord, Show)
 instance Exception ControllerException
 
 -- sendUpdate :: _
-sendUpdate :: (IOE :> es) => GameController l cn r ph pl -> GameState l cn r ph pl -> Eff es ()
-sendUpdate gc gs = liftIO $ traverse_ (sendUpdate' gs) (gc ^. #playerInterfaces . to M.toList)
+sendUpdate :: (IOE :> es) => GameController l cn r ph pl -> GameState l cn r ph pl -> Map Player Int -> Eff es ()
+sendUpdate gc gs scores = liftIO $ traverse_ (sendUpdate' gs) (gc ^. #playerInterfaces . to M.toList)
   where
     sendUpdate' :: GameState l cn r ph pl -> (Player, PlayerInterface l cn r ph pl) -> IO ()
     sendUpdate' gs' (p, interface) =
       writeChan
         (interface ^. #fromGameChannel)
-        (SendState (viewGameStateAs gs' (LookAs p)))
+        (SendState (viewGameStateAs gs' (LookAs p)) scores)
 
 -- TODO: use some other idiom w/ throw
 sendChoice :: forall l cn r ph pl es. (IOE :> es) => GameController l cn r ph pl -> GameState l cn r ph pl -> Options pl -> Eff es pl

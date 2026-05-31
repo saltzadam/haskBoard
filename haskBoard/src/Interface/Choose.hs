@@ -20,7 +20,7 @@ chooseChan ::
   Eff (Interface l cn r ph pl : es) a ->
   Eff es a
 chooseChan viewer gameToClientChan clientToGameChan = interpret $ \_ -> \case
-  Update gs -> liftIO $ writeChan gameToClientChan (SendState (viewGameStateAs gs viewer))
+  Update gs scores -> liftIO $ writeChan gameToClientChan (SendState (viewGameStateAs gs viewer) scores)
   Choose gsv options -> liftIO $ do
     writeChan gameToClientChan (SendOptions (viewGameStateAs gsv viewer) options)
     readChan clientToGameChan

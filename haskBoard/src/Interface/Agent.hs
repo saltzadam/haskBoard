@@ -23,7 +23,7 @@ runAgentIO agent = forever $ do
   payload <- readChan fromChan
   -- let parsed = parsePayload payload
   case payload of
-    SendState csv -> (agent ^. #stateHandler) csv
+    SendState gsv _scores -> (agent ^. #stateHandler) gsv
     SendWinners winners -> (agent ^. #winnersHandler) winners
     SendOptions gsv options ->
       do

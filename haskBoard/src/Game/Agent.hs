@@ -23,6 +23,10 @@ extractReceive :: BEvent l cn r ph pl -> Maybe (GameStateView l cn r ph)
 extractReceive (Receive gsv) = Just gsv
 extractReceive _ = Nothing
 
+extractRequest :: BEvent l cn r ph pl -> Maybe (Options pl)
+extractRequest (Request opts) = Just opts
+extractRequest _ = Nothing
+
 instance (Show pl) => Show (BEvent l cn r ph pl) where
   show (Receive _) = "Receive"
   show (Request opts) = "Request (" ++ show opts ++ ")"

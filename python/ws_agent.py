@@ -48,36 +48,35 @@ async def run(checkpoint: str, player_num: int, port: int) -> None:
                     infos={agent_id: {"action_mask": [1] * n_actions}},
                 )
 
-                ep_reward = 0.0
-                while True:
-                    try:
-                        raw = await ws.recv()
-                    except websockets.exceptions.ConnectionClosed:
-                        # print(f"Episode done | reward {ep_reward:+.1f} (connection closed)")
-                        return
-                    try:
-                        msg = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
-                    if "msgType" not in msg:
-                        continue  # SendState — skip
+                while True:  # game loop — one iteration per game
+                    ep_reward = 0.0
+                    while True:  # message loop
+                        try:
+                            raw = await ws.recv()
+                        except websockets.exceptions.ConnectionClosed:
+                            return
+                        try:
+                            msg = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+                        if "msgType" not in msg:
+                            continue  # SendState — skip
 
-                    if msg["msgType"] == "terminal":
+                        if msg["msgType"] == "terminal":
+                            ep_reward += msg["reward"]
+                            break  # end this game, loop back for next
+
+                        # StepMsg "step"
+                        obs = _obs_to_numpy(msg["observation"], obs_space)
+                        legal = msg["legalActions"]
+                        mask = [1 if i in legal else 0 for i in range(n_actions)]
+                        actions, _, _, _ = algo.get_action(
+                            {agent_id: obs},
+                            infos={agent_id: {"action_mask": mask}},
+                        )
+                        action = int(actions[agent_id][0])
+                        await ws.send(json.dumps({"type": "action", "action": action}))
                         ep_reward += msg["reward"]
-                        # print(f"Episode done | reward {ep_reward:+.1f}")
-                        return
-
-                    # StepMsg "step"
-                    obs = _obs_to_numpy(msg["observation"], obs_space)
-                    legal = msg["legalActions"]
-                    mask = [1 if i in legal else 0 for i in range(n_actions)]
-                    actions, _, _, _ = algo.get_action(
-                        {agent_id: obs},
-                        infos={agent_id: {"action_mask": mask}},
-                    )
-                    action = int(actions[agent_id][0])
-                    await ws.send(json.dumps({"type": "action", "action": action}))
-                    ep_reward += msg["reward"]
             return
         except (ConnectionRefusedError, OSError):
             await asyncio.sleep(0.2)
