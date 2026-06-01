@@ -2,8 +2,8 @@ import sys
 import yaml
 import torch
 
-from agilerl.training.train_multi_agent_on_policy import train_multi_agent_on_policy
-from agilerl.utils.utils import create_population
+from training_loop import train_multi_agent_on_policy
+from ippo_instrumented import InstrumentedIPPO
 from agilerl.algorithms.core.registry import HyperparameterConfig, RLParameter
 from agilerl.hpo.mutation import Mutations
 from agilerl.hpo.tournament import TournamentSelection
@@ -63,18 +63,31 @@ def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG):
         ),
     )
 
-    pop = create_population(
-        algo=INIT_HP["ALGO"],
-        observation_space=env.observation_spaces,
-        action_space=env.action_spaces,
-        net_config=NET_CONFIG,
-        INIT_HP=INIT_HP,
-        hp_config=hp_config,
-        population_size=INIT_HP["POP_SIZE"],
-        num_envs=1,
-        device=device,
-        torch_compiler=INIT_HP["TORCH_COMPILE"],
-    )
+    pop = [
+        InstrumentedIPPO(
+            observation_spaces=env.observation_spaces,
+            action_spaces=env.action_spaces,
+            agent_ids=INIT_HP["AGENT_IDS"],
+            index=idx,
+            hp_config=hp_config,
+            net_config=NET_CONFIG,
+            batch_size=INIT_HP.get("BATCH_SIZE", 64),
+            lr=INIT_HP.get("LR", 0.0001),
+            learn_step=INIT_HP.get("LEARN_STEP", 2048),
+            gamma=INIT_HP.get("GAMMA", 0.99),
+            gae_lambda=INIT_HP.get("GAE_LAMBDA", 0.95),
+            action_std_init=INIT_HP.get("ACTION_STD_INIT", 0.0),
+            clip_coef=INIT_HP.get("CLIP_COEF", 0.2),
+            ent_coef=INIT_HP.get("ENT_COEF", 0.01),
+            vf_coef=INIT_HP.get("VF_COEF", 0.5),
+            max_grad_norm=INIT_HP.get("MAX_GRAD_NORM", 0.5),
+            target_kl=INIT_HP.get("TARGET_KL"),
+            update_epochs=INIT_HP.get("UPDATE_EPOCHS", 4),
+            device=device,
+            torch_compiler=INIT_HP["TORCH_COMPILE"],
+        )
+        for idx in range(INIT_HP["POP_SIZE"])
+    ]
 
     train_multi_agent_on_policy(
         env,

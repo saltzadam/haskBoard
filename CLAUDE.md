@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Overview
+
+This is a Haskell game engine framework with Python MARL (multi-agent reinforcement learning) integration. Haskell builds with `cabal`. Python uses `uv`. Always verify build/run success before reporting completion.
+
+## Development Workflow
+
+When encountering build/runtime errors, fix them iteratively but do NOT claim success until you have actually verified the fix compiles/runs cleanly. Always run the build command after making changes.
+
 ## Build Commands
 
 ```bash
