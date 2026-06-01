@@ -23,11 +23,11 @@ import Game.Rules
 import Game.View (GameStateView)
 
 -- don't derive Functor so it's not easy to modify card nums
-data NMResource = Chip | Card (NumberedPiece 35)
+data NMResource = Chip | Card (NumberedPiece 33)
   deriving (Eq, Ord, Show, Generic, Finitary, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
 
 extractCard :: NMResource -> Maybe Int
-extractCard (Card (NumberedPiece i)) = Just (fromEnum i)
+extractCard (Card (NumberedPiece i)) = Just (fromEnum i + 3)
 extractCard _ = Nothing
 
 isCard :: NMResource -> Bool
