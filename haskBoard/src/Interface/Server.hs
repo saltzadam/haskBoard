@@ -193,7 +193,13 @@ playerWorker controller p ss = forever $ do
     SendWinners winners -> do
       let Player thisPnum = p
           agentNum = fromEnum thisPnum
-          reward   = if p `elem` winners then 1.0 else -1.0 :: Float
+          allPlayers = M.keys (controller ^. #playerInterfaces)
+          n        = length allPlayers
+          nWinners = length (filter (`elem` winners) allPlayers)
+          nLosers  = n - nWinners
+          reward   = if p `elem` winners
+                      then fromIntegral nLosers / fromIntegral n
+                      else -(fromIntegral nWinners / fromIntegral n) :: Float
           msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False
       WS.sendTextData conn (encodeToLazyText (toJSON msg))
     _ -> return ()

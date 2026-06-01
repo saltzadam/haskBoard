@@ -100,7 +100,10 @@ announceWinnersHandler = TUIEventHandler announceWinnersHandler'
   where
     announceWinnersHandler' (AppEvent (AnnounceWinner winners)) =
       Just <$> do
-        -- assign #lastEvent (Just (AnnounceWinner winners))
+        queue <- use #eventQueue
+        let latestState = listToMaybe (mapMaybe extractReceive queue)
+        maybe (return ()) (assign #gameStateView) latestState
+        assign #eventQueue []
         assign #winner (listToMaybe winners)
         assign #tuiMode EndGame
     announceWinnersHandler' _ = return Nothing

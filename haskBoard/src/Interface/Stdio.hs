@@ -153,7 +153,7 @@ sendInit gs gr = putJson (buildInitMsg gs gr)
 
 -- One agent per player; agents share a stdout lock (MVar ()).
 -- Caches scores from SendState; merges them into obs on SendOptions.
--- On SendWinners: emits a terminal message with +1/-1 reward.
+-- On SendWinners: emits a terminal message with zero-sum reward.
 runStdioAgent
   :: forall l cn r ph pl.
      (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
@@ -164,7 +164,7 @@ runStdioAgent
   -> Chan (GameToInterfacePayload l cn r ph pl)
   -> Chan pl
   -> IO ()
-runStdioAgent thisPlayer lock _allPlayers gr fromChan toChan = do
+runStdioAgent thisPlayer lock allPlayers gr fromChan toChan = do
   scoreRef <- newIORef (M.empty :: M.Map Player Int)
   forever $ do
     payload <- readChan fromChan
@@ -186,6 +186,11 @@ runStdioAgent thisPlayer lock _allPlayers gr fromChan toChan = do
       SendWinners winners -> do
         let Player thisPnum = thisPlayer
         let agentNum = fromEnum thisPnum
-        let reward   = if thisPlayer `elem` winners then 1.0 else -1.0
+        let n        = length allPlayers
+        let nWinners = length (filter (`elem` winners) allPlayers)
+        let nLosers  = n - nWinners
+        let reward   = if thisPlayer `elem` winners
+                        then fromIntegral nLosers / fromIntegral n
+                        else -(fromIntegral nWinners / fromIntegral n) :: Float
         let msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False
         withMVar lock $ \_ -> putJson msg

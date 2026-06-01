@@ -1,5 +1,6 @@
 import sys
 import yaml
+import numpy as np
 import torch
 
 from training_loop import train_multi_agent_on_policy
@@ -7,8 +8,74 @@ from ippo_instrumented import InstrumentedIPPO
 from agilerl.algorithms.core.registry import HyperparameterConfig, RLParameter
 from agilerl.hpo.mutation import Mutations
 from agilerl.hpo.tournament import TournamentSelection
+from agilerl.vector.pz_async_vec_env import AsyncPettingZooVecEnv
+from agilerl.wrappers.agent import AsyncAgentsWrapper  # base class for DictSafeAsyncAgentsWrapper
 
 from haskboard_env import make
+
+
+def _is_all_nan(obs) -> bool:
+    """Check if an observation (array or dict of arrays) is entirely NaN."""
+    if obs is None:
+        return True
+    if isinstance(obs, dict):
+        return all(_is_all_nan(v) for v in obs.values())
+    return np.isnan(obs).all()
+
+
+def _index_obs(obs, idx):
+    """Index into a stacked observation (array or dict of arrays)."""
+    if isinstance(obs, dict):
+        return {k: v[idx] for k, v in obs.items()}
+    return obs[idx]
+
+
+def _slice_obs(obs, s):
+    """Slice a stacked observation (array or dict of arrays)."""
+    if isinstance(obs, dict):
+        return {k: v[s] for k, v in obs.items()}
+    return obs[s]
+
+
+class DictSafeAsyncAgentsWrapper(AsyncAgentsWrapper):
+    """Fix AsyncAgentsWrapper.learn() for Dict observation spaces.
+
+    AgileRL's learn() calls np.isnan(next_state) and indexes states[-1],
+    which fail when observations are dicts. This subclass handles both.
+    """
+
+    def learn(self, experiences, *args, **kwargs):
+        if self.agent.algo in {"MADDPG", "MATD3"}:
+            experiences = self.stack_experiences(experiences)
+            experiences = self._align_async_off_policy_experiences(experiences)
+            return self.wrapped_learn(experiences, *args, **kwargs)
+
+        states, actions, log_probs, rewards, dones, values, next_state, next_done = map(
+            self.stack_experiences,
+            experiences,
+        )
+
+        for agent_id in self.agent.agent_ids:
+            agent_next_state = next_state.get(agent_id, None)
+
+            if _is_all_nan(agent_next_state):
+                agent_states = states[agent_id]
+                agent_dones = dones[agent_id]
+                agent_rewards = rewards[agent_id]
+
+                next_state[agent_id] = _index_obs(agent_states, -1)
+                next_done[agent_id] = agent_dones[-1]
+                states[agent_id] = _slice_obs(agent_states, slice(None, -1))
+                dones[agent_id] = agent_dones[:-1]
+                rewards[agent_id] = agent_rewards[:-1]
+                actions[agent_id] = actions[agent_id][:-1]
+                log_probs[agent_id] = log_probs[agent_id][:-1]
+                values[agent_id] = values[agent_id][:-1]
+
+        experiences = (
+            states, actions, log_probs, rewards, dones, values, next_state, next_done,
+        )
+        return self.wrapped_learn(experiences, *args, **kwargs)
 
 sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
 
@@ -16,13 +83,16 @@ sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
 def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    env = make(
-        "/home/adam/haskell/haskboard/dist-newstyle/build/x86_64-linux/ghc-9.10.1/NoMerci-0.1.0.0/x/NoMerci/build/NoMerci/NoMerci",
-        shared=False,
+    BINARY = "/home/adam/haskell/haskboard/dist-newstyle/build/x86_64-linux/ghc-9.10.1/NoMerci-0.1.0.0/x/NoMerci/build/NoMerci/NoMerci"
+    env = AsyncPettingZooVecEnv(
+        [lambda: make(BINARY, shared=False)]
     )
-    env.reset()
 
-    INIT_HP["AGENT_IDS"] = env.agents
+    # Extract single (unbatched) spaces for agent construction
+    obs_spaces = {a: env.single_observation_space(a) for a in env.possible_agents}
+    act_spaces = {a: env.single_action_space(a) for a in env.possible_agents}
+
+    INIT_HP["AGENT_IDS"] = env.possible_agents
 
     tournament = TournamentSelection(
         INIT_HP["TOURN_SIZE"],
@@ -64,9 +134,9 @@ def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG):
     )
 
     pop = [
-        InstrumentedIPPO(
-            observation_spaces=env.observation_spaces,
-            action_spaces=env.action_spaces,
+        DictSafeAsyncAgentsWrapper(InstrumentedIPPO(
+            observation_spaces=obs_spaces,
+            action_spaces=act_spaces,
             agent_ids=INIT_HP["AGENT_IDS"],
             index=idx,
             hp_config=hp_config,
@@ -85,7 +155,7 @@ def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG):
             update_epochs=INIT_HP.get("UPDATE_EPOCHS", 4),
             device=device,
             torch_compiler=INIT_HP["TORCH_COMPILE"],
-        )
+        ))
         for idx in range(INIT_HP["POP_SIZE"])
     ]
 

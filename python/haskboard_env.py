@@ -90,6 +90,96 @@ def _obs_to_numpy(obs: Any, space: gymnasium.Space) -> Any:
     return obs
 
 
+# ---------------------------------------------------------------------------
+# Dict-preserving float32 conversion ("boxify")
+#
+# Every leaf space becomes a float32 Box so NaN works in shared memory,
+# while the Dict wrapper is preserved for EvolvableMultiInput.
+# ---------------------------------------------------------------------------
+
+
+def _pad_shape(shape: tuple[int, ...]) -> tuple[int, ...]:
+    """Ensure shape has no dimension of size 1.
+
+    AgileRL's reshape_from_space squeezes any trailing dim==1, which corrupts
+    the batch dimension for shape-(1,) observations.  Padding to (2,) avoids
+    this with minimal overhead.
+    """
+    if shape == (1,):
+        return (2,)
+    return shape
+
+
+def _boxify_space(space: gymnasium.Space) -> gymnasium.Space:
+    """Convert a space to all-float32-Box leaves, preserving Dict structure."""
+    if isinstance(space, gymnasium.spaces.Dict):
+        return gymnasium.spaces.Dict(
+            {k: _boxify_space(s) for k, s in space.spaces.items()}
+        )
+    if isinstance(space, gymnasium.spaces.Box):
+        shape = _pad_shape(space.shape)
+        low = np.zeros(shape, dtype=np.float32)
+        high = np.ones(shape, dtype=np.float32)
+        low[:space.shape[0]] = space.low.astype(np.float32).flat[:space.shape[0]]
+        high[:space.shape[0]] = space.high.astype(np.float32).flat[:space.shape[0]]
+        return gymnasium.spaces.Box(low=low, high=high, dtype=np.float32)
+    if isinstance(space, gymnasium.spaces.Discrete):
+        shape = _pad_shape((1,))
+        low = np.zeros(shape, dtype=np.float32)
+        high = np.zeros(shape, dtype=np.float32)
+        high[0] = np.float32(space.n - 1)
+        return gymnasium.spaces.Box(low=low, high=high, dtype=np.float32)
+    if isinstance(space, gymnasium.spaces.MultiDiscrete):
+        highs = (space.nvec - 1).astype(np.float32)
+        shape = _pad_shape(highs.shape)
+        low = np.zeros(shape, dtype=np.float32)
+        high = np.zeros(shape, dtype=np.float32)
+        high[:len(highs)] = highs
+        return gymnasium.spaces.Box(low=low, high=high, dtype=np.float32)
+    if isinstance(space, gymnasium.spaces.MultiBinary):
+        n = space.n if isinstance(space.n, int) else int(np.prod(space.n))
+        shape = _pad_shape((n,))
+        return gymnasium.spaces.Box(
+            low=np.float32(0), high=np.float32(1),
+            shape=shape, dtype=np.float32,
+        )
+    # Fallback
+    shape = _pad_shape((1,))
+    return gymnasium.spaces.Box(low=np.zeros(shape, dtype=np.float32),
+                                high=np.ones(shape, dtype=np.float32),
+                                dtype=np.float32)
+
+
+def _boxify_obs(obs: Any, raw_space: gymnasium.Space) -> Any:
+    """Convert a parsed observation to float32 arrays matching _boxify_space."""
+    if isinstance(raw_space, gymnasium.spaces.Dict):
+        return {
+            k: _boxify_obs(obs[k] if isinstance(obs, dict) else obs, s)
+            for k, s in raw_space.spaces.items()
+        }
+    # Leaf: convert to float32, pad with zero if needed
+    target_shape = _boxify_space(raw_space).shape
+    arr = np.asarray(obs, dtype=np.float32).flatten()
+    result = np.zeros(target_shape, dtype=np.float32)
+    n = min(arr.size, result.size)
+    result.flat[:n] = arr[:n]
+    return result
+
+
+def _zeros_for(space: gymnasium.Space) -> Any:
+    """Return zero observation matching a boxified space."""
+    if isinstance(space, gymnasium.spaces.Dict):
+        return {k: _zeros_for(s) for k, s in space.spaces.items()}
+    return np.zeros(space.shape, dtype=np.float32)
+
+
+def _nans_for(space: gymnasium.Space) -> Any:
+    """Return NaN observation matching a boxified space."""
+    if isinstance(space, gymnasium.spaces.Dict):
+        return {k: _nans_for(s) for k, s in space.spaces.items()}
+    return np.full(space.shape, np.nan, dtype=np.float32)
+
+
 def _zeros(space: gymnasium.Space) -> Any:
     """Return a zero-valued sample compatible with *space*."""
     if isinstance(space, gymnasium.spaces.Discrete):
@@ -119,6 +209,7 @@ class HaskboardEnv(ParallelEnv):
     """
 
     metadata = {"render_modes": [], "name": "haskboard_v0"}
+    render_mode = None
 
     def __init__(self, binary_path: str, extra_args: list[str] | None = None, shared: bool = True):
         super().__init__()
@@ -148,15 +239,21 @@ class HaskboardEnv(ParallelEnv):
 
         obs_spaces_raw = init_msg["observationSpaces"]  # {"0": {...}, "1": {...}, ...}
         act_space = _build_space(init_msg["actionSpace"])
-        self.observation_spaces = {
+        # Keep original (structured) spaces for parsing JSON observations
+        self._raw_obs_spaces = {
             self._player_fmt(int(i)): _build_space(s)
             for i, s in obs_spaces_raw.items()
+        }
+        # Expose Dict of float32 Box subspaces (NaN-safe for shared memory,
+        # preserves structure for EvolvableMultiInput)
+        self.observation_spaces = {
+            a: _boxify_space(s) for a, s in self._raw_obs_spaces.items()
         }
         self.action_spaces = {a: act_space for a in self.possible_agents}
         self._action_space_size: int = act_space.n  # type: ignore[attr-defined]
 
         # Per-agent state
-        self._observations: dict[str, Any] = {a: _zeros(self.observation_spaces[a]) for a in self.agents}
+        self._observations: dict[str, Any] = {a: _zeros_for(self.observation_spaces[a]) for a in self.agents}
         self._rewards: dict[str, float] = {a: 0.0 for a in self.agents}
         # True = no game in progress (so first reset() skips the drain check)
         self._terminations: dict[str, bool] = {a: True for a in self.agents}
@@ -190,10 +287,10 @@ class HaskboardEnv(ParallelEnv):
         """Read the next message from Haskell and update internal state."""
         msg = self._read_msg()
         agent_name = self._player_fmt(msg['agent'])
-        obs_space = self.observation_spaces[agent_name]
-        self._observations[agent_name] = _obs_to_numpy(msg["observation"], obs_space)
+        raw_space = self._raw_obs_spaces[agent_name]
+        raw_obs = _obs_to_numpy(msg["observation"], raw_space)
+        self._observations[agent_name] = _boxify_obs(raw_obs, raw_space)
         self._legal_actions[agent_name] = msg["legalActions"]
-        
 
         if msg["msgType"] == "terminal":
             self._rewards[agent_name] = msg["reward"]
@@ -249,7 +346,7 @@ class HaskboardEnv(ParallelEnv):
             self._drain_to_terminal()
         self._send({"type": "reset"})
         self.agents = list(self.possible_agents)
-        self._observations = {a: _zeros(self.observation_spaces[a]) for a in self.agents}
+        self._observations = {a: _zeros_for(self.observation_spaces[a]) for a in self.agents}
         self._rewards = {a: 0.0 for a in self.agents}
         self._terminations = {a: False for a in self.agents}
         self._truncations = {a: False for a in self.agents}
@@ -257,6 +354,11 @@ class HaskboardEnv(ParallelEnv):
         self._legal_actions = {a: [] for a in self.agents}
 
         self._advance()
+        # Mark inactive agents with nan (only the first-to-act has real obs)
+        for a in self.agents:
+            if a != self.agent_selection:
+                self._observations[a] = _nans_for(self.observation_spaces[a])
+                self._rewards[a] = np.nan
         return {a: self._observations[a] for a in self.agents}, dict(self._infos)
 
     def step(self, actions: dict[str, Any]) -> tuple[dict, dict, dict, dict, dict]:
@@ -264,10 +366,23 @@ class HaskboardEnv(ParallelEnv):
             obs = {a: self._observations[a] for a in self.possible_agents}
             return obs, dict(self._rewards), dict(self._terminations), dict(self._truncations), dict(self._infos)
 
-        action = int(actions[self.agent_selection])
+        prev_active = self.agent_selection
+        action = int(actions[prev_active])
         self._send({"type": "action", "action": action})
-        self._rewards[self.agent_selection] = 0.0
+        self._rewards[prev_active] = 0.0
         self._advance()
+
+        # Mark inactive agents with nan so AsyncAgentsWrapper can filter them.
+        # Only the newly active agent gets real obs; prev_active keeps its reward.
+        next_active = self.agent_selection if not all(self._terminations.values()) else None
+        for a in self.possible_agents:
+            if a == next_active or self._terminations[a]:
+                continue
+            # NaN observation for all non-active agents (including prev_active)
+            self._observations[a] = _nans_for(self.observation_spaces[a])
+            # NaN reward only for agents that didn't just act
+            if a != prev_active:
+                self._rewards[a] = np.nan
 
         obs = {a: self._observations[a] for a in self.possible_agents}
         return obs, dict(self._rewards), dict(self._terminations), dict(self._truncations), dict(self._infos)

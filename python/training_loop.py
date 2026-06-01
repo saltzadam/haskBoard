@@ -258,6 +258,10 @@ def train_multi_agent_on_policy(
                     current_episode_length += 1
 
                     for agent_id in obs:
+                        # Only record experiences for agents that were active
+                        # (AsyncAgentsWrapper removes inactive agents from action dicts)
+                        if agent_id not in action:
+                            continue
                         states[agent_id].append(obs[agent_id])
                         rewards[agent_id].append(reward[agent_id])
                         actions[agent_id].append(action[agent_id])
@@ -571,10 +575,10 @@ def train_multi_agent_on_policy(
                     agent: fitness_arr[:, idx] for idx, agent in enumerate(agent_ids)
                 }
                 avg_fitness = {
-                    agent: avg_fitness_arr[idx] for idx, agent in enumerate(agent_ids)
+                    agent: avg_fitness_arr[:, idx] for idx, agent in enumerate(agent_ids)
                 }
                 avg_score = {
-                    agent: avg_score_arr[idx] for idx, agent in enumerate(agent_ids)
+                    agent: avg_score_arr[:, idx] for idx, agent in enumerate(agent_ids)
                 }
                 mean_scores = {
                     agent: mean_scores[:, idx] for idx, agent in enumerate(agent_ids)

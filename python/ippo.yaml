@@ -27,7 +27,7 @@ INIT_HP:
     EVAL_STEPS:                # Evaluation steps
     EVAL_LOOP: 1               # Evaluation episodes
     WANDB: false                # Log with Weights and Biases
-    TORCH_COMPILE: default      # torch.compile mode (default, reduce-overhead, max-autotune)
+    TORCH_COMPILE: default      # torch.compile mode (default, reduce-overhead, max-autotune); null = disabled
 
 MUTATION_PARAMS:
     NO_MUT: 0.4                            # No mutation
@@ -55,12 +55,12 @@ _net: &net
     latent_dim: 64                    # Latent representation dimension
 
     encoder_config:
-        mlp_config:                   # MLP config for Dict observation spaces (EvolvableMultiInput)
-            hidden_size: [64]         # Encoder hidden layer sizes
-            activation: ReLU          # Activation function
-            min_mlp_nodes: 32         # Min MLP nodes for architecture mutation
-            max_mlp_nodes: 500        # Max MLP nodes for architecture mutation
-            layer_norm: true          # Apply layer normalization
+        mlp_config:
+            hidden_size: [64]             # Encoder hidden layer sizes
+            activation: ReLU              # Activation function
+            min_mlp_nodes: 32             # Min MLP nodes for architecture mutation
+            max_mlp_nodes: 500            # Max MLP nodes for architecture mutation
+            layer_norm: true              # Apply layer normalization
 
     head_config:
         hidden_size: [64]             # Head hidden layer sizes
