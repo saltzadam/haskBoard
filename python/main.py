@@ -38,11 +38,25 @@ def _slice_obs(obs, s):
 
 
 class DictSafeAsyncAgentsWrapper(AsyncAgentsWrapper):
-    """Fix AsyncAgentsWrapper.learn() for Dict observation spaces.
+    """Fix AsyncAgentsWrapper for Dict obs spaces and vectorized turn-based games.
 
-    AgileRL's learn() calls np.isnan(next_state) and indexes states[-1],
-    which fail when observations are dicts. This subclass handles both.
+    Fixes:
+    1. learn(): np.isnan(next_state) and states[-1] indexing fail on dict obs.
+    2. get_action(): with num_envs>1, turn-based games create ragged batch sizes
+       per agent (different agents active in different env subsets), crashing
+       IPPO's disassemble_grouped_outputs. We sanitize NaN→0 so all agents
+       process all num_envs uniformly.
     """
+
+    def get_action(self, obs, *args, **kwargs):
+        for agent_id in obs:
+            agent_obs = obs[agent_id]
+            if isinstance(agent_obs, dict):
+                for k in agent_obs:
+                    agent_obs[k] = np.nan_to_num(agent_obs[k], nan=0.0)
+            elif isinstance(agent_obs, np.ndarray):
+                obs[agent_id] = np.nan_to_num(agent_obs, nan=0.0)
+        return super().get_action(obs, *args, **kwargs)
 
     def learn(self, experiences, *args, **kwargs):
         if self.agent.algo in {"MADDPG", "MATD3"}:
@@ -84,8 +98,9 @@ def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     BINARY = "/home/adam/haskell/haskboard/dist-newstyle/build/x86_64-linux/ghc-9.10.1/NoMerci-0.1.0.0/x/NoMerci/build/NoMerci/NoMerci"
+    num_envs = INIT_HP.get("NUM_ENVS", 1)
     env = AsyncPettingZooVecEnv(
-        [lambda: make(BINARY, shared=False)]
+        [lambda: make(BINARY, shared=False) for _ in range(num_envs)]
     )
 
     # Extract single (unbatched) spaces for agent construction

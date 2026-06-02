@@ -36,6 +36,20 @@ if TYPE_CHECKING:
     from agilerl.typing import SingleAgentModule
 
 InitDictType = dict[str, Any] | None
+
+
+def _sanitize_nan_obs(obs: dict) -> None:
+    """Replace NaN with 0 in observation dict (in-place).
+
+    Vectorized turn-based games mark inactive agent-env slots with NaN.
+    Sanitizing ensures uniform batch shapes across agents.
+    """
+    for a in obs:
+        o = obs[a]
+        if isinstance(o, dict):
+            obs[a] = {k: np.nan_to_num(v, nan=0.0) for k, v in o.items()}
+        elif isinstance(o, np.ndarray):
+            obs[a] = np.nan_to_num(o, nan=0.0)
 MultiAgentOnPolicyAlgorithms = IPPO
 PopulationType = list[MultiAgentOnPolicyAlgorithms]
 
@@ -162,6 +176,8 @@ def train_multi_agent_on_policy(
             agent.set_training_mode(True)
 
             obs, info = env.reset()
+            if is_vectorised:
+                _sanitize_nan_obs(obs)
             scores = (
                 np.zeros((num_envs, 1))
                 if sum_scores
@@ -240,6 +256,13 @@ def train_multi_agent_on_policy(
                     next_obs, reward, termination, truncation, info = env.step(
                         clipped_action,
                     )
+
+                    # Sanitize NaN from inactive agent-env slots (turn-based games)
+                    if is_vectorised:
+                        _sanitize_nan_obs(next_obs)
+                        reward = {a: np.nan_to_num(r, nan=0.0) for a, r in reward.items()}
+                        termination = {a: np.nan_to_num(t, nan=0.0) for a, t in termination.items()}
+                        truncation = {a: np.nan_to_num(t, nan=0.0) for a, t in truncation.items()}
 
                     agent_rewards = np.array(list(reward.values())).transpose()
                     agent_rewards = np.where(np.isnan(agent_rewards), 0, agent_rewards)
