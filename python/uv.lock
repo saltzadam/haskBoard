@@ -1030,6 +1030,7 @@ name = "haskboard"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "accelerate" },
     { name = "agilerl" },
     { name = "basedpyright" },
     { name = "gymnasium" },
@@ -1045,6 +1046,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "accelerate", specifier = ">=1.7.0" },
     { name = "agilerl" },
     { name = "basedpyright", specifier = ">=1.39.6" },
     { name = "gymnasium" },

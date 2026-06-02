@@ -149,6 +149,14 @@ class InstrumentedIPPO(IPPO):
         # Move experiences to algo device
         experiences = self.to_device(*experiences)
 
+        # Pre-update residual variance (before any gradient steps)
+        with torch.no_grad():
+            pre_states = preprocess_observation_fn(
+                obs_space, experiences[0], self.device, self.normalize_images
+            )
+            pre_update_values = critic(pre_states).squeeze(-1)
+            pre_update_resvar = compute_residual_variance(pre_update_values, experiences[4])
+
         num_samples = experiences[4].size(0)
         batch_idxs = np.arange(num_samples)
         mean_loss = 0
@@ -162,7 +170,6 @@ class InstrumentedIPPO(IPPO):
         all_v_loss = []
         all_actor_grad_norm = []
         all_critic_grad_norm = []
-        all_value_preds = []
         num_updates = 0
 
         for _ in range(self.update_epochs):
@@ -268,7 +275,6 @@ class InstrumentedIPPO(IPPO):
                     all_v_loss.append(v_loss.item())
                     all_actor_grad_norm.append(actor_grad_norm.item())
                     all_critic_grad_norm.append(critic_grad_norm.item())
-                    all_value_preds.append(value.detach())
                     num_updates += 1
 
             if self.target_kl is not None and approx_kl > self.target_kl:
@@ -292,11 +298,6 @@ class InstrumentedIPPO(IPPO):
         }
 
         if num_updates > 0:
-            # Aggregate value predictions across minibatches
-            all_values_cat = torch.cat(all_value_preds)
-            # Get the returns on-device for residual variance
-            returns_device = experiences[4]  # returns tensor, already on device
-
             metrics.update({
                 "approx_kl": float(np.mean(all_kl)),
                 "clip_fraction": float(np.mean(all_clip_frac)),
@@ -310,10 +311,7 @@ class InstrumentedIPPO(IPPO):
                 ),
                 "policy_loss": float(np.mean(all_pg_loss)),
                 "value_loss": float(np.mean(all_v_loss)),
-                "residual_variance": compute_residual_variance(
-                    all_values_cat[:returns_device.size(0)], returns_device
-                ),
-                "value_predictions": tensor_stats(all_values_cat),
+                "residual_variance": pre_update_resvar,
                 "actor_grad_norm": float(np.mean(all_actor_grad_norm)),
                 "critic_grad_norm": float(np.mean(all_critic_grad_norm)),
                 "num_updates": num_updates,
