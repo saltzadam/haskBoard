@@ -27,6 +27,73 @@ import numpy as np
 from pettingzoo import ParallelEnv
 
 
+def _extract_norm_hints(spec: dict) -> dict[str, str]:
+    """Extract per-subspace normalization hints from a Dict GymSpace JSON spec.
+
+    Returns a flat ``{subspace_key: "minmax"|"standardize"|"none"}`` dict.
+    Non-Dict specs return an empty dict.
+    """
+    if spec.get("type") != "Dict":
+        return {}
+    return {k: v.get("normalize", "none") for k, v in spec["spaces"].items()}
+
+
+class RunningStats:
+    """Welford's online algorithm for per-feature mean and variance."""
+
+    def __init__(self, shape: tuple[int, ...], warmup: int = 10):
+        self.count = 0
+        self.mean = np.zeros(shape, dtype=np.float64)
+        self.M2 = np.zeros(shape, dtype=np.float64)
+        self._warmup = warmup
+
+    def update(self, x: np.ndarray) -> None:
+        x = np.asarray(x, dtype=np.float64)
+        self.count += 1
+        delta = x - self.mean
+        self.mean += delta / self.count
+        delta2 = x - self.mean
+        self.M2 += delta * delta2
+
+    def normalize(self, x: np.ndarray) -> np.ndarray:
+        if self.count < self._warmup:
+            return x
+        std = np.sqrt(self.M2 / self.count + 1e-8).astype(np.float32)
+        return (x - self.mean.astype(np.float32)) / std
+
+
+def _norm_adjust_space(
+    space: gymnasium.Space, hints: dict[str, str]
+) -> gymnasium.Space:
+    """Adjust boxified space bounds to reflect post-normalization ranges."""
+    if isinstance(space, gymnasium.spaces.Dict):
+        return gymnasium.spaces.Dict(
+            {
+                k: _norm_adjust_leaf(s, hints.get(k, "none"))
+                for k, s in space.spaces.items()
+            }
+        )
+    return space
+
+
+def _norm_adjust_leaf(space: gymnasium.Space, hint: str) -> gymnasium.Space:
+    if not isinstance(space, gymnasium.spaces.Box):
+        return space
+    if hint == "minmax":
+        return gymnasium.spaces.Box(
+            low=np.zeros(space.shape, dtype=np.float32),
+            high=np.ones(space.shape, dtype=np.float32),
+            dtype=np.float32,
+        )
+    if hint == "standardize":
+        return gymnasium.spaces.Box(
+            low=np.full(space.shape, -5.0, dtype=np.float32),
+            high=np.full(space.shape, 5.0, dtype=np.float32),
+            dtype=np.float32,
+        )
+    return space
+
+
 def _build_space(spec: dict) -> gymnasium.Space:
     """Convert a haskboard GymSpace JSON descriptor to a gymnasium Space."""
     t = spec["type"]
@@ -244,10 +311,35 @@ class HaskboardEnv(ParallelEnv):
             self._player_fmt(int(i)): _build_space(s)
             for i, s in obs_spaces_raw.items()
         }
-        # Expose Dict of float32 Box subspaces (NaN-safe for shared memory,
+
+        # --- Normalization setup ---
+        self._norm_hints: dict[str, dict[str, str]] = {
+            self._player_fmt(int(i)): _extract_norm_hints(s)
+            for i, s in obs_spaces_raw.items()
+        }
+        # Boxify with original bounds (needed for MinMax reference bounds)
+        orig_boxified = {a: _boxify_space(s) for a, s in self._raw_obs_spaces.items()}
+        self._minmax_bounds: dict[str, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
+        self._running_stats: dict[str, dict[str, RunningStats]] = {}
+        for a in self.possible_agents:
+            self._minmax_bounds[a] = {}
+            self._running_stats[a] = {}
+            hints = self._norm_hints.get(a, {})
+            box_space = orig_boxified[a]
+            if isinstance(box_space, gymnasium.spaces.Dict):
+                for k, sub in box_space.spaces.items():
+                    hint = hints.get(k, "none")
+                    if hint == "minmax" and isinstance(sub, gymnasium.spaces.Box):
+                        self._minmax_bounds[a][k] = (sub.low.copy(), sub.high.copy())
+                    elif hint == "standardize" and isinstance(sub, gymnasium.spaces.Box):
+                        self._running_stats[a][k] = RunningStats(sub.shape)
+
+        # Expose Dict of float32 Box subspaces with bounds adjusted for
+        # the post-normalization range (NaN-safe for shared memory,
         # preserves structure for EvolvableMultiInput)
         self.observation_spaces = {
-            a: _boxify_space(s) for a, s in self._raw_obs_spaces.items()
+            a: _norm_adjust_space(orig_boxified[a], self._norm_hints.get(a, {}))
+            for a in self.possible_agents
         }
         self.action_spaces = {a: act_space for a in self.possible_agents}
         self._action_space_size: int = act_space.n  # type: ignore[attr-defined]
@@ -283,13 +375,38 @@ class HaskboardEnv(ParallelEnv):
     # Protocol helpers
     # ------------------------------------------------------------------
 
+    def _normalize_obs(self, obs: Any, agent: str) -> Any:
+        """Apply per-subspace normalization to a boxified observation."""
+        if not isinstance(obs, dict):
+            return obs
+        hints = self._norm_hints.get(agent, {})
+        result = {}
+        for k, v in obs.items():
+            hint = hints.get(k, "none")
+            if hint == "minmax":
+                lo, hi = self._minmax_bounds[agent][k]
+                denom = hi - lo
+                denom = np.where(denom == 0, 1.0, denom)
+                result[k] = (v - lo) / denom
+            elif hint == "standardize":
+                stats = self._running_stats[agent].get(k)
+                if stats is not None:
+                    stats.update(v)
+                    result[k] = stats.normalize(v)
+                else:
+                    result[k] = v
+            else:
+                result[k] = v
+        return result
+
     def _advance(self) -> None:
         """Read the next message from Haskell and update internal state."""
         msg = self._read_msg()
         agent_name = self._player_fmt(msg['agent'])
         raw_space = self._raw_obs_spaces[agent_name]
         raw_obs = _obs_to_numpy(msg["observation"], raw_space)
-        self._observations[agent_name] = _boxify_obs(raw_obs, raw_space)
+        boxified = _boxify_obs(raw_obs, raw_space)
+        self._observations[agent_name] = self._normalize_obs(boxified, agent_name)
         self._legal_actions[agent_name] = msg["legalActions"]
 
         if msg["msgType"] == "terminal":

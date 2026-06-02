@@ -43,6 +43,7 @@ import Game.GameState (GameRules, GameState)
 import Game.Location
   (
     GymSpace (..),
+    NormHint (..),
     encodeCounterObs,
     encodeLocationObs,
   )
@@ -135,13 +136,13 @@ buildInitMsg gs gr = InitMsg agentNums obsSpaces actSpace
     isPublic   = gr ^. #scorePublic
     numPlayers = length players
     scoreCount p = if isPublic then numPlayers else const 1 p
-    scoreSpace p  = GymBox (fromIntegral lo) (fromIntegral hi) [scoreCount p]
+    scoreSpace p  = GymBox (fromIntegral lo) (fromIntegral hi) [scoreCount p] MinMax
     addScores p (GymDict pairs) = GymDict (pairs ++ [("scores", scoreSpace p)])
     addScores _ other = other
     obsSpaces = M.fromList
       [ (toAgentNum p, addScores p (gameObjectsViewSpace (viewGameStateAs' gs p ^. #objectsView)))
       | p <- players ]
-    actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl))
+    actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl)) NoNorm
 
 sendInit
   :: forall l cn r ph pl.

@@ -49,6 +49,7 @@ module Game.Location
     decodeLocationShape,
     decodeCounter,
     GymSpace (..),
+    NormHint (..),
     locationShapeSpace,
     counterSpace,
     gameObjectsSpace,
@@ -410,9 +411,17 @@ makeFields ''GameObjects
 
 -- ---- Gym / training interface types ----
 
+data NormHint = MinMax | Standardize | NoNorm
+  deriving (Show, Generic)
+
+instance ToJSON NormHint where
+  toJSON MinMax      = "minmax"
+  toJSON Standardize = "standardize"
+  toJSON NoNorm      = "none"
+
 data GymSpace
-  = GymDiscrete Int
-  | GymBox Float Float [Int]
+  = GymDiscrete Int NormHint
+  | GymBox Float Float [Int] NormHint
   | GymMultiBinary Int
   | GymMultiDiscrete [Int]
   | GymSequence GymSpace
@@ -420,28 +429,28 @@ data GymSpace
   deriving (Show, Generic)
 
 instance ToJSON GymSpace where
-  toJSON (GymDiscrete n)       = object ["type" .= ("Discrete" :: Text), "n" .= n]
-  toJSON (GymBox lo hi shape)  = object ["type" .= ("Box" :: Text), "low" .= lo, "high" .= hi, "shape" .= shape]
-  toJSON (GymMultiBinary n)    = object ["type" .= ("MultiBinary" :: Text), "n" .= n]
-  toJSON (GymMultiDiscrete nv) = object ["type" .= ("MultiDiscrete" :: Text), "nvec" .= nv]
-  toJSON (GymSequence s)       = object ["type" .= ("Sequence" :: Text), "space" .= s]
-  toJSON (GymDict pairs)       = object ["type" .= ("Dict" :: Text), "spaces" .= M.fromList pairs]
+  toJSON (GymDiscrete n h)       = object ["type" .= ("Discrete" :: Text), "n" .= n, "normalize" .= h]
+  toJSON (GymBox lo hi shape h)  = object ["type" .= ("Box" :: Text), "low" .= lo, "high" .= hi, "shape" .= shape, "normalize" .= h]
+  toJSON (GymMultiBinary n)      = object ["type" .= ("MultiBinary" :: Text), "n" .= n]
+  toJSON (GymMultiDiscrete nv)   = object ["type" .= ("MultiDiscrete" :: Text), "nvec" .= nv]
+  toJSON (GymSequence s)         = object ["type" .= ("Sequence" :: Text), "space" .= s]
+  toJSON (GymDict pairs)         = object ["type" .= ("Dict" :: Text), "spaces" .= M.fromList pairs]
 
 infiniteUpperBound :: Int
 infiniteUpperBound = 1000
 
 locationShapeSpace :: forall r. (Finitary r) => LocationShape r -> GymSpace
-locationShapeSpace (Slot _)     = GymDiscrete (n + 1)
+locationShapeSpace (Slot _)     = GymDiscrete (n + 1) MinMax
   where n = length (inhabitants @r)
-locationShapeSpace (Pile _)     = GymBox 0 (fromIntegral infiniteUpperBound) [n]
+locationShapeSpace (Pile _)     = GymBox 0 (fromIntegral infiniteUpperBound) [n] Standardize
   where n = length (inhabitants @r)
-locationShapeSpace (Deck _)     = GymSequence (GymDiscrete n)
+locationShapeSpace (Deck _)     = GymSequence (GymDiscrete n NoNorm)
   where n = length (inhabitants @r)
-locationShapeSpace (Infinite _) = GymDiscrete infiniteUpperBound
-locationShapeSpace Dummy        = GymDiscrete 1
+locationShapeSpace (Infinite _) = GymDiscrete infiniteUpperBound MinMax
+locationShapeSpace Dummy        = GymDiscrete 1 NoNorm
 
 counterSpace :: Counter -> GymSpace
-counterSpace (Counter _ (lo, hi)) = GymDiscrete (hi - lo + 1)
+counterSpace (Counter _ (lo, hi)) = GymDiscrete (hi - lo + 1) MinMax
 
 gameObjectsSpace
   :: forall l cn r. (Finitary l, Finitary cn, Finitary r, Show l, Show cn)
