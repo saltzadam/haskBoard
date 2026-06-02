@@ -2,6 +2,7 @@ import sys
 import yaml
 import numpy as np
 import torch
+import platform
 
 from training_loop import train_multi_agent_on_policy
 from ippo_instrumented import InstrumentedIPPO
@@ -97,7 +98,14 @@ sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
 def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    BINARY = "/home/adam/haskell/haskboard/dist-newstyle/build/x86_64-linux/ghc-9.10.1/NoMerci-0.1.0.0/x/NoMerci/build/NoMerci/NoMerci"
+    assert ((platform.system()[0:3].lower() == 'win') | (platform.system() == 'Linux'))
+
+    if platform.system()[0:3].lower() == 'win':
+        BINARY = r"C:\Users\HTPC\haskell\haskboard\dist-newstyle\build\x86_64-windows\ghc-9.10.1\NoMerci-0.1.0.0\x\NoMerci\build\NoMerci\NoMerci.exe"
+    if platform.system() == 'Linux':
+        BINARY = "/home/adam/haskell/haskboard/dist-newstyle/build/x86_64-linux/ghc-9.10.1/NoMerci-0.1.0.0/x/NoMerci/build/NoMerci/NoMerci"
+
+
     num_envs = INIT_HP.get("NUM_ENVS", 1)
     env = AsyncPettingZooVecEnv(
         [lambda: make(BINARY, shared=False) for _ in range(num_envs)]
