@@ -102,7 +102,7 @@ def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG):
 
     if platform.system()[0:3].lower() == 'win':
         BINARY = r"C:\Users\HTPC\haskell\haskboard\dist-newstyle\build\x86_64-windows\ghc-9.10.1\NoMerci-0.1.0.0\x\NoMerci\build\NoMerci\NoMerci.exe"
-    if platform.system() == 'Linux':
+    elif platform.system() == 'Linux':
         BINARY = "/home/adam/haskell/haskboard/dist-newstyle/build/x86_64-linux/ghc-9.10.1/NoMerci-0.1.0.0/x/NoMerci/build/NoMerci/NoMerci"
 
 
@@ -181,6 +181,8 @@ def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG):
         ))
         for idx in range(INIT_HP["POP_SIZE"])
     ]
+
+    print("ready to train")
 
     train_multi_agent_on_policy(
         env,

@@ -5,10 +5,10 @@ INIT_HP:
     ALGO: IPPO                                          # Algorithm
     # Swap image channels dimension from last to first [H, W, C] -> [C, H, W]
     CHANNELS_LAST: false
-    NUM_ENVS: 16               # No. parallel environments for training
-    BATCH_SIZE: 512            # Batch size
+    NUM_ENVS: 32               # No. parallel environments for training
+    BATCH_SIZE: 1024           # Batch size
     LR: 0.0003                  # Learning rate
-    LEARN_STEP: 2048           # Learning frequency
+    LEARN_STEP: 4096           # Learning frequency
     MAX_STEPS: 2_000_000       # Max no. steps
     TARGET_SCORE:              # Early training stop at avg score of last 100 episodes
     GAMMA: 0.99                # Discount factor
@@ -22,8 +22,8 @@ INIT_HP:
     UPDATE_EPOCHS: 4           # Number of policy update epochs
     TOURN_SIZE: 2              # Tournament size
     ELITISM: true              # Elitism in tournament selection
-    POP_SIZE: 4                # Population size
-    EVO_STEPS: 10_000          # Evolution frequency
+    POP_SIZE: 2                # Population size
+    EVO_STEPS: 20_000          # Evolution frequency
     EVAL_STEPS:                # Evaluation steps
     EVAL_LOOP: 1               # Evaluation episodes
     WANDB: false                # Log with Weights and Biases

@@ -18,7 +18,7 @@ Protocol (Python → Haskell):
 
 from __future__ import annotations
 
-import json
+import orjson
 import subprocess
 from typing import Any
 
@@ -289,8 +289,7 @@ class HaskboardEnv(ParallelEnv):
             [binary_path, "--stdio"] + self._extra_args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            bufsize=1,
-            text=True,
+            bufsize=0,
         )
 
         init_msg = self._read_msg()
@@ -364,11 +363,11 @@ class HaskboardEnv(ParallelEnv):
         line = self._proc.stdout.readline()
         if not line:
             raise EOFError("Haskell process closed stdout unexpectedly")
-        return json.loads(line)
+        return orjson.loads(line)
 
     def _send(self, msg: dict) -> None:
         assert self._proc and self._proc.stdin
-        self._proc.stdin.write(json.dumps(msg) + "\n")
+        self._proc.stdin.write(orjson.dumps(msg) + b"\n")
         self._proc.stdin.flush()
 
     # ------------------------------------------------------------------
