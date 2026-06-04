@@ -354,6 +354,9 @@ class HaskboardEnv(ParallelEnv):
 
         self.agent_selection: str = self.agents[0]
 
+        # Score-based reward shaping: track raw scores to compute deltas
+        self._raw_scores: list[float] | None = None
+
     # ------------------------------------------------------------------
     # Low-level I/O
     # ------------------------------------------------------------------
@@ -407,6 +410,13 @@ class HaskboardEnv(ParallelEnv):
         boxified = _boxify_obs(raw_obs, raw_space)
         self._observations[agent_name] = self._normalize_obs(boxified, agent_name)
         self._legal_actions[agent_name] = msg["legalActions"]
+
+        # Extract raw scores for reward shaping (only present in step messages)
+        raw_json_obs = msg.get("observation")
+        if isinstance(raw_json_obs, dict):
+            scores = raw_json_obs.get("scores")
+            if scores is not None:
+                self._raw_scores = list(scores)
 
         if msg["msgType"] == "terminal":
             self._rewards[agent_name] = msg["reward"]
@@ -462,6 +472,7 @@ class HaskboardEnv(ParallelEnv):
             self._drain_to_terminal()
         self._send({"type": "reset"})
         self.agents = list(self.possible_agents)
+        self._raw_scores = None
         self._observations = {a: _zeros_for(self.observation_spaces[a]) for a in self.agents}
         self._rewards = {a: 0.0 for a in self.agents}
         self._terminations = {a: False for a in self.agents}
@@ -483,10 +494,18 @@ class HaskboardEnv(ParallelEnv):
             return obs, dict(self._rewards), dict(self._terminations), dict(self._truncations), dict(self._infos)
 
         prev_active = self.agent_selection
+        pre_action_scores = list(self._raw_scores) if self._raw_scores is not None else None
         action = int(actions[prev_active])
         self._send({"type": "action", "action": action})
         self._rewards[prev_active] = 0.0
         self._advance()
+
+        # Score-based reward shaping: reward ∝ (prev_traditional - curr_traditional)
+        # Haskell score = chipScore - cardScore (higher = better), so this is
+        # (curr_haskell - prev_haskell) / 100.
+        if pre_action_scores is not None and self._raw_scores is not None:
+            idx = self._agent_id_map[prev_active]
+            self._rewards[prev_active] += (self._raw_scores[idx] - pre_action_scores[idx]) / 100
 
         # Mark inactive agents with nan so AsyncAgentsWrapper can filter them.
         # Only the newly active agent gets real obs; prev_active keeps its reward.

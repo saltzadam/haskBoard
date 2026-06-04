@@ -47,7 +47,7 @@ def main():
     by_agent = load_metrics(metrics_path)
     first_agent = sorted(by_agent.keys())[0]
 
-    fig, axes = plt.subplots(3, 3, figsize=(16, 12))
+    fig, axes = plt.subplots(4, 3, figsize=(16, 16))
     fig.suptitle("Training Dashboard", fontsize=14, fontweight="bold")
 
     # Row 1: policy diagnostics
@@ -75,6 +75,27 @@ def main():
 
     plot_metric(axes[2, 1], by_agent, "episode_score", "Episode Score (mean)", ylabel="score", nested_key="mean")
     plot_metric(axes[2, 2], by_agent, "episode_length", "Episode Length (mean)", ylabel="steps", nested_key="mean")
+
+    # Row 4: histograms (latest snapshot from first agent)
+    last_rec = by_agent[first_agent][-1]
+    for col, (key, title) in enumerate([
+        ("hist_value_targets", "Value Targets"),
+        ("hist_rewards", "Rewards"),
+        ("hist_values", "Critic Values"),
+    ]):
+        ax = axes[3, col]
+        hist = last_rec.get(key)
+        if hist and "counts" in hist and "bin_edges" in hist:
+            edges = hist["bin_edges"]
+            centers = [(edges[i] + edges[i + 1]) / 2 for i in range(len(edges) - 1)]
+            widths = [edges[i + 1] - edges[i] for i in range(len(edges) - 1)]
+            total = sum(hist["counts"]) or 1
+            pcts = [c / total * 100 for c in hist["counts"]]
+            ax.bar(centers, pcts, width=widths, alpha=0.7, edgecolor="black", linewidth=0.5)
+        ax.set_title(f"{title} (latest)")
+        ax.set_xlabel("value")
+        ax.set_ylabel("%")
+        ax.grid(True, alpha=0.3)
 
     fig.tight_layout()
     out_path = metrics_path.parent / "dashboard.png"

@@ -22,6 +22,7 @@ from training_metrics import (
     compute_clip_fraction,
     compute_relative_entropy,
     compute_residual_variance,
+    tensor_histogram,
     tensor_stats,
 )
 
@@ -156,6 +157,9 @@ class InstrumentedIPPO(IPPO):
             )
             pre_update_values = critic(pre_states).squeeze(-1)
             pre_update_resvar = compute_residual_variance(pre_update_values, experiences[4])
+            hist_value_targets = tensor_histogram(experiences[4])
+            hist_rewards = tensor_histogram(rewards)
+            hist_values = tensor_histogram(pre_update_values)
 
         num_samples = experiences[4].size(0)
         batch_idxs = np.arange(num_samples)
@@ -312,6 +316,9 @@ class InstrumentedIPPO(IPPO):
                 "policy_loss": float(np.mean(all_pg_loss)),
                 "value_loss": float(np.mean(all_v_loss)),
                 "residual_variance": pre_update_resvar,
+                "hist_value_targets": hist_value_targets,
+                "hist_rewards": hist_rewards,
+                "hist_values": hist_values,
                 "actor_grad_norm": float(np.mean(all_actor_grad_norm)),
                 "critic_grad_norm": float(np.mean(all_critic_grad_norm)),
                 "num_updates": num_updates,

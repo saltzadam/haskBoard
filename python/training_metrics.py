@@ -1,5 +1,6 @@
 import math
 
+import numpy as np
 import torch
 from torch import Tensor
 
@@ -37,6 +38,13 @@ def compute_relative_entropy(entropy: Tensor, action_space_size: int) -> float:
     if max_entropy < 1e-8:
         return 0.0
     return (entropy.mean() / max_entropy).item()
+
+
+def tensor_histogram(t: Tensor, bins: int = 20) -> dict:
+    """Return JSON-serializable histogram {bin_edges, counts}."""
+    arr = t.detach().cpu().float().numpy().ravel()
+    counts, edges = np.histogram(arr, bins=bins)
+    return {"counts": counts.tolist(), "bin_edges": edges.tolist()}
 
 
 def compute_clip_fraction(ratio: Tensor, clip_coef: float) -> float:
