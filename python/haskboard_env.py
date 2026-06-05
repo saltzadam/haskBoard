@@ -481,6 +481,9 @@ class HaskboardEnv(ParallelEnv):
         self._legal_actions = {a: [] for a in self.agents}
 
         self._advance()
+        # Populate action masks for all agents
+        for a in self.agents:
+            self._infos[a] = {"action_mask": self._action_mask(a)}
         # Mark inactive agents with nan (only the first-to-act has real obs)
         for a in self.agents:
             if a != self.agent_selection:
@@ -506,6 +509,13 @@ class HaskboardEnv(ParallelEnv):
         if pre_action_scores is not None and self._raw_scores is not None:
             idx = self._agent_id_map[prev_active]
             self._rewards[prev_active] += (self._raw_scores[idx] - pre_action_scores[idx]) / 500
+
+        # Populate action masks for all agents
+        for a in self.possible_agents:
+            if self._terminations.get(a):
+                self._infos[a] = {"action_mask": np.ones(self._action_space_size, dtype=np.int8)}
+            else:
+                self._infos[a] = {"action_mask": self._action_mask(a)}
 
         # Mark inactive agents with nan so AsyncAgentsWrapper can filter them.
         # Only the newly active agent gets real obs; prev_active keeps its reward.

@@ -67,8 +67,8 @@ main = do
   brickToGameBChan <- newBChan 100
   let playerAgent = brickAgent (fst $ playChannels M.! Player 1) gameToBrickBChan (snd $ playChannels M.! Player 1) brickToGameBChan
 
-  let ai1 = uncurry randomAgent (playChannels M.! Player 2)
-  let ai2 = uncurry randomAgent (playChannels M.! Player 3)
+  let ai1 = uncurry (randomAgent []) (playChannels M.! Player 2)
+  let ai2 = uncurry (randomAgent []) (playChannels M.! Player 3)
   forkIO (runAgentIO ai1)
   forkIO (runAgentIO ai2)
   forkIO (runAgentIO playerAgent)

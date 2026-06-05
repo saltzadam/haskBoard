@@ -30,6 +30,29 @@ from training_metrics import (
 class InstrumentedIPPO(IPPO):
     """IPPO subclass that returns rich training metrics from learn()."""
 
+    def extract_action_masks(self, infos):
+        """Fix AgileRL bug: ``None in [np.array(...)]`` raises ValueError."""
+        action_masks = {group_id: [] for group_id in self.observation_space}
+        for agent_id, info in infos.items():
+            if isinstance(info, dict):
+                group_id = (
+                    self.get_group_id(agent_id)
+                    if self.has_grouped_agents()
+                    else agent_id
+                )
+                action_masks[group_id].append(info.get("action_mask", None))
+
+        for group_id in self.observation_space:
+            if any(m is None for m in action_masks[group_id]) or not action_masks[group_id]:
+                assert all(m is None for m in action_masks[group_id]), (
+                    "If action masks are provided for any agents, they must be provided for all agents."
+                )
+                action_masks[group_id] = None
+            else:
+                action_masks[group_id] = torch.from_numpy(np.stack(action_masks[group_id]))
+
+        return action_masks
+
     def learn(self, experiences: ExperiencesType) -> StandardTensorDict:
         states, actions, log_probs, rewards, dones, values, next_states, next_dones = (
             map(self.assemble_shared_inputs, experiences)

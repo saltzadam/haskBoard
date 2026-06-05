@@ -74,8 +74,8 @@ runTUIMode = do
   gameToBrickBChan <- newBChan 100
   brickToGameBChan <- newBChan 100
   let playerAgent = brickAgent (fst $ channels M.! Player 1) gameToBrickBChan (snd $ channels M.! Player 1) brickToGameBChan
-  let ai1 = uncurry randomAgent (channels M.! Player 2)
-  let ai2 = uncurry randomAgent (channels M.! Player 3)
+  let ai1 = uncurry (randomAgent []) (channels M.! Player 2)
+  let ai2 = uncurry (randomAgent []) (channels M.! Player 3)
   let gsv = viewGameStateAs' gs (Player 1)
   let initTUI = TUIState gsv (Player 1) ShowState [] brickToGameBChan Nothing True []
   withWorker (runAgentIO playerAgent)

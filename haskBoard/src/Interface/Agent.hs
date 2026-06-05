@@ -9,7 +9,13 @@ import Data.Finitary (Finitary)
 import Game.Agent
 import Game.Choose
 import Game.Options
+import Game.View (GameStateView)
 import qualified Data.Set.NonEmpty as NESet
+
+-- | A hint suggests a play given the visible game state and legal options.
+-- Return 'Just' to suggest a specific play, 'Nothing' to defer.
+-- TODO: Surface hints in the TUI (e.g. highlight the suggested play).
+type Hint l cn r ph pl = GameStateView l cn r ph -> Options pl -> Maybe pl
 
 -- Runs Agents, plus a few examples.
 
@@ -68,15 +74,16 @@ brickAgent fromGameChan toBrickBChan toGameChan fromBrickBChan =
       toGameChannel = toGameChan
     }
 
---
--- chooses moves at random
+-- | Agent that applies hints in order, falling back to random choice.
+-- Pass @[]@ for a purely random agent.
 randomAgent ::
+  [Hint l cn r ph pl] ->
   Chan (GameToInterfacePayload l cn r ph pl) ->
   Chan pl ->
   Agent l cn r ph pl IO
-randomAgent fromGameChan toGameChan =
+randomAgent hints fromGameChan toGameChan =
   Agent
-    { playChooser = chooseRandom,
+    { playChooser = chooseWithHints,
       stateHandler = \_ -> return (),
       winnersHandler = \_ -> return (),
       announceHandler = \_ _ -> return (),
@@ -84,9 +91,16 @@ randomAgent fromGameChan toGameChan =
       toGameChannel = toGameChan
     }
   where
-    chooseRandom :: p -> Options b -> IO b
-    chooseRandom _ (Options legal _) =
-      let n = NESet.size legal
-       in do
-            i <- randomRIO (0, n - 1)
-            return (foldr (:) [] legal !! i)
+    chooseWithHints gsv options@(Options legal _) =
+      case applyHints hints gsv options of
+        Just play -> return play
+        Nothing ->
+          let n = NESet.size legal
+           in do
+                i <- randomRIO (0, n - 1)
+                return (foldr (:) [] legal !! i)
+    applyHints [] _ _ = Nothing
+    applyHints (h : hs) gsv opts =
+      case h gsv opts of
+        Just play -> Just play
+        Nothing -> applyHints hs gsv opts
