@@ -1,6 +1,7 @@
 """Forked from agilerl.training.train_multi_agent_on_policy with:
 - Rich training metrics (from InstrumentedIPPO)
 - JSON lines logging to metrics.jsonl
+- TensorBoard logging (scalars + histograms)
 - Fixed progress bar step counting
 - Episode length tracking
 """
@@ -14,8 +15,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import torch
 import wandb
 from accelerate import Accelerator
+from torch.utils.tensorboard import SummaryWriter
 from gymnasium import spaces
 from pettingzoo import ParallelEnv
 
@@ -128,8 +131,13 @@ def train_multi_agent_on_policy(
         is_vectorised = False
         num_envs = 1
 
+    # Set up JSON metrics log + TensorBoard
+    metrics_dir = Path(log_dir or checkpoint_path or "runs")
+
     save_path = (
-        checkpoint_path.split(".pt")[0]
+        str(metrics_dir)
+        if log_dir is not None
+        else checkpoint_path.split(".pt")[0]
         if checkpoint_path is not None
         else "{}-EvoHPO-{}-{}".format(
             env_name,
@@ -137,11 +145,9 @@ def train_multi_agent_on_policy(
             datetime.now().strftime("%m%d%Y%H%M%S"),
         )
     )
-
-    # Set up JSON metrics log
-    metrics_dir = Path(log_dir or checkpoint_path or "runs")
     metrics_dir.mkdir(parents=True, exist_ok=True)
     metrics_file = open(metrics_dir / "metrics.jsonl", "a")
+    tb_writer = SummaryWriter(log_dir=str(metrics_dir))
 
     if accelerator is not None:
         print(f"\nDistributed training on {accelerator.device}...")
@@ -389,7 +395,7 @@ def train_multi_agent_on_policy(
                         "agent_idx": agent_idx,
                         "agent_id": agent_id,
                         "fps": fps,
-                        **metrics,
+                        **{k: v for k, v in metrics.items() if not k.startswith("raw_")},
                     }
                     if episode_lengths:
                         log_entry["episode_length"] = {
@@ -409,6 +415,36 @@ def train_multi_agent_on_policy(
                         }
                     metrics_file.write(json.dumps(log_entry) + "\n")
                     metrics_file.flush()
+
+                    # TensorBoard logging
+                    tag = f"{agent_id}"
+                    # Scalars
+                    for key in (
+                        "approx_kl", "clip_fraction", "entropy",
+                        "relative_entropy", "policy_loss", "value_loss",
+                        "residual_variance", "actor_grad_norm", "critic_grad_norm",
+                    ):
+                        if key in metrics:
+                            tb_writer.add_scalar(f"{tag}/{key}", metrics[key], total_steps)
+                    tb_writer.add_scalar(f"{tag}/fps", fps, total_steps)
+                    # Nested scalar dicts
+                    for key in ("rewards", "advantages", "value_targets"):
+                        if key in metrics and isinstance(metrics[key], dict):
+                            for stat, val in metrics[key].items():
+                                tb_writer.add_scalar(f"{tag}/{key}/{stat}", val, total_steps)
+                    if episode_lengths:
+                        tb_writer.add_scalar(f"{tag}/episode_length", float(np.mean(episode_lengths)), total_steps)
+                    if completed_episode_scores:
+                        tb_writer.add_scalar(f"{tag}/episode_score", float(np.mean(completed_episode_scores)), total_steps)
+                    # Histograms (raw tensors from InstrumentedIPPO)
+                    for key, tb_tag in (
+                        ("raw_value_targets", "value_targets"),
+                        ("raw_rewards", "rewards"),
+                        ("raw_values", "critic_values"),
+                    ):
+                        if key in metrics and isinstance(metrics[key], torch.Tensor):
+                            tb_writer.add_histogram(f"{tag}/{tb_tag}", metrics[key], total_steps)
+                    tb_writer.flush()
 
                 # Console summary (compact)
                 first_agent = next(iter(agent.last_metrics))
@@ -558,6 +594,7 @@ def train_multi_agent_on_policy(
             if wb:
                 wandb.finish()
             metrics_file.close()
+            tb_writer.close()
             return pop, pop_fitnesses
 
         # Tournament selection and population mutation
@@ -649,5 +686,6 @@ def train_multi_agent_on_policy(
             wandb.finish()
 
     metrics_file.close()
+    tb_writer.close()
     pbar.close()
     return pop, pop_fitnesses

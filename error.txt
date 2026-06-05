@@ -1,0 +1,136 @@
+[?1049h[22;0;0t[H[2J[?25l[1;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [2;1H(B[m[29m[37m[40m                                        Player One  (B[m[29m                            [3;1H(B[m[29m[37m[40m                                        Chips: 11   (B[m[29m                            [4;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [5;1H(B[m[29m[37m[40m                                        Player Two  (B[m[29m                            [6;1H(B[m[29m[37m[40m                                        Chips: 11   (B[m[29m                            [7;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [8;1H(B[m[29m[37m[40m                                        Player Three(B[m[29m                            [9;1H(B[m[29m[37m[40m                                        Chips: 11   (B[m[29m                            [10;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [11;1H(B[m[29m[37m[40mPlayer One                                          (B[m[29m                            [12;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [13;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [14;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [15;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [16;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [17;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [18;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [19;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [20;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [21;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [22;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [23;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [24;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [25;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [?25l[?25l[?25l[?25l[?25l[?25l[?25l[?25l[?25l[?25l[?25l[?25l[?25l[1;1H(B[m[29m[37m[40m -------                                            (B[m[29m                            [2;1H(B[m[29m[37m[40m|       |                               Player One  (B[m[29m                            [3;1H(B[m[29m[37m[40m|       |                               Chips: 11   (B[m[29m                            [4;1H(B[m[29m[37m[40m|       |                                           (B[m[29m                            [5;1H(B[m[29m[37m[40m|   32  |                               Player Two  (B[m[29m                            [6;1H(B[m[29m[37m[40m|       |                               Chips: 11   (B[m[29m                            [7;1H(B[m[29m[37m[40m|       |                                           (B[m[29m                            [8;1H(B[m[29m[37m[40m|       |                               Player Three(B[m[29m                            [9;1H(B[m[29m[37m[40m -------                                Chips: 11   (B[m[29m                            [12;1H(B[m[29m[37m[40m1) Take card                                        (B[m[29m                            [13;1H(B[m[29m[37m[40m2) Pay chip                                         (B[m[29m                            [14;1H(B[m[29m                                                                                [15;1H(B[m[29m                                                                                [16;1H(B[m[29m                                                                                [17;1H(B[m[29m                                                                                [18;1H(B[m[29m                                                                                [19;1H(B[m[29m                                                                                [20;1H(B[m[29m                                                                                [21;1H(B[m[29m                                                                                [22;1H(B[m[29m                                                                                [23;1H(B[m[29m                                                                                [24;1H(B[m[29m                                                                                [25;1H(B[m[29m                                                                                /home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/torch/__init__.py:1617: UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at /pytorch/aten/src/ATen/Context.cpp:80.)
+  _C._set_float32_matmul_precision(precision)
+[?25l[12;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [13;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [14;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [15;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [16;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [17;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [18;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [19;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [20;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [21;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [22;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [23;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [24;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [25;1H(B[m[29m[37m[40m                                                    (B[m[29m                            [?25l[?25l/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/torch/__init__.py:1617: UserWarning: Please use the new API settings to control TF32 behavior, such as torch.backends.cudnn.conv.fp32_precision = 'tf32' or torch.backends.cuda.matmul.fp32_precision = 'ieee'. Old settings, e.g, torch.backends.cuda.matmul.allow_tf32 = True, torch.backends.cudnn.allow_tf32 = True, allowTF32CuDNN() and allowTF32CuBLAS() will be deprecated after Pytorch 2.9. Please see https://pytorch.org/docs/main/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices (Triggered internally at /pytorch/aten/src/ATen/Context.cpp:80.)
+  _C._set_float32_matmul_precision(precision)
+Traceback (most recent call last):
+  File "/home/adam/haskell/haskboard/python/ws_agent.py", line 109, in <module>
+    main()
+    ~~~~^^
+  File "/home/adam/haskell/haskboard/python/ws_agent.py", line 105, in main
+    asyncio.run(run(args.checkpoint, args.player, args.port))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adam/.local/share/uv/python/cpython-3.13.11-linux-x86_64-gnu/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/home/adam/.local/share/uv/python/cpython-3.13.11-linux-x86_64-gnu/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/adam/.local/share/uv/python/cpython-3.13.11-linux-x86_64-gnu/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/home/adam/haskell/haskboard/python/ws_agent.py", line 59, in run
+    algo.get_action(
+    ~~~~~~~~~~~~~~~^
+        {agent_id: obs},
+        ^^^^^^^^^^^^^^^^
+        infos={agent_id: {"action_mask": [1] * n_actions}},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/adam/haskell/haskboard/python/main.py", line 60, in get_action
+    hp_config = HyperparameterConfig(
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/wrappers/agent.py", line 202, in get_action
+    return self.wrapped_get_action(obs, *args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/algorithms/ippo.py", line 543, in get_action
+    action, log_prob, entropy, values = self._get_action_and_values(
+                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        obs=agent_obs,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        batch_size=self.action_batch_size,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/algorithms/ippo.py", line 492, in _get_action_and_values
+    action, log_prob, entropy = actor(obs, action_mask=action_mask)
+                                ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/networks/base.py", line 309, in __call__
+    return self.forward(*args, **kwargs)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/networks/actors.py", line 379, in forward
+    latent = self.extract_features(obs)
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/networks/base.py", line 327, in extract_features
+    return self.encoder(x)
+           ~~~~~~~~~~~~^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/modules/base.py", line 376, in __call__
+    return self.forward(*args, **kwargs)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/modules/multi_input.py", line 459, in forward
+    latent = self.final_dense(features)
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/torch/nn/modules/linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+           ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: mat1 and mat2 shapes cannot be multiplied (1x144 and 149x64)
+Traceback (most recent call last):
+  File "/home/adam/haskell/haskboard/python/ws_agent.py", line 109, in <module>
+    main()
+    ~~~~^^
+  File "/home/adam/haskell/haskboard/python/ws_agent.py", line 105, in main
+    asyncio.run(run(args.checkpoint, args.player, args.port))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adam/.local/share/uv/python/cpython-3.13.11-linux-x86_64-gnu/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/home/adam/.local/share/uv/python/cpython-3.13.11-linux-x86_64-gnu/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/home/adam/.local/share/uv/python/cpython-3.13.11-linux-x86_64-gnu/lib/python3.13/asyncio/base_events.py", line 725, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/home/adam/haskell/haskboard/python/ws_agent.py", line 59, in run
+    algo.get_action(
+    ~~~~~~~~~~~~~~~^
+        {agent_id: obs},
+        ^^^^^^^^^^^^^^^^
+        infos={agent_id: {"action_mask": [1] * n_actions}},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/adam/haskell/haskboard/python/main.py", line 60, in get_action
+    hp_config = HyperparameterConfig(
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/wrappers/agent.py", line 202, in get_action
+    return self.wrapped_get_action(obs, *args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/algorithms/ippo.py", line 543, in get_action
+    action, log_prob, entropy, values = self._get_action_and_values(
+                                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        obs=agent_obs,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        batch_size=self.action_batch_size,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/algorithms/ippo.py", line 492, in _get_action_and_values
+    action, log_prob, entropy = actor(obs, action_mask=action_mask)
+                                ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/networks/base.py", line 309, in __call__
+    return self.forward(*args, **kwargs)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/networks/actors.py", line 379, in forward
+    latent = self.extract_features(obs)
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/networks/base.py", line 327, in extract_features
+    return self.encoder(x)
+           ~~~~~~~~~~~~^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/modules/base.py", line 376, in __call__
+    return self.forward(*args, **kwargs)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/agilerl/modules/multi_input.py", line 459, in forward
+    latent = self.final_dense(features)
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/adam/haskell/haskboard/python/.venv/lib/python3.13/site-packages/torch/nn/modules/linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+           ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: mat1 and mat2 shapes cannot be multiplied (1x144 and 149x64)

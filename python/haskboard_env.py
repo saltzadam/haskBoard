@@ -505,7 +505,7 @@ class HaskboardEnv(ParallelEnv):
         # (curr_haskell - prev_haskell) / 100.
         if pre_action_scores is not None and self._raw_scores is not None:
             idx = self._agent_id_map[prev_active]
-            self._rewards[prev_active] += (self._raw_scores[idx] - pre_action_scores[idx]) / 100
+            self._rewards[prev_active] += (self._raw_scores[idx] - pre_action_scores[idx]) / 500
 
         # Mark inactive agents with nan so AsyncAgentsWrapper can filter them.
         # Only the newly active agent gets real obs; prev_active keeps its reward.
