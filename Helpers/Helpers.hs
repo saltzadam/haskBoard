@@ -76,7 +76,7 @@ advanceTurnCyclic :: (Player -> Turn ph) -> GameRule l cn r ph pl ()
 advanceTurnCyclic mkTurn = do
   ps <- lookPlayers
   p  <- lookCurrentTurnOwner
-  let next = getNextTurn2 mkTurn (NE.fromList . S.toList $ ps) p
+  let next = getNextTurn2 mkTurn (NE.fromList $ ps) p
   advanceTurn next
 
 getNextTurn2 :: (Player -> Turn ph) -> NE.NonEmpty Player -> Player -> Turn ph
@@ -209,7 +209,7 @@ viewCounterVal :: (Eq cn) => GameStateView l cn r ph -> cn -> Maybe Int
 viewCounterVal gsv cn = view #val <$> gsv ^. #objectsView . #countersView . ftAt cn
 
 viewCurrentPlayer :: GameStateView l cn r ph -> Player
-viewCurrentPlayer gsv = gsv ^. #currentPlayerView
+viewCurrentPlayer gsv = gsv ^. #currentTurnView . #owner
 
 viewHowManyAt :: (Ord r, Eq l) => GameStateView l cn r ph -> l -> r -> Maybe Int
 viewHowManyAt g l r = flip howMany' r <$> viewLocation g l
@@ -219,8 +219,8 @@ viewHowManyAt g l r = flip howMany' r <$> viewLocation g l
 activePlayer :: (Player -> GameRule l cn r ph pl a) -> GameRule l cn r ph pl a
 activePlayer action = lookCurrentTurnOwner >>= action
 
-lookOtherPlayers :: Player -> GameRule l cn r ph pl (Set Player)
-lookOtherPlayers p = S.filter (/= p) <$> lookPlayers
+lookOtherPlayers :: Player -> GameRule l cn r ph pl [Player]
+lookOtherPlayers p = filter (/= p) <$> lookPlayers
 
 -- | Construct a 'Phase' from its name and its rule sequence.
 -- Avoids needing to know the 'Phase' record field names.

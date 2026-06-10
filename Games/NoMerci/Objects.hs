@@ -21,6 +21,7 @@ import Game.Options (Options)
 import Game.Player
 import Game.Rules
 import Game.View (GameStateView)
+import Interface.Hint
 
 -- don't derive Functor so it's not easy to modify card nums
 data NMResource = Chip | Card (NumberedPiece 33)
@@ -29,6 +30,9 @@ data NMResource = Chip | Card (NumberedPiece 33)
 extractCard :: NMResource -> Maybe Int
 extractCard (Card (NumberedPiece i)) = Just (fromEnum i + 3)
 extractCard _ = Nothing
+
+
+-- TODO: these should be lenses (prisms really)
 
 isCard :: NMResource -> Bool
 isCard = isJust . extractCard
@@ -65,6 +69,13 @@ data NMLocation
   | CardDeck
   | BoxTop
   deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
+
+extractPlayer :: NMLocation -> Maybe Player
+extractPlayer (PlayerStuff p) = Just p
+extractPlayer _ = Nothing
+
+isPlayerStuff :: NMLocation -> Bool
+isPlayerStuff = isJust . extractPlayer
 
 type NMGameObjects = GameObjects NMLocation NoCounters NMResource
 
@@ -109,6 +120,7 @@ type NMView = GameStateView NMLocation NoCounters NMResource NMPhaseName
 
 type NMEvent = BEvent NMLocation NoCounters NMResource NMPhaseName NMPlayName
 
+type NMHint = HintM NMLocation NoCounters NMResource NMPhaseName NMPlayName
 
 -- todo: ergoonomic
 playerTurn :: Player -> NMTurn

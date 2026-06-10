@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module Game.GameE (playGameTurns, evalRule) where
+module Game.GameE (playGameTurns, evalRule, evalRule') where
 
 import Control.Applicative (asum)
 import Control.Lens (to, (^.))

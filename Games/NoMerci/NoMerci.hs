@@ -15,6 +15,10 @@ import Helpers
 import Game.Location (NoCounters)
 import Objects 
 import Util (ifM, maximaByScoreM)
+import Data.Maybe (listToMaybe, mapMaybe)
+import NumberedPiece
+import Control.Applicative ((<|>))
+import qualified Data.Map as M
 
 
 -- Plays --
@@ -43,7 +47,7 @@ checkEnd =
     (CardDeck `hasAny` cards)
     justDoNothing
     ( do
-        winners <- maximaByScoreM score . S.toList =<< lookPlayers
+        winners <- maximaByScoreM score =<< lookPlayers
         endGame winners
     )
 
@@ -86,16 +90,102 @@ nmPhases name@(NMTurnPhase p) = mkPhase name (chooseMove p >> advanceTurnCyclic 
 
 -- The game
 
-noMerci :: Int -> (NMGameState, NMGameRules)
+noMerci :: Int -> (NMGameState, NMGameRules, [NMHint])
 noMerci numPlayers =
   ( initGameState numPlayers
   , GameRules
       { playRunner  = nmRunPlay
       , phases      = nmPhases
       , score       = score
-      , scoreBounds = (-50, 50)
+      , scoreBounds = (-50, 50) -- TODO: ???
       , scorePublic = True
       , setupPhase  = Just nmSetup
       }
+  , [takeRun, takeOverValued, takeForceOthers, takeGeneral]
   )
 
+
+-- Hints
+-- Take something if it makes a run
+-- Take something if it has more chips than its value
+-- if you have the most chips and the card is >=18, don't take it
+
+hint x = return (Just x)
+noHint = return (Nothing)
+
+lookCenterCardVal :: GameRule NMLocation cn NMResource ph pl (Maybe Int)
+lookCenterCardVal = do
+  cardAvailable <- listToMaybe <$> listResAtF CenterOfTableCard isCard
+  return $ cardAvailable >>= extractCard
+
+-- TODO: use guard?
+takeRun :: NMHint
+takeRun pls = 
+  do
+    cardAvailable <- peek CenterOfTableCard
+    currPlayer <- lookCurrentTurnOwner
+    playerCards <- listResAtF (PlayerStuff currPlayer) isCard
+    let playerVals = mapMaybe extractCard playerCards
+    case cardAvailable >>= extractCard of
+      Nothing -> noHint
+      Just cardVal -> do
+        if (cardVal + 1 `elem` playerVals) || (cardVal - 1 `elem` playerVals)
+        then hint Take
+        else noHint
+    
+takeOverValued :: NMHint
+takeOverValued pls = 
+    do
+    cardAvailable <- peek CenterOfTableCard
+    case cardAvailable >>= extractCard of
+      Nothing -> noHint
+      Just cardVal -> do
+        chipsAvailable <- howManyAt ChipPile Chip
+        if chipsAvailable >= cardVal then hint Take else noHint
+
+takeForceOthers :: NMHint
+takeForceOthers pls = do
+  currPlayer <- lookCurrentTurnOwner 
+  players <- lookPlayers
+  playerChips <- sequence . M.fromList $  [(p, howManyAt (PlayerStuff p) Chip ) | p <- players]
+  cardAvailable <- peek CenterOfTableCard
+  case cardAvailable >>= extractCard of
+    Nothing -> noHint
+    Just cardVal -> 
+      if and [playerChips M.! currPlayer > playerChips M.! p | p <- players, p /= currPlayer] 
+          && cardVal >= 18 then hint Decline
+          else noHint
+  
+takeGeneral :: NMHint
+takeGeneral pls = do
+  currPlayer <- lookCurrentTurnOwner
+  players <- lookPlayers
+  myChips <- howManyAt (PlayerStuff currPlayer) Chip
+  cardAvailable <- peek CenterOfTableCard
+  let cardAvailableValue = cardAvailable >>= extractCard
+  chipsAvailable <- howManyAt ChipPile Chip
+
+  maxPlayerChips <- fmap maximum . sequence $ [ howManyAt (PlayerStuff p) Chip | p <- players, p /= currPlayer]
+  let cardAvailableValue  = cardAvailable >>= extractCard
+  if myChips > 3 && Just (chipsAvailable + 3) >= cardAvailableValue -- TODO: not great
+  then hint Take
+  else if myChips > 3
+       then hint Decline
+       else do
+         if chipsAvailable > maxPlayerChips - myChips then hint Take
+           else noHint
+          
+    
+
+  -- let playerCards' = fmap extractCard playerCards
+  --
+  -- let nextOrPrev card = nextMaybe card <|> prevMaybe card 
+  -- case listToMaybe cardAvailable of
+  --   Just (Card i) -> case nextMaybe i of 
+  --     Just next -> ifM (CenterOfTableCard `has` Card next) (return $ const $ Just Take) (return $ const Nothing)
+  --     Nothing -> case prevMaybe i of
+  --       Just prev -> ifM (CenterOfTableCard `has` Card prev) (return $ const $ Just Take) (return $ const Nothing)
+  --       Nothing -> return $ const Nothing
+  --   _ -> return $ const Nothing
+  --
+  --

@@ -1,11 +1,11 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
-module NumberedPiece (NumberedPiece (..)) where
+module NumberedPiece (NumberedPiece (..), nextMaybe, prevMaybe) where
 
 import Data.Aeson (FromJSON (..), ToJSON (..), ToJSONKey (..), FromJSONKey (..))
 import Data.Aeson.Types (FromJSONKeyFunction (..), toJSONKeyText)
 import Data.Finitary (Finitary)
-import Data.Finite (Finite, finite, getFinite)
+import Data.Finite (Finite, finite, getFinite, packFinite)
 import GHC.Generics (Generic)
 import GHC.TypeLits (KnownNat)
 import qualified Data.Text as T
@@ -15,14 +15,20 @@ import Text.Read (readMaybe)
 -- Use this instead of raw 'Finite n': it serialises as a plain JSON number
 -- and has a clean Show instance (displays as the integer).
 newtype NumberedPiece n = NumberedPiece (Finite n)
-  deriving (Eq, Ord, Generic, Finitary)
+  deriving (Eq, Ord, Generic, Finitary, Show, Read)
 
-instance Show (NumberedPiece n) where
-  show (NumberedPiece i) = show (getFinite i)
+nextMaybe :: KnownNat n => NumberedPiece n -> Maybe (NumberedPiece n)
+nextMaybe (NumberedPiece fin) = NumberedPiece <$> packFinite (getFinite fin + 1)
 
-instance KnownNat n => Read (NumberedPiece n) where
-  readsPrec p s = [(NumberedPiece (finite i), rest) | (i, rest) <- readsPrec p s]
+prevMaybe :: KnownNat n => NumberedPiece n -> Maybe (NumberedPiece n)
+prevMaybe (NumberedPiece fin) = NumberedPiece <$> packFinite (getFinite fin - 1)
 
+-- instance Show (NumberedPiece n) where
+--   show (NumberedPiece i) = show (getFinite i)
+--
+-- instance KnownNat n => Read (NumberedPiece n) where
+--   readsPrec p s = [(NumberedPiece (finite i), rest) | (i, rest) <- readsPrec p s]
+--
 instance ToJSON (NumberedPiece n) where
   toJSON (NumberedPiece i) = toJSON (getFinite i)
 

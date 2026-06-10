@@ -5,6 +5,7 @@ module Interface.Stdio
   ( InitMsg (..),
     StepMsg (..),
     InMsg (..),
+    ActionSource (..),
     putJson,
     readAction,
     buildInitMsg,
@@ -17,6 +18,7 @@ where
 import Control.Concurrent (Chan, MVar, readChan, withMVar, writeChan)
 import Control.Exception (IOException, catch)
 import Control.Lens ((^.))
+import Control.Monad.Random (randomRIO)
 import System.Exit (exitSuccess)
 import Control.Monad (forever)
 import Data.Aeson (FromJSON (..), ToJSON (..), Value (..), decodeStrict, withObject, (.:))
@@ -25,7 +27,7 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Text (encodeToLazyText)
 import Data.Aeson.Types (Parser)
 import qualified Data.ByteString.Char8 as BS
-import Data.Finitary (inhabitants)
+import Data.Finitary (inhabitants, toFinite)
 import Game.Constraints (GameCounter, GameLocation, GamePlay, GameResource)
 import Data.IORef (newIORef, readIORef, writeIORef)
 import qualified Data.Map as M
@@ -36,9 +38,11 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as TL
 import Data.Generics.Labels ()
+import qualified Data.Set.NonEmpty as NESet
 import FinitaryMap ((!!!))
 import GHC.Generics (Generic)
 import Game.Choose (GameToInterfacePayload (..))
+import Interface.Hint (HintM, applyHintsPure)
 import Game.GameState (GameRules, GameState)
 import Game.Location
   (
@@ -47,11 +51,16 @@ import Game.Location
     encodeCounterObs,
     encodeLocationObs,
   )
-import Game.Options ( actionSpaceSize, decodeAction, legalActionIndices)
+import Game.Options (Options (..), actionSpaceSize, decodeAction, legalActionIndices)
 import Game.Player (Player (..))
 import Game.View (GameObjectsView (..), GameStateView (..), gameObjectsViewSpace, viewGameStateAs')
+import Interface.Hint (applyHints, HintM)
+import Effectful (runEff)
 
 -- ---- Message types ----
+
+data ActionSource = Hint | Random | Agent | Human
+  deriving (Show, Generic, ToJSON)
 
 data InitMsg = InitMsg
   { agents :: [Int],
@@ -67,7 +76,9 @@ data StepMsg = StepMsg
     legalActions :: [Int],
     reward :: Float,
     terminated :: Bool,
-    truncated :: Bool
+    truncated :: Bool,
+    hintAction :: Maybe Int,
+    actionSource :: ActionSource
   }
   deriving (Generic, ToJSON)
 
@@ -158,14 +169,16 @@ sendInit gs gr = putJson (buildInitMsg gs gr)
 runStdioAgent
   :: forall l cn r ph pl.
      (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
-  => Player
+  => [HintM l cn r ph pl]
+  -> Bool
+  -> Player
   -> MVar ()
   -> [Player]
   -> GameRules l cn r ph pl
   -> Chan (GameToInterfacePayload l cn r ph pl)
   -> Chan pl
   -> IO ()
-runStdioAgent thisPlayer lock allPlayers gr fromChan toChan = do
+runStdioAgent hints selfPlay thisPlayer lock allPlayers gr fromChan toChan = do
   scoreRef <- newIORef (M.empty :: M.Map Player Int)
   forever $ do
     payload <- readChan fromChan
@@ -173,17 +186,32 @@ runStdioAgent thisPlayer lock allPlayers gr fromChan toChan = do
       SendState _ scores   -> writeIORef scoreRef scores
       SendAnnouncement _ _ -> return ()
       SendOptions gsv opts -> do
-        let GameStateView _ objsView _ _ = gsv
+        let GameStateView _ objsView _ _ _ = gsv
         let Player agentPnum = opts ^. #owner
         let agentNum = fromEnum agentPnum
         scores <- readIORef scoreRef
         let obs      = addScoresToObs scores (gr ^. #scorePublic) thisPlayer
                          (encodeGameObjectsObs objsView)
         let legal    = legalActionIndices opts
-        let msg      = StepMsg "step" agentNum obs legal 0.0 False False
-        withMVar lock $ \_ -> putJson msg
-        i <- readAction
-        writeChan toChan (decodeAction i)
+        if selfPlay
+          then do
+            let hintResult = applyHintsPure gsv hints opts
+            chosenPlay <- case hintResult of
+              Just play -> return play
+              Nothing -> do
+                let n = NESet.size (opts ^. #legal)
+                i <- randomRIO (0, n - 1)
+                return (foldr (:) [] (opts ^. #legal) !! i)
+            let chosenIdx = fromIntegral (toFinite chosenPlay)
+            let source = maybe Random (const Hint) hintResult
+            let msg = StepMsg "step" agentNum obs legal 0.0 False False (Just chosenIdx) source
+            withMVar lock $ \_ -> putJson msg
+            writeChan toChan chosenPlay
+          else do
+            let msg = StepMsg "step" agentNum obs legal 0.0 False False Nothing Agent
+            withMVar lock $ \_ -> putJson msg
+            i <- readAction
+            writeChan toChan (decodeAction i)
       SendWinners winners -> do
         let Player thisPnum = thisPlayer
         let agentNum = fromEnum thisPnum
@@ -193,5 +221,5 @@ runStdioAgent thisPlayer lock allPlayers gr fromChan toChan = do
         let reward   = if thisPlayer `elem` winners
                         then fromIntegral nLosers / fromIntegral n
                         else -(fromIntegral nWinners / fromIntegral n) :: Float
-        let msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False
+        let msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False Nothing Agent
         withMVar lock $ \_ -> putJson msg

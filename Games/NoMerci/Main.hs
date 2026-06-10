@@ -22,7 +22,7 @@ import Interface.Agent (brickAgent, randomAgent, runAgentIO)
 import Interface.Controller (PlayerInterface (..), buildInterface)
 import Interface.Server (server, spawnAgileRLAgent)
 import Interface.Stdio (runStdioAgent)
-import Interface.Training (stdioTrainingLoop)
+import Interface.Training (stdioTrainingLoop, collectLoop)
 import NoMerci
 import Run (runGameSeparateChannels)
 import System.Environment (getArgs)
@@ -36,6 +36,7 @@ main = do
   args <- getArgs
   case () of
     _ | "--stdio"     `elem` args -> runStdioMode
+      | "--collect"   `elem` args -> runCollectMode
       | "--tui"       `elem` args -> runTUIMode
       | "--ws-agents" `elem` args ->
           let checkpoint = args !! succ (fromJust (elemIndex "--ws-agents" args))
@@ -45,8 +46,7 @@ main = do
 
 runServerMode :: IO ()
 runServerMode = do
-  let gs = fst (noMerci 3)
-  let gr = snd (noMerci 3)
+  let (gs,gr,hints) = (noMerci 3)
   let players = S.toList (gs ^. #players)
   interface <- buildInterface players
   withWorker
@@ -55,19 +55,27 @@ runServerMode = do
 
 runStdioMode :: IO ()
 runStdioMode = do
-  let gs = fst (noMerci 3)
-  let gr = snd (noMerci 3)
+  let (gs,gr,hints) = (noMerci 3)
   let players = S.toList (gs ^. #players)
   interface <- buildInterface players
   lock <- newMVar ()
   forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
-    void $ forkIO $ runStdioAgent p lock players gr fromChan toChan
+    void $ forkIO $ runStdioAgent [] False p lock players gr fromChan toChan
   stdioTrainingLoop (gs, gr) "training.log" interface
+
+runCollectMode :: IO ()
+runCollectMode = do
+  let (gs,gr,hints) = (noMerci 3)
+  let players = S.toList (gs ^. #players)
+  interface <- buildInterface players
+  lock <- newMVar ()
+  forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
+    void $ forkIO $ runStdioAgent hints True p lock players gr fromChan toChan
+  collectLoop (gs, gr) "collect.log" interface
 
 runTUIMode :: IO ()
 runTUIMode = do
-  let gs = fst (noMerci 3)
-  let gr = snd (noMerci 3)
+  let (gs,gr,hints) = (noMerci 3)
   let players = S.toList (gs ^. #players)
   interface <- buildInterface players
   let channels = fmap (\(PlayerInterface fromChan toChan) -> (fromChan, toChan)) (interface ^. #playerInterfaces)
@@ -86,7 +94,7 @@ runTUIMode = do
 
 runWSAgentsMode :: FilePath -> Int -> IO ()
 runWSAgentsMode checkpoint humanN = do
-  let (gs, gr) = noMerci 3
+  let (gs, gr, hints) = noMerci 3
       players      = S.toList (gs ^. #players)
       script       = "python/ws_agent.py"
       humanPlayer  = Player (toEnum humanN)
@@ -102,7 +110,7 @@ runWSAgentsMode checkpoint humanN = do
   forM_ aiPlayerNums $ \n ->
     void $ forkIO $ void $ spawnAgileRLAgent script checkpoint (toEnum n)
   let gameLoop = do
-        let (gs', gr') = noMerci 3
+        let (gs', gr',hints) = noMerci 3
         void $ runGameSeparateChannels "nomerci.log" interface gs' gr'
         gameLoop
   withWorker (runAgentIO playerAgent)

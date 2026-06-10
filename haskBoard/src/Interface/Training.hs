@@ -1,10 +1,11 @@
 module Interface.Training
   ( stdioTrainingLoop,
+    collectLoop,
   )
 where
 
 import Control.Exception (IOException, catch)
-import Control.Monad (void)
+import Control.Monad (forever, void)
 import Data.Aeson (decodeStrict)
 import qualified Data.ByteString.Char8 as BS
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
@@ -37,6 +38,20 @@ stdioTrainingLoop (gs0, gr0) logFile controller = do
       void $ runGameSeparateChannels logFile controller gs0 gr0
       waitForReset
       loop
+
+-- | Run the game in a loop for behavioral cloning data collection.
+-- Like 'stdioTrainingLoop' but auto-resets without waiting for stdin.
+-- Python reads the data stream and terminates when it has enough.
+collectLoop
+  :: (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl)
+  => (GameState l cn r ph pl, GameRules l cn r ph pl)
+  -> FilePath
+  -> GameController l cn r ph pl
+  -> IO ()
+collectLoop (gs0, gr0) logFile controller = do
+  hSetBuffering stdout LineBuffering
+  sendInit gs0 gr0
+  forever $ void $ runGameSeparateChannels logFile controller gs0 gr0
 
 waitForReset :: IO ()
 waitForReset =

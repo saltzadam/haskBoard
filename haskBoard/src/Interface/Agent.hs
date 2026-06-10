@@ -1,4 +1,4 @@
-module Interface.Agent where
+module Interface.Agent (Hint, runAgentIO, termAgent, brickAgent, randomAgent) where
 
 import Brick.BChan (BChan, readBChan, writeBChan)
 import Control.Concurrent (Chan, readChan, writeChan)
@@ -9,13 +9,13 @@ import Data.Finitary (Finitary)
 import Game.Agent
 import Game.Choose
 import Game.Options
-import Game.View (GameStateView)
+import Game.View (GameStateView, inject)
 import qualified Data.Set.NonEmpty as NESet
+import Interface.Hint (Hint, applyHints, HintM)
+import Effectful.State.Static.Shared (evalState)
+import Effectful (runEff)
+import Effectful.NonDet (OnEmptyPolicy(..), runNonDet)
 
--- | A hint suggests a play given the visible game state and legal options.
--- Return 'Just' to suggest a specific play, 'Nothing' to defer.
--- TODO: Surface hints in the TUI (e.g. highlight the suggested play).
-type Hint l cn r ph pl = GameStateView l cn r ph -> Options pl -> Maybe pl
 
 -- Runs Agents, plus a few examples.
 
@@ -77,7 +77,7 @@ brickAgent fromGameChan toBrickBChan toGameChan fromBrickBChan =
 -- | Agent that applies hints in order, falling back to random choice.
 -- Pass @[]@ for a purely random agent.
 randomAgent ::
-  [Hint l cn r ph pl] ->
+  (Eq l, Eq cn) => [HintM l cn r ph pl] ->
   Chan (GameToInterfacePayload l cn r ph pl) ->
   Chan pl ->
   Agent l cn r ph pl IO
@@ -91,16 +91,19 @@ randomAgent hints fromGameChan toGameChan =
       toGameChannel = toGameChan
     }
   where
-    chooseWithHints gsv options@(Options legal _) =
-      case applyHints hints gsv options of
-        Just play -> return play
-        Nothing ->
+    chooseWithHints gsv options@(Options legal _) = do
+      hintedChoice <- runEff . evalState (inject gsv) $ applyHints hints options
+      case hintedChoice of
+        Just y -> return y
+        Nothing -> do
           let n = NESet.size legal
-           in do
-                i <- randomRIO (0, n - 1)
-                return (foldr (:) [] legal !! i)
-    applyHints [] _ _ = Nothing
-    applyHints (h : hs) gsv opts =
-      case h gsv opts of
-        Just play -> Just play
-        Nothing -> applyHints hs gsv opts
+          i <- randomRIO (0,n-1)
+          return (foldr (:) [] legal !! i)
+      -- case applyHints hints gsv options of
+      --   Just play -> return play
+      --   Nothing ->
+      --     let n = NESet.size legal
+      --      in do
+      --           i <- randomRIO (0, n - 1)
+      --           return (foldr (:) [] legal !! i)
+

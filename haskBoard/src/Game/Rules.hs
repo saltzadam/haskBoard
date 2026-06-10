@@ -10,6 +10,7 @@ import Game.GameStateBase (GameState)
 import Game.Location
 import Game.Options
 import Game.Player (Player)
+import qualified Data.Set as S
 
 data GameRuleF l cn r ph pl next
   = Act (GameAction l cn r ph) next
@@ -44,8 +45,8 @@ makeChoice_ = void . makeChoice
 act :: GameAction l cn r ph -> GameRule l cn r ph pl ()
 act action = liftF (Act action ())
 
-lookPlayers :: GameRule l cn r ph pl (Set Player)
-lookPlayers = liftF (LookPlayers id)
+lookPlayers :: GameRule l cn r ph pl [Player]
+lookPlayers = S.toList <$> liftF (LookPlayers id)
 
 lookLocation :: (Eq l) => l -> GameRule l cn r ph pl (LocationShape r)
 lookLocation l = liftF (LookLocation l id)

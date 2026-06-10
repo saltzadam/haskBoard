@@ -80,7 +80,7 @@ renderMenu tui =
     case tui ^. #tuiMode of
       EndGame -> renderEndGame tui
       _ ->
-        let p = tui ^. #gameStateView . #currentPlayerView
+        let p = tui ^. #gameStateView . #currentTurnView . #owner
          in simpleMenuBody (drawCurrentPlayer p) (drawOptions printPlay) tui
 
 renderEndGame :: NMTUIState -> Widget Name

@@ -27,7 +27,7 @@ import Game.Options (decodeAction, legalActionIndices)
 import Game.Player (Player (..), PlayerNum, mkPlayers)
 import Game.View (GameStateView (..))
 import Interface.Controller (GameController, PlayerInterface (..))
-import Interface.Stdio (InMsg (..), StepMsg (..), buildInitMsg, encodeGameObjectsObs)
+import Interface.Stdio (ActionSource (..), InMsg (..), StepMsg (..), buildInitMsg, encodeGameObjectsObs)
 import Network.WebSockets as WS
 import Text.Read (readMaybe)
 import Util (ifM)
@@ -178,12 +178,12 @@ playerWorker controller p ss = forever $ do
       let gsvJSON = toJSON gsv
       WS.sendTextData conn (encodeToLazyText gsvJSON)
     SendOptions gsv opts -> do
-      let GameStateView _ objsView _ _ = gsv
+      let GameStateView _ objsView _ _ _ = gsv
           Player agentPnum = opts ^. #owner
           agentNum = fromEnum agentPnum
           obs   = encodeGameObjectsObs objsView
           legal = legalActionIndices opts
-          msg   = StepMsg "step" agentNum obs legal 0.0 False False
+          msg   = StepMsg "step" agentNum obs legal 0.0 False False Nothing Agent
       WS.sendTextData conn (encodeToLazyText (toJSON msg))
       void $ runExceptT $ forever $ do
         response <- lift (WS.receiveData conn :: IO LBS.ByteString)
@@ -200,7 +200,7 @@ playerWorker controller p ss = forever $ do
           reward   = if p `elem` winners
                       then fromIntegral nLosers / fromIntegral n
                       else -(fromIntegral nWinners / fromIntegral n) :: Float
-          msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False
+          msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False Nothing Agent
       WS.sendTextData conn (encodeToLazyText (toJSON msg))
     _ -> return ()
 

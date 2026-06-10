@@ -5,7 +5,7 @@
 
 module Game.View where
 
-import Control.Lens (to, (^.))
+import Control.Lens (to, (^.), view, Getting)
 import Control.Lens.TH (makeFields)
 import Control.Monad.Free (Free (..))
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, Value, decodeStrict, object, withObject, (.:), (.=))
@@ -20,14 +20,17 @@ import Effectful (Eff, (:>))
 import FinitaryMap (FTMap (..), ftAt, (!!!))
 import GHC.Generics (Generic)
 import Game.GameState
-import Game.Location (Counter, GameObjects, GymSpace (..), LocationShape, counterSpace, decodeLocationShape, encodeCounter, encodeLocationShape, locationShapeSpace, fromGymShape, toGymShape)
+import Game.Location (Counter (Counter), GameObjects (..), GymSpace (..), LocationShape (..), counterSpace, decodeLocationShape, encodeCounter, encodeLocationShape, locationShapeSpace, fromGymShape, toGymShape)
 import Game.Options (Options)
 import Game.Player (Player, Turn (..))
 import Game.Rules
-import Game.Visibility (LookerType (..), VisData (..), VisibilityMap (..), VisibilityType (..), runVis)
+import Game.Visibility (LookerType (..), VisData (..), VisibilityMap (..), VisibilityType (..), runVis, allInvisible)
 
 -- View is used for writing UIs and interfaces. The controller sends the interface a View which only contains information that is Visible to the user.
--- There are two ways to produce Views. One uses the GameRule monad. This should enable some code reuse: the same code that defines the game rules can also be used for views, and visibility will "just work." But how to run it? Interfaces currently demand GameStateView. They could instead send GameRules for interpretation. So this is still WIP.
+-- There are two ways to produce Views. One uses the GameRule monad. This should enable some code reuse: 
+-- the same code that defines the game rules can also be used for views, and visibility will "just work." 
+-- But how to run it? Interfaces currently demand GameStateView. 
+-- They could instead send GameRules for interpretation. So this is still WIP.
 
 -- The other way is to explicitly create a GameStateView object.
 
@@ -72,7 +75,9 @@ data GameStateView l cn r ph = GameStateView
   { playersView :: Set Player,
     objectsView :: GameObjectsView l cn r,
     currentPhaseView :: ph,
-    currentPlayerView :: Player
+    currentTurnView :: Turn ph,
+    nextTurnView :: Turn ph
+    -- visibilityMapView :: VisibilityMap l cn r  -- this is problematic -- even knowing the keys of this map is too much info
   }
   deriving (Generic)
 
@@ -82,10 +87,32 @@ project gs =
     { playersView = gs ^. #players,
       objectsView = buildView' Nothing gs,
       currentPhaseView = gs ^. #currentPhase,
-      currentPlayerView = gs ^. #currentTurn . #owner
+      currentTurnView = gs ^. #currentTurn,
+      nextTurnView = gs ^. #nextTurn
     }
 
+inject :: GameStateView l cn r ph -> GameState l cn r ph pl
+inject gsv =
+  GameState {
+      players = gsv ^. #playersView,
+      objects = injectObjects (gsv ^. #objectsView),
+      currentPhase = gsv ^. #currentPhaseView,
+      currentTurn = gsv ^. #currentTurnView,
+      nextTurn = gsv ^. #nextTurnView,
+      visibility = allInvisible -- TODO: not great!
+    }
+      where
+      injectObjects :: GameObjectsView l cn r -> GameObjects l cn r 
+      injectObjects (GameObjectsView locView cntView) = GameObjects (injectLocs locView) (injectCnt cntView)
+
+injectLocs :: FTMap a (Maybe (LocationShape r)) -> FTMap a (LocationShape r)
+injectLocs (FTMap f) = FTMap (\x -> case f x of Just y -> y ; _ -> Dummy)
+injectCnt (FTMap f) = FTMap (\x -> case f x of Just y -> y ; _ -> Counter 0 (0,0)) -- TODO: not great!
+
 type LocationsView l r = FTMap l (Maybe (LocationShape r))
+
+g :: forall  l r. Eq l => l -> LocationsView l r -> Maybe (LocationShape r)
+g l' s =  view (ftAt l') (s :: LocationsView l r)
 
 type CountersView cn = FTMap cn (Maybe Counter)
 
@@ -144,7 +171,8 @@ viewGameStateAs' gs p =
     (gs ^. #players)
     (buildView' (Just p) gs)
     (gs ^. #currentPhase)
-    (gs ^. #currentTurn . #owner)
+    (gs ^. #currentTurn)
+    (gs ^. #nextTurn)
 
 viewGameStateAs :: GameState l cn r ph pl -> LookerType -> GameStateView l cn r ph
 viewGameStateAs gs (LookAs p) = viewGameStateAs' gs p
@@ -152,6 +180,17 @@ viewGameStateAs gs LookFull = project gs
 
 makeFields ''GameStateView
 makeFields ''GameObjectsView
+
+getsGameStateView :: forall l cn r ph pl b es . (GameInteract l cn r ph pl :> es) =>  Player -> (GameStateView l cn r ph -> b) -> Eff es b
+getsGameStateView p f = (getsGameState 
+    (f . (`viewGameStateAs` (LookAs p))
+  )
+    )
+
+useGameStateView :: (GameInteract l cn r ph pl :> es) => Player -> Getting b (GameStateView l cn r ph) b -> Eff es b
+useGameStateView p o = getsGameStateView p (view o)
+
+
 
 -- | Derive a GymSpace descriptor from a player's view of the game objects.
 -- Hidden locations/counters (Nothing in the view) are omitted entirely.
@@ -164,3 +203,5 @@ gameObjectsViewSpace (GameObjectsView locsView cnsView) = GymDict $
   ++
   [ (pack (show cn), counterSpace c)
   | cn <- inhabitants @cn, Just c <- [cnsView !!! cn] ]
+
+

@@ -16,7 +16,7 @@ from haskboard_env import make
 sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
 
 
-def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG, run_name: str = "default"):
+def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG, run_name: str = "default", bc_weights: str | None = None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     assert ((platform.system()[0:3].lower() == 'win') | (platform.system() == 'Linux'))
@@ -103,6 +103,18 @@ def main(INIT_HP, MUTATION_PARAMS, NET_CONFIG, run_name: str = "default"):
         for idx in range(INIT_HP["POP_SIZE"])
     ]
 
+    if bc_weights:
+        print(f"Loading BC weights from {bc_weights} ...")
+        bc_state = torch.load(bc_weights, map_location=device, weights_only=True)
+        for wrapper in pop:
+            ippo = wrapper.agent
+            for agent_id in ippo.actors:
+                actor = ippo.actors[agent_id]
+                # torch.compile wraps in OptimizedModule; load into underlying module
+                target = getattr(actor, '_orig_mod', actor)
+                target.load_state_dict(bc_state)
+        print(f"BC weights loaded into {len(pop)} population members.")
+
     print("ready to train")
 
     train_multi_agent_on_policy(
@@ -135,6 +147,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train IPPO on haskboard")
     parser.add_argument("--run", type=str, default=None,
                         help="Run name (used for log directory). Defaults to timestamp.")
+    parser.add_argument("--bc-weights", type=str, default=None,
+                        help="Path to BC actor weights (.pt) to initialize all actors.")
     args = parser.parse_args()
 
     run_name = args.run or datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -143,4 +157,4 @@ if __name__ == "__main__":
     with open("ippo.yaml") as file:
         config = yaml.safe_load(file)
     main(config["INIT_HP"], config["MUTATION_PARAMS"], config["NET_CONFIG"],
-         run_name=run_name)
+         run_name=run_name, bc_weights=args.bc_weights)
