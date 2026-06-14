@@ -12,6 +12,7 @@ dependencies = [
     "numpy",
     "orjson>=3.11.9",
     "pettingzoo",
+    "ray[rllib]>=2.40",
     "setuptools==81.0.0",
     "tensorboard",
     "tensorflow>=2.20.0",
