@@ -20,7 +20,8 @@ import Effectful (Eff, (:>))
 import FinitaryMap (FTMap (..), ftAt, (!!!))
 import GHC.Generics (Generic)
 import Game.GameState
-import Game.Location (Counter (Counter), GameObjects (..), GymSpace (..), LocationShape (..), counterSpace, decodeLocationShape, encodeCounter, encodeLocationShape, locationShapeSpace, fromGymShape, toGymShape)
+import Data.Map (Map)
+import Game.Location (Counter (Counter), GameObjects (..), GymSpace (..), LocationShape (..), counterSpace, decodeLocationShape, encodeCounter, encodeLocationShape, locationShapeSpace, inventoryTotals, fromGymShape, toGymShape)
 import Game.Options (Options)
 import Game.Player (Player, Turn (..))
 import Game.Rules
@@ -194,11 +195,12 @@ useGameStateView p o = getsGameStateView p (view o)
 
 -- | Derive a GymSpace descriptor from a player's view of the game objects.
 -- Hidden locations/counters (Nothing in the view) are omitted entirely.
+-- The @totals@ map (from 'inventoryTotals') determines binary encoding widths.
 gameObjectsViewSpace
   :: forall l cn r. (GameLocation l, GameCounter cn, GameResource r)
-  => GameObjectsView l cn r -> GymSpace
-gameObjectsViewSpace (GameObjectsView locsView cnsView) = GymDict $
-  [ (pack (show l), locationShapeSpace loc)
+  => Map r Int -> GameObjectsView l cn r -> GymSpace
+gameObjectsViewSpace totals (GameObjectsView locsView cnsView) = GymDict $
+  [ (pack (show l), locationShapeSpace totals loc)
   | l <- inhabitants @l, Just loc <- [locsView !!! l] ]
   ++
   [ (pack (show cn), counterSpace c)

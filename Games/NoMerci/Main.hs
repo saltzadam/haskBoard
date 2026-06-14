@@ -20,6 +20,7 @@ import Game.Player (Player (..))
 import Game.View (viewGameStateAs')
 import Interface.Agent (brickAgent, randomAgent, runAgentIO)
 import Interface.Controller (PlayerInterface (..), buildInterface)
+import Game.Location (inventoryTotals)
 import Interface.Server (server, spawnAgileRLAgent)
 import Interface.Stdio (runStdioAgent)
 import Interface.Training (stdioTrainingLoop, collectLoop)
@@ -48,29 +49,32 @@ runServerMode :: IO ()
 runServerMode = do
   let (gs,gr,hints) = (noMerci 3)
   let players = S.toList (gs ^. #players)
+  let totals = inventoryTotals (gs ^. #objects ^. #locations)
   interface <- buildInterface players
   withWorker
     (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
-    (server 3 gs gr interface)
+    (server totals 3 gs gr interface)
 
 runStdioMode :: IO ()
 runStdioMode = do
   let (gs,gr,hints) = (noMerci 3)
   let players = S.toList (gs ^. #players)
+  let totals = inventoryTotals (gs ^. #objects ^. #locations)
   interface <- buildInterface players
   lock <- newMVar ()
   forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
-    void $ forkIO $ runStdioAgent [] False p lock players gr fromChan toChan
+    void $ forkIO $ runStdioAgent totals [] False p lock players gr fromChan toChan
   stdioTrainingLoop (gs, gr) "training.log" interface
 
 runCollectMode :: IO ()
 runCollectMode = do
   let (gs,gr,hints) = (noMerci 3)
   let players = S.toList (gs ^. #players)
+  let totals = inventoryTotals (gs ^. #objects ^. #locations)
   interface <- buildInterface players
   lock <- newMVar ()
   forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
-    void $ forkIO $ runStdioAgent hints True p lock players gr fromChan toChan
+    void $ forkIO $ runStdioAgent totals hints True p lock players gr fromChan toChan
   collectLoop (gs, gr) "collect.log" interface
 
 runTUIMode :: IO ()
@@ -96,6 +100,7 @@ runWSAgentsMode :: FilePath -> Int -> IO ()
 runWSAgentsMode checkpoint humanN = do
   let (gs, gr, hints) = noMerci 3
       players      = S.toList (gs ^. #players)
+      totals       = inventoryTotals (gs ^. #objects ^. #locations)
       script       = "python/ws_agent.py"
       humanPlayer  = Player (toEnum humanN)
       aiPlayerNums = fromEnum . (\(Player p) -> p) <$> delete humanPlayer players
@@ -115,5 +120,5 @@ runWSAgentsMode checkpoint humanN = do
         gameLoop
   withWorker (runAgentIO playerAgent)
     $ withWorker gameLoop
-    $ withWorker (server (length aiPlayerNums) gs gr interface)
+    $ withWorker (server totals (length aiPlayerNums) gs gr interface)
     $ void (customMainWithDefaultVty (Just gameToBrickBChan) app initTUI)

@@ -97,7 +97,7 @@ noMerci numPlayers =
       { playRunner  = nmRunPlay
       , phases      = nmPhases
       , score       = score
-      , scoreBounds = (-50, 50) -- TODO: ???
+      , scoreBounds = (-50, 200)
       , scorePublic = True
       , setupPhase  = Just nmSetup
       }

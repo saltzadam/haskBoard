@@ -44,12 +44,14 @@ import GHC.Generics (Generic)
 import Game.Choose (GameToInterfacePayload (..))
 import Interface.Hint (HintM, applyHintsPure)
 import Game.GameState (GameRules, GameState)
+import Data.Map (Map)
 import Game.Location
   (
     GymSpace (..),
     NormHint (..),
     encodeCounterObs,
     encodeLocationObs,
+    inventoryTotals,
   )
 import Game.Options (Options (..), actionSpaceSize, decodeAction, legalActionIndices)
 import Game.Player (Player (..))
@@ -113,10 +115,10 @@ readAction =
 
 encodeGameObjectsObs
   :: forall l cn r. (GameLocation l, GameCounter cn, GameResource r)
-  => GameObjectsView l cn r -> Value
-encodeGameObjectsObs (GameObjectsView locsView cnsView) =
+  => Map r Int -> GameObjectsView l cn r -> Value
+encodeGameObjectsObs totals (GameObjectsView locsView cnsView) =
   toJSON $ M.fromList $
-    [(T.pack (show l), encodeLocationObs (Just loc)) | l <- inhabitants @l, Just loc <- [locsView !!! l]]
+    [(T.pack (show l), encodeLocationObs totals (Just loc)) | l <- inhabitants @l, Just loc <- [locsView !!! l]]
     ++ [(T.pack (show cn), encodeCounterObs (Just c)) | cn <- inhabitants @cn, Just c <- [cnsView !!! cn]]
 
 -- | Merge a "scores" array into an existing observation Value (a JSON object).
@@ -143,6 +145,7 @@ buildInitMsg gs gr = InitMsg agentNums obsSpaces actSpace
     toAgentNum (Player pnum) = fromEnum pnum
     players    = S.toList (gs ^. #players)
     agentNums  = map toAgentNum players
+    totals     = inventoryTotals (gs ^. #objects ^. #locations)
     (lo, hi)   = gr ^. #scoreBounds
     isPublic   = gr ^. #scorePublic
     numPlayers = length players
@@ -151,7 +154,7 @@ buildInitMsg gs gr = InitMsg agentNums obsSpaces actSpace
     addScores p (GymDict pairs) = GymDict (pairs ++ [("scores", scoreSpace p)])
     addScores _ other = other
     obsSpaces = M.fromList
-      [ (toAgentNum p, addScores p (gameObjectsViewSpace (viewGameStateAs' gs p ^. #objectsView)))
+      [ (toAgentNum p, addScores p (gameObjectsViewSpace totals (viewGameStateAs' gs p ^. #objectsView)))
       | p <- players ]
     actSpace  = GymDiscrete (actionSpaceSize (Proxy @pl)) NoNorm
 
@@ -169,7 +172,8 @@ sendInit gs gr = putJson (buildInitMsg gs gr)
 runStdioAgent
   :: forall l cn r ph pl.
      (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
-  => [HintM l cn r ph pl]
+  => Map r Int
+  -> [HintM l cn r ph pl]
   -> Bool
   -> Player
   -> MVar ()
@@ -178,7 +182,7 @@ runStdioAgent
   -> Chan (GameToInterfacePayload l cn r ph pl)
   -> Chan pl
   -> IO ()
-runStdioAgent hints selfPlay thisPlayer lock allPlayers gr fromChan toChan = do
+runStdioAgent totals hints selfPlay thisPlayer lock allPlayers gr fromChan toChan = do
   scoreRef <- newIORef (M.empty :: M.Map Player Int)
   forever $ do
     payload <- readChan fromChan
@@ -191,7 +195,7 @@ runStdioAgent hints selfPlay thisPlayer lock allPlayers gr fromChan toChan = do
         let agentNum = fromEnum agentPnum
         scores <- readIORef scoreRef
         let obs      = addScoresToObs scores (gr ^. #scorePublic) thisPlayer
-                         (encodeGameObjectsObs objsView)
+                         (encodeGameObjectsObs totals objsView)
         let legal    = legalActionIndices opts
         if selfPlay
           then do

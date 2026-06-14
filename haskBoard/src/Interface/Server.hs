@@ -4,7 +4,7 @@
 
 module Interface.Server where
 
-import Control.Concurrent (MVar, forkIO, modifyMVar, modifyMVar_, newMVar, readChan, readMVar, threadDelay, writeChan)
+import Control.Concurrent (Chan, MVar, forkIO, modifyMVar, modifyMVar_, newChan, newMVar, readChan, readMVar, threadDelay, writeChan)
 import System.Process (ProcessHandle, spawnProcess)
 import Control.Concurrent.Async (withAsync)
 import Control.Exception (finally)
@@ -17,6 +17,7 @@ import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Map (Map)
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
+import Game.Location (inventoryTotals)
 import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -70,25 +71,27 @@ broadcast message server_ = do
 
 server ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
+  Map r Int ->
   Int ->
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->
   GameController l cn r ph pl ->
   IO ()
-server numPlayers gs gr controller = do
+server totals numPlayers gs gr controller = do
   state <- newMVar (newServerState numPlayers)
-  WS.runServer "127.0.0.1" 9159 $ application gs gr controller state
+  WS.runServer "127.0.0.1" 9159 $ application totals gs gr controller state
 
 application ::
   forall l cn r ph pl.
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
+  Map r Int ->
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->
   GameController l cn r ph pl ->
   MVar ServerState ->
   PendingConnection ->
   IO ()
-application gs gr controller state pending = do
+application totals gs gr controller state pending = do
   conn <- WS.acceptRequest pending
   void $
     forkIO $
@@ -132,7 +135,7 @@ application gs gr controller state pending = do
             forever $
               ifM
                 ((\ss -> ss ^. #serverStatus == Active) <$> readMVar state)
-                (playerWorker controller player' state)
+                (playerWorker totals controller player' state)
                 (WS.sendTextData conn ("waiting for more players" :: Text) >> threadDelay 5000000)
   where
     disconnect pNum = do
@@ -151,58 +154,82 @@ withWorker outer inner = withAsync outer $ const inner
 
 runGame ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
+  Map r Int ->
   GameController l cn r ph pl ->
   MVar ServerState ->
   IO ()
-runGame controller ss = do
+runGame totals controller ss = do
   ss' <- readMVar ss
   let players = mkPlayers (ss' ^. #expectedPlayers)
-  foldr withWorker (return ()) ((\p -> playerWorker controller p ss) <$> players)
+  foldr withWorker (return ()) ((\p -> playerWorker totals controller p ss) <$> players)
 
 exit :: e -> ExceptT e IO a
 exit = ExceptT . return . Left
 
 playerWorker ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
+  Map r Int ->
   GameController l cn r ph pl ->
   Player ->
   MVar ServerState ->
   IO ()
-playerWorker controller p ss = forever $ do
+playerWorker totals controller p ss = do
   ss' <- readMVar ss
   let conn = (ss' ^. #clients) M.! p
   let PlayerInterface fromGameChan toGameChan = (controller ^. #playerInterfaces) M.! p
-  fromGameMsg <- readChan fromGameChan
-  case fromGameMsg of
-    SendState gsv _scores -> do
-      let gsvJSON = toJSON gsv
-      WS.sendTextData conn (encodeToLazyText gsvJSON)
-    SendOptions gsv opts -> do
-      let GameStateView _ objsView _ _ _ = gsv
-          Player agentPnum = opts ^. #owner
-          agentNum = fromEnum agentPnum
-          obs   = encodeGameObjectsObs objsView
-          legal = legalActionIndices opts
-          msg   = StepMsg "step" agentNum obs legal 0.0 False False Nothing Agent
-      WS.sendTextData conn (encodeToLazyText (toJSON msg))
-      void $ runExceptT $ forever $ do
-        response <- lift (WS.receiveData conn :: IO LBS.ByteString)
-        case decode response of
-          Just (ActionMsg i) -> lift (writeChan toGameChan (decodeAction i)) >> exit ()
-          _                  -> lift $ WS.sendTextData conn ("invalid play" :: Text)
-    SendWinners winners -> do
-      let Player thisPnum = p
-          agentNum = fromEnum thisPnum
-          allPlayers = M.keys (controller ^. #playerInterfaces)
-          n        = length allPlayers
-          nWinners = length (filter (`elem` winners) allPlayers)
-          nLosers  = n - nWinners
-          reward   = if p `elem` winners
-                      then fromIntegral nLosers / fromIntegral n
-                      else -(fromIntegral nWinners / fromIntegral n) :: Float
-          msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False Nothing Agent
-      WS.sendTextData conn (encodeToLazyText (toJSON msg))
-    _ -> return ()
+  -- A dedicated reader thread keeps the WebSocket alive by continuously
+  -- calling receiveData, which processes ping/pong control frames even
+  -- when the main loop is blocked waiting for game-channel messages.
+  -- Data frames (action responses) are forwarded through actionChan.
+  actionChan <- newChan
+  withAsync (wsReader conn actionChan) $ \_ ->
+    forever $ do
+      fromGameMsg <- readChan fromGameChan
+      case fromGameMsg of
+        SendState gsv _scores -> do
+          let gsvJSON = toJSON gsv
+          WS.sendTextData conn (encodeToLazyText gsvJSON)
+        SendOptions gsv opts -> do
+          let GameStateView _ objsView _ _ _ = gsv
+              Player agentPnum = opts ^. #owner
+              agentNum = fromEnum agentPnum
+              obs   = encodeGameObjectsObs totals objsView
+              legal = legalActionIndices opts
+              msg   = StepMsg "step" agentNum obs legal 0.0 False False Nothing Agent
+          WS.sendTextData conn (encodeToLazyText (toJSON msg))
+          waitForAction actionChan toGameChan
+        SendWinners winners -> do
+          let Player thisPnum = p
+              agentNum = fromEnum thisPnum
+              allPlayers = M.keys (controller ^. #playerInterfaces)
+              n        = length allPlayers
+              nWinners = length (filter (`elem` winners) allPlayers)
+              nLosers  = n - nWinners
+              reward   = if p `elem` winners
+                          then fromIntegral nLosers / fromIntegral n
+                          else -(fromIntegral nWinners / fromIntegral n) :: Float
+              msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False Nothing Agent
+          WS.sendTextData conn (encodeToLazyText (toJSON msg))
+        _ -> return ()
+
+-- | Background thread that continuously reads from the WebSocket.
+-- Ensures ping frames are ponged even when playerWorker is idle.
+wsReader :: Connection -> Chan InMsg -> IO ()
+wsReader conn actionChan = forever $ do
+  raw <- WS.receiveData conn :: IO LBS.ByteString
+  case decode raw of
+    Just msg -> writeChan actionChan msg
+    Nothing  -> return ()
+
+-- | Read from the action channel until we get an ActionMsg.
+waitForAction ::
+  (GamePlay pl) =>
+  Chan InMsg -> Chan pl -> IO ()
+waitForAction actionChan toGameChan = do
+  msg <- readChan actionChan
+  case msg of
+    ActionMsg i -> writeChan toGameChan (decodeAction i)
+    _           -> waitForAction actionChan toGameChan
 
 -- | Spawn a Python WebSocket agent that connects to the server and plays
 -- using a trained agilerl IPPO checkpoint.

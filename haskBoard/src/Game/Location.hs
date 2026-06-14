@@ -56,6 +56,8 @@ module Game.Location
     infiniteUpperBound,
     encodeLocationObs,
     encodeCounterObs,
+    inventoryTotals,
+    thermometer,
     -- * Built-in counter-name type for games with no counters
     NoCounters (..),
     -- * Smart constructors for LocationShape
@@ -297,6 +299,20 @@ howMany locs lname = howMany' (locs !!! lname)
 has' :: (Ord r) => LocationShape r -> r -> Bool
 has' loc r = howMany' loc r > 0
 
+-- | Compute the total count of each resource across all locations.
+-- Infinite supplies are excluded (they are conceptual, not physical pieces).
+inventoryTotals :: forall l r. (Finitary l, Ord r) => Locations l r -> Map r Int
+inventoryTotals locs = M.unionsWith (+) [finiteInventory (locs !!! l) | l <- inhabitants @l]
+  where
+    finiteInventory (Infinite _) = M.empty
+    finiteInventory loc = inventory loc
+
+-- | Thermometer (unary) encoding: count ones followed by (maxVal - count) zeros.
+thermometer :: Int -> Int -> [Int]
+thermometer count maxVal =
+  let c = min count maxVal
+  in replicate c 1 ++ replicate (maxVal - c) 0
+
 findResourceWithin :: (Ord r) => r -> [n] -> Locations n r -> [n]
 findResourceWithin res names locs = filter (\n -> locs !!! n `has'` res) names
 
@@ -411,6 +427,7 @@ makeFields ''GameObjects
 
 -- ---- Gym / training interface types ----
 
+-- TODO: needs doc, maybe simplify GymSpace
 data NormHint = MinMax | Standardize | NoNorm
   deriving (Show, Generic)
 
@@ -439,34 +456,36 @@ instance ToJSON GymSpace where
 infiniteUpperBound :: Int
 infiniteUpperBound = 1000
 
-locationShapeSpace :: forall r. (Finitary r) => LocationShape r -> GymSpace
-locationShapeSpace (Slot _)     = GymDiscrete (n + 1) MinMax
-  where n = length (inhabitants @r)
-locationShapeSpace (Pile _)     = GymBox 0 (fromIntegral infiniteUpperBound) [n] Standardize
-  where n = length (inhabitants @r)
-locationShapeSpace (Deck _)     = GymSequence (GymDiscrete n NoNorm)
-  where n = length (inhabitants @r)
-locationShapeSpace (Infinite _) = GymDiscrete infiniteUpperBound MinMax
-locationShapeSpace Dummy        = GymDiscrete 1 NoNorm
+locationShapeSpace :: forall r. (Finitary r, Ord r) => Map r Int -> LocationShape r -> GymSpace
+locationShapeSpace _ (Infinite _) = GymDiscrete infiniteUpperBound MinMax
+locationShapeSpace _ Dummy        = GymDiscrete 1 NoNorm
+locationShapeSpace totals _       = GymMultiBinary totalBits
+  where totalBits = sum [M.findWithDefault 0 r totals | r <- inhabitants @r]
 
 counterSpace :: Counter -> GymSpace
 counterSpace (Counter _ (lo, hi)) = GymDiscrete (hi - lo + 1) MinMax
 
 gameObjectsSpace
-  :: forall l cn r. (Finitary l, Finitary cn, Finitary r, Show l, Show cn)
+  :: forall l cn r. (Finitary l, Finitary cn, Finitary r, Ord r, Show l, Show cn)
   => GameObjects l cn r -> GymSpace
-gameObjectsSpace (GameObjects locs cns) = GymDict $
-  [(pack (show l), locationShapeSpace (locs !!! l)) | l <- inhabitants @l]
-  ++ [(pack (show cn), counterSpace (cns !!! cn)) | cn <- inhabitants @cn]
+gameObjectsSpace (GameObjects locs cns) =
+  let totals = inventoryTotals locs
+  in GymDict $
+    [(pack (show l), locationShapeSpace totals (locs !!! l)) | l <- inhabitants @l]
+    ++ [(pack (show cn), counterSpace (cns !!! cn)) | cn <- inhabitants @cn]
 
-encodeLocationObs :: forall r. (Finitary r, Ord r) => Maybe (LocationShape r) -> Value
-encodeLocationObs Nothing                = toJSON (Nothing :: Maybe ())
-encodeLocationObs (Just (Slot Nothing))  = toJSON (0 :: Int)
-encodeLocationObs (Just (Slot (Just r))) = toJSON (fromIntegral (toFinite r) + 1 :: Int)
-encodeLocationObs (Just (Pile m))        = toJSON [M.findWithDefault 0 r m | r <- inhabitants @r]
-encodeLocationObs (Just (Deck s))        = toJSON [fromIntegral (toFinite r) :: Int | r <- foldr (:) [] s]
-encodeLocationObs (Just (Infinite _))    = toJSON [infiniteUpperBound :: Int]
-encodeLocationObs (Just Dummy)           = toJSON (0 :: Int)
+encodeLocationObs :: forall r. (Finitary r, Ord r) => Map r Int -> Maybe (LocationShape r) -> Value
+encodeLocationObs _ Nothing       = toJSON (Nothing :: Maybe ())
+encodeLocationObs _ (Just (Infinite _)) = toJSON [infiniteUpperBound :: Int]
+encodeLocationObs _ (Just Dummy)  = toJSON (0 :: Int)
+encodeLocationObs totals (Just loc) = toJSON $ concatMap encodeOne (inhabitants @r)
+  where
+    encodeOne r =
+      let count = howMany' loc r
+      in case M.findWithDefault 0 r totals of
+           0 -> []
+           1 -> [min count 1]
+           n -> thermometer count n
 
 encodeCounterObs :: Maybe Counter -> Value
 encodeCounterObs Nothing                    = toJSON (0 :: Int)
