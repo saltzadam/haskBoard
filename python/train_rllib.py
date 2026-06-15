@@ -78,7 +78,7 @@ def main() -> None:
     binary_path = args.binary or find_binary()
     num_players = args.num_players
 
-    ray.init()
+    ray.init(runtime_env={"working_dir": ".", "excludes": [".venv/", "runs/", "__pycache__/"]})
 
     # Register the environment
     register_env("haskboard", env_creator)
@@ -93,7 +93,7 @@ def main() -> None:
     module_specs = {
         name: RLModuleSpec(
             module_class=HaskboardRLModule,
-            model_config_dict={
+            model_config={
                 "hidden_dims": [256, 256],
                 "trunk_dim": 128,
             },
@@ -135,7 +135,7 @@ def main() -> None:
         )
     )
 
-    algo = config.build()
+    algo = config.build_algo()
 
     checkpoint_dir = os.path.expanduser("~/haskell/haskboard/python/runs/rllib_checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -159,7 +159,7 @@ def main() -> None:
             reward_str = ", ".join(reward_parts) if reward_parts else "N/A"
             print(f"Step {step}: rewards=[{reward_str}]")
 
-        if step % 100 == 0:
+        if step % 10 == 0:
             save_path = algo.save(checkpoint_dir)
             print(f"Checkpoint saved: {save_path}")
 

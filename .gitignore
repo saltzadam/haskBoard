@@ -31,3 +31,5 @@ warnings.txt
 python/runs*
 *.npz
 *.pt
+plans/
+ray_results/

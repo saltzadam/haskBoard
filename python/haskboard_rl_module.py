@@ -16,10 +16,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 
 
-class HaskboardRLModule(TorchRLModule):
+class HaskboardRLModule(TorchRLModule, ValueFunctionAPI):
     """Flat-concat RLModule with action masking for haskboard games.
 
     Model config keys (via ``model_config``):
@@ -154,7 +155,7 @@ class HaskboardRLModule(TorchRLModule):
     def _forward_train(self, batch: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
         return self._forward(batch, is_inference=False)
 
-    def compute_values(self, batch: dict[str, Any]) -> torch.Tensor:
+    def compute_values(self, batch: dict[str, Any], embeddings: Any = None) -> torch.Tensor:
         obs = batch[Columns.OBS]
         if isinstance(obs, dict) and "observations" in obs:
             game_obs = obs["observations"]

@@ -203,7 +203,7 @@ class HaskboardAECEnv(AECEnv):
             self.terminations[agent_name] = True
             self.truncations[agent_name] = msg["truncated"]
             # Drain remaining terminal messages for all agents
-            while not all(self.terminations[a] for a in self.possible_agents):
+            while not all(self.terminations.get(a, False) for a in self.possible_agents):
                 msg2 = self._read_msg()
                 a2 = f"player_{msg2['agent']}"
                 raw_obs2 = _obs_to_numpy(msg2["observation"], self._game_obs_spaces[a2])
@@ -212,8 +212,12 @@ class HaskboardAECEnv(AECEnv):
                 self.terminations[a2] = True
                 self.truncations[a2] = msg2["truncated"]
                 self._legal_actions[a2] = msg2.get("legalActions", [])
-            self.agents = []
             self._game_over = True
+            # Do NOT clear self.agents here -- let PettingZoo's _was_dead_step
+            # remove agents one by one as the wrapper calls step(None).
+            # Set agent_selection to the first terminated agent so the wrapper
+            # can iterate through them.
+            self.agent_selection = agent_name
         else:
             self.agent_selection = agent_name
 
