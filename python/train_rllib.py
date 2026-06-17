@@ -12,6 +12,7 @@ import argparse
 import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 import ray
@@ -78,7 +79,12 @@ def main() -> None:
     binary_path = args.binary or find_binary()
     num_players = args.num_players
 
-    ray.init(runtime_env={"working_dir": ".", "excludes": [".venv/", "runs/", "__pycache__/"]})
+    ray_tmp = Path(__file__).parent / "ray_tmp"
+    ray_tmp.mkdir(exist_ok=True)
+    ray.init(
+        _temp_dir=str(ray_tmp),
+        runtime_env={"working_dir": ".", "excludes": [".venv/", "runs/", "__pycache__/", "ray_tmp/"]},
+    )
 
     # Register the environment
     register_env("haskboard", env_creator)

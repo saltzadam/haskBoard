@@ -33,3 +33,4 @@ python/runs*
 *.pt
 plans/
 ray_results/
+*ray_tmp*

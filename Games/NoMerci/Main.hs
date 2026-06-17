@@ -11,7 +11,7 @@ import Brick.Game.Tui (TUIMode (..), TUIState (..))
 import Control.Concurrent (MVar, forkIO, newMVar)
 import Control.Concurrent.Async (withAsync)
 import Control.Lens ((^.))
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, unless, void)
 import Data.List (delete, elemIndex)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
@@ -21,12 +21,15 @@ import Game.View (viewGameStateAs')
 import Interface.Agent (brickAgent, randomAgent, runAgentIO)
 import Interface.Controller (PlayerInterface (..), buildInterface)
 import Game.Location (inventoryTotals)
-import Interface.Server (server, spawnAgileRLAgent)
+import Interface.Server (server, spawnRLLibAgent)
 import Interface.Stdio (runStdioAgent)
 import Interface.Training (stdioTrainingLoop, collectLoop)
 import NoMerci
 import Run (runGameSeparateChannels)
+import System.Directory (doesDirectoryExist, makeAbsolute)
 import System.Environment (getArgs)
+import System.Exit (exitFailure)
+import System.FilePath ((</>))
 import Tui (app)
 
 withWorker :: IO a -> IO a -> IO a
@@ -53,7 +56,7 @@ runServerMode = do
   interface <- buildInterface players
   withWorker
     (void $ runGameSeparateChannels "nomerci.log" interface gs gr)
-    (server totals 3 gs gr interface)
+    (server totals 3 gs gr interface Nothing)
 
 runStdioMode :: IO ()
 runStdioMode = do
@@ -98,10 +101,17 @@ runTUIMode = do
 
 runWSAgentsMode :: FilePath -> Int -> IO ()
 runWSAgentsMode checkpoint humanN = do
+  absCheckpoint <- makeAbsolute checkpoint
+  let rlModuleDir = absCheckpoint </> "learner_group" </> "learner" </> "rl_module"
+  exists <- doesDirectoryExist rlModuleDir
+  unless exists $ do
+    putStrLn $ "Error: No learner_group/learner/rl_module/ found in: " ++ absCheckpoint
+    putStrLn $ "Pass the algo checkpoint root, e.g.: runs/rllib_checkpoints/"
+    exitFailure
   let (gs, gr, hints) = noMerci 3
       players      = S.toList (gs ^. #players)
       totals       = inventoryTotals (gs ^. #objects ^. #locations)
-      script       = "python/ws_agent.py"
+      script       = "python/ws_agent_rllib.py"
       humanPlayer  = Player (toEnum humanN)
       aiPlayerNums = fromEnum . (\(Player p) -> p) <$> delete humanPlayer players
   interface <- buildInterface players
@@ -113,12 +123,12 @@ runWSAgentsMode checkpoint humanN = do
       gsv     = viewGameStateAs' gs humanPlayer
       initTUI = TUIState gsv humanPlayer ShowState [] brickToGameBChan Nothing True []
   forM_ aiPlayerNums $ \n ->
-    void $ forkIO $ void $ spawnAgileRLAgent script checkpoint (toEnum n)
+    void $ forkIO $ void $ spawnRLLibAgent script absCheckpoint (toEnum n)
   let gameLoop = do
         let (gs', gr',hints) = noMerci 3
         void $ runGameSeparateChannels "nomerci.log" interface gs' gr'
         gameLoop
   withWorker (runAgentIO playerAgent)
     $ withWorker gameLoop
-    $ withWorker (server totals (length aiPlayerNums) gs gr interface)
+    $ withWorker (server totals (length aiPlayerNums) gs gr interface Nothing)
     $ void (customMainWithDefaultVty (Just gameToBrickBChan) app initTUI)

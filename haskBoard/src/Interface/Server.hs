@@ -4,15 +4,17 @@
 
 module Interface.Server where
 
-import Control.Concurrent (Chan, MVar, forkIO, modifyMVar, modifyMVar_, newChan, newMVar, readChan, readMVar, threadDelay, writeChan)
-import System.Process (ProcessHandle, spawnProcess)
+import Control.Concurrent (Chan, MVar, forkIO, modifyMVar, modifyMVar_, newChan, newMVar, putMVar, readChan, readMVar, threadDelay, writeChan)
+import System.Directory (makeAbsolute)
+import System.Process (ProcessHandle, spawnProcess, createProcess, proc, std_out, std_err, StdStream(..))
+import System.IO (openFile, IOMode(..))
 import Control.Concurrent.Async (withAsync)
 import Control.Exception (finally)
 import Control.Lens (makeFields, over, (^.))
 import Control.Monad (forM_, forever, void)
 import Control.Monad.Except (ExceptT (..), runExceptT)
 import Control.Monad.Trans (lift)
-import Data.Aeson (ToJSON (..),  decode, toJSON)
+import Data.Aeson (ToJSON (..), Value (..), decode, toJSON)
 import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Map (Map)
@@ -41,14 +43,15 @@ data ServerStatus
 data ServerState = ServerState
   { clients :: Map Player Connection,
     serverStatus :: ServerStatus,
-    expectedPlayers :: Int
+    expectedPlayers :: Int,
+    readyPlayers :: Int
   }
   deriving (Generic)
 
 makeFields ''ServerState
 
 newServerState :: Int -> ServerState
-newServerState = ServerState M.empty NotEnoughClients
+newServerState n = ServerState M.empty NotEnoughClients n 0
 
 serverNumPlayers :: ServerState -> Int
 serverNumPlayers server_ = length (server_ ^. #clients)
@@ -76,14 +79,26 @@ server ::
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->
   GameController l cn r ph pl ->
+  Maybe (MVar ()) ->
   IO ()
-server totals numPlayers gs gr controller = do
+server totals numPlayers gs gr controller mReady = do
+  let waitReady = case mReady of Just _ -> True; Nothing -> False
   state <- newMVar (newServerState numPlayers)
-  WS.runServer "127.0.0.1" 9159 $ application totals gs gr controller state
+  forM_ mReady $ \readyVar ->
+    void $ forkIO $ waitForActive state readyVar
+  WS.runServer "127.0.0.1" 9159 $ application waitReady totals gs gr controller state
+
+waitForActive :: MVar ServerState -> MVar () -> IO ()
+waitForActive state readyVar = do
+  ss <- readMVar state
+  if ss ^. #serverStatus == Active
+    then putMVar readyVar ()
+    else threadDelay 50000 >> waitForActive state readyVar
 
 application ::
   forall l cn r ph pl.
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
+  Bool ->
   Map r Int ->
   GameState l cn r ph pl ->
   GameRules l cn r ph pl ->
@@ -91,33 +106,25 @@ application ::
   MVar ServerState ->
   PendingConnection ->
   IO ()
-application totals gs gr controller state pending = do
+application waitReady totals gs gr controller state pending = do
   conn <- WS.acceptRequest pending
+  -- Monitor readyPlayers count; set Active when all expected players are ready
   void $
     forkIO $
       void $
         runExceptT $
           forever $
             ifM
-              (lift ((\ss -> (ss ^. #expectedPlayers) == serverNumPlayers ss) <$> readMVar state))
+              (lift ((\ss -> (ss ^. #expectedPlayers) == (ss ^. #readyPlayers)) <$> readMVar state))
               (lift (modifyMVar_ state (\ss -> return (ss {serverStatus = Active}))) >> exit ())
               (return ())
 
   WS.withPingThread conn 30 (return ()) $ do
-    -- When a client is succesfully connected, we read the first message. This should
-    -- be in the format of "Hi! I am Jasper", where Jasper is the requested username.
     msg <- WS.receiveData conn
     case toEnum <$> (readMaybe (T.unpack msg) :: Maybe Int) of
-      -- Check that the first message has the right format:
       Nothing -> WS.sendTextData conn ("Not a player number" :: Text)
       Just playerNum
-        -- Check that the player is not already taken:
-        -- All is right! We're going to allow the client, but for safety reasons we *first*
-        -- setup a `disconnect` function that will be run when the connection is closed.
         | otherwise -> flip finally (disconnect playerNum) $ do
-            -- We send a "Welcome!", according to our own little protocol. We add the client to
-            -- the list and broadcast the fact that he has joined. Then, we give control to the
-            -- 'talk' function.
             let player' = Player playerNum
             let client = (player', conn)
             modifyMVar_ state $ \s -> do
@@ -132,18 +139,37 @@ application totals gs gr controller state pending = do
             let initMsg = buildInitMsg gs gr
             WS.sendTextData conn (encodeToLazyText (toJSON initMsg))
 
-            forever $
-              ifM
-                ((\ss -> ss ^. #serverStatus == Active) <$> readMVar state)
-                (playerWorker totals controller player' state)
-                (WS.sendTextData conn ("waiting for more players" :: Text) >> threadDelay 5000000)
+            if waitReady
+              then do
+                -- Wait for {"type":"ready"} from client before marking ready
+                awaitReadyMsg conn
+                modifyMVar_ state $ \ss ->
+                  return ss { readyPlayers = (ss ^. #readyPlayers) + 1 }
+                playerWorker totals controller player' state
+              else do
+                -- Mark ready immediately (connection = ready)
+                modifyMVar_ state $ \ss ->
+                  return ss { readyPlayers = (ss ^. #readyPlayers) + 1 }
+                forever $
+                  ifM
+                    ((\ss -> ss ^. #serverStatus == Active) <$> readMVar state)
+                    (playerWorker totals controller player' state)
+                    (WS.sendTextData conn ("waiting for more players" :: Text) >> threadDelay 100000)
   where
     disconnect pNum = do
-      -- Remove client and return new state
       let player' = Player pNum
       s <- modifyMVar state $ \s ->
         let s' = removeClient player' s in return (s', s')
       broadcast (T.pack (show player') <> " disconnected") s
+
+-- | Block until the WS client sends {"type":"ready"}.
+-- Non-ready messages (broadcasts, state updates) are silently discarded.
+awaitReadyMsg :: Connection -> IO ()
+awaitReadyMsg conn = do
+  raw <- WS.receiveData conn :: IO LBS.ByteString
+  case decode raw :: Maybe (Map Text Value) of
+    Just m | M.lookup "type" m == Just (String "ready") -> return ()
+    _ -> awaitReadyMsg conn
 
 updateStatus :: MVar ServerState -> ServerStatus -> IO ()
 updateStatus state' status =
@@ -244,3 +270,23 @@ spawnAgileRLAgent scriptPath checkpointPath playerNum =
     , "--checkpoint", checkpointPath
     , "--player", show (fromEnum playerNum)
     ]
+
+-- | Spawn a Python WebSocket agent that connects to the server and plays
+-- using a trained RLlib checkpoint (no Ray cluster needed).
+-- Stdout/stderr are redirected to errors.log to avoid corrupting the Brick TUI.
+spawnRLLibAgent
+  :: FilePath     -- ^ Path to ws_agent_rllib.py
+  -> FilePath     -- ^ Path to RLlib checkpoint directory
+  -> PlayerNum    -- ^ Player slot to fill
+  -> IO ProcessHandle
+spawnRLLibAgent scriptPath checkpointPath playerNum = do
+  absScript <- makeAbsolute scriptPath
+  absCheckpoint <- makeAbsolute checkpointPath
+  logH <- openFile "errors.log" AppendMode
+  let cp = (proc "uv"
+              [ "run", "--project", "python", "python", absScript
+              , "--checkpoint", absCheckpoint
+              , "--player", show (fromEnum playerNum)
+              ]) { std_out = UseHandle logH, std_err = UseHandle logH }
+  (_, _, _, ph) <- createProcess cp
+  return ph
