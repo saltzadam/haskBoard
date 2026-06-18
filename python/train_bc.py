@@ -5,8 +5,8 @@ HaskboardRLModule with cross-entropy loss, and saves weights in RLlib
 checkpoint format.
 
 Usage:
-    uv run --project python python python/train_bc.py \
-        --data python/bc_data/ --epochs 20 --out python/bc_checkpoint/
+    uv run --project python python python/train_bc.py --name exp1 --epochs 20
+    uv run --project python python python/train_bc.py --data python/bc_data/ --out python/bc_checkpoint/
 """
 
 from __future__ import annotations
@@ -234,19 +234,36 @@ def _to_device(obj: Any, device: torch.device) -> Any:
     return obj
 
 
+def _resolve_name(name: str | None) -> str:
+    """Return the run name, generating a timestamp if not provided."""
+    if name is not None:
+        return name
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Train BC on haskboard using HaskboardRLModule."
     )
-    parser.add_argument("--data", required=True,
-                        help="Directory with init_msg.json and bc_data_player_*.jsonl")
+    parser.add_argument("--name", default=None,
+                        help="Run name; paths default to python/runs/<name>/ (auto-timestamp if omitted)")
+    parser.add_argument("--data", default=None,
+                        help="Directory with init_msg.json and bc_data_player_*.jsonl (overrides --name)")
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--test-split", type=float, default=0.1)
-    parser.add_argument("--out", default="python/bc_checkpoint/",
-                        help="Output checkpoint directory")
+    parser.add_argument("--out", default=None,
+                        help="Output checkpoint directory (overrides --name)")
     args = parser.parse_args()
+
+    name = _resolve_name(args.name)
+    if args.data is None:
+        args.data = f"python/runs/{name}/bc_data/"
+    if args.out is None:
+        args.out = f"python/runs/{name}/bc_checkpoint/"
+    print(f"Run name: {name}", file=sys.stderr)
 
     data_dir = Path(args.data)
     out_dir = Path(args.out)

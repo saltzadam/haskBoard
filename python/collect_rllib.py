@@ -5,7 +5,8 @@ stream, and writes per-player JSONL files compatible with RLlib's offline
 data format.  Only expert (Hint) actions are recorded.
 
 Usage:
-    uv run --project python python python/collect_rllib.py --games 5000 --out python/bc_data/
+    uv run --project python python python/collect_rllib.py --name exp1 --games 5000
+    uv run --project python python python/collect_rllib.py --out python/bc_data/  # explicit path
 """
 
 from __future__ import annotations
@@ -200,17 +201,31 @@ def collect(num_games: int, output_dir: str, binary_path: str) -> None:
     print(f"Output directory: {out}", file=sys.stderr)
 
 
+def _resolve_name(name: str | None) -> str:
+    """Return the run name, generating a timestamp if not provided."""
+    if name is not None:
+        return name
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Collect BC data from NoMerci for RLlib training."
     )
     parser.add_argument("--games", type=int, default=5000,
                         help="Number of games to collect (default: 5000)")
-    parser.add_argument("--out", default="python/bc_data/",
-                        help="Output directory (default: python/bc_data/)")
+    parser.add_argument("--name", default=None,
+                        help="Run name; outputs go to python/runs/<name>/bc_data/ (auto-timestamp if omitted)")
+    parser.add_argument("--out", default=None,
+                        help="Output directory (overrides --name)")
     parser.add_argument("--binary", default=None,
                         help="Path to Haskell binary (auto-detected if omitted)")
     args = parser.parse_args()
+    if args.out is None:
+        name = _resolve_name(args.name)
+        args.out = f"python/runs/{name}/bc_data/"
+        print(f"Run name: {name}", file=sys.stderr)
     binary = args.binary or find_binary()
     collect(num_games=args.games, output_dir=args.out, binary_path=binary)
 

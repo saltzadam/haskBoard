@@ -65,8 +65,18 @@ def env_creator(config: dict[str, Any]) -> PettingZooEnv:
     return PettingZooEnv(aec_env)
 
 
+def _resolve_name(name: str | None) -> str:
+    """Return the run name, generating a timestamp if not provided."""
+    if name is not None:
+        return name
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train PPO on haskboard via RLlib")
+    parser.add_argument("--name", type=str, default=None,
+                        help="Run name; checkpoints go to python/runs/<name>/rllib_checkpoints/ (auto-timestamp if omitted)")
     parser.add_argument("--binary", type=str, default=None,
                         help="Path to Haskell game binary (auto-detected if omitted)")
     parser.add_argument("--num-players", type=int, default=3,
@@ -78,6 +88,9 @@ def main() -> None:
     parser.add_argument("--bc-checkpoint", type=str, default=None,
                         help="Path to BC checkpoint dir to warm-start from")
     args = parser.parse_args()
+
+    name = _resolve_name(args.name)
+    print(f"Run name: {name}")
 
     binary_path = args.binary or find_binary()
     num_players = args.num_players
@@ -163,7 +176,7 @@ def main() -> None:
         )
         print("BC weights loaded and synced to env runners.")
 
-    checkpoint_dir = os.path.expanduser("~/haskell/haskboard/python/runs/rllib_checkpoints")
+    checkpoint_dir = f"python/runs/{name}/rllib_checkpoints"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     print(f"Starting training for {args.train_steps} iterations...")
