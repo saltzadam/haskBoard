@@ -35,24 +35,28 @@ MODEL_CONFIG = {"hidden_dims": [256, 256], "trunk_dim": 128}
 
 
 def find_policy_state_path(checkpoint_dir: pathlib.Path, policy_name: str) -> pathlib.Path:
-    """Locate the module_state.pkl for a policy inside an algo checkpoint.
+    """Locate the module_state.pkl for a policy inside a checkpoint.
 
-    Algo checkpoints from algo.save() have the structure:
-        checkpoint_dir/learner_group/learner/rl_module/<policy>/module_state.pkl
+    Supports two layouts:
+      Algo checkpoint:  checkpoint_dir/learner_group/learner/rl_module/<policy>/module_state.pkl
+      BC checkpoint:    checkpoint_dir/<policy>/module_state.pkl
     """
-    policy_path = checkpoint_dir / "learner_group" / "learner" / "rl_module" / policy_name
-    state_file = policy_path / "module_state.pkl"
-    if state_file.exists():
-        return state_file
+    # Try algo checkpoint layout first
+    algo_path = checkpoint_dir / "learner_group" / "learner" / "rl_module" / policy_name / "module_state.pkl"
+    if algo_path.exists():
+        return algo_path
+    # Try flat BC checkpoint layout
+    bc_path = checkpoint_dir / policy_name / "module_state.pkl"
+    if bc_path.exists():
+        return bc_path
     # List what's available for a helpful error
-    rl_module_dir = checkpoint_dir / "learner_group" / "learner" / "rl_module"
-    if rl_module_dir.exists():
-        available = [p.name for p in rl_module_dir.iterdir() if p.is_dir()]
-    else:
-        available = []
+    available = []
+    for search_dir in [checkpoint_dir / "learner_group" / "learner" / "rl_module", checkpoint_dir]:
+        if search_dir.exists():
+            available.extend(p.name for p in search_dir.iterdir() if p.is_dir())
     raise FileNotFoundError(
-        f"No module_state.pkl found at {state_file}. "
-        f"Available policies: {available}"
+        f"No module_state.pkl found for {policy_name} in {checkpoint_dir}. "
+        f"Available: {available}"
     )
 
 

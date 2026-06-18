@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import pickle
 import subprocess
 import sys
 from pathlib import Path
@@ -74,6 +75,8 @@ def main() -> None:
                         help="Number of parallel env runners (default: 4)")
     parser.add_argument("--train-steps", type=int, default=1000,
                         help="Number of training iterations (default: 1000)")
+    parser.add_argument("--bc-checkpoint", type=str, default=None,
+                        help="Path to BC checkpoint dir to warm-start from")
     args = parser.parse_args()
 
     binary_path = args.binary or find_binary()
@@ -83,7 +86,7 @@ def main() -> None:
     ray_tmp.mkdir(exist_ok=True)
     ray.init(
         _temp_dir=str(ray_tmp),
-        runtime_env={"working_dir": ".", "excludes": [".venv/", "runs/", "__pycache__/", "ray_tmp/"]},
+        runtime_env={"working_dir": ".", "excludes": [".venv/", "runs/", "__pycache__/", "ray_tmp/", "*.npz", "bc_data/", "bc_checkpoint/"]},
     )
 
     # Register the environment
@@ -142,6 +145,23 @@ def main() -> None:
     )
 
     algo = config.build_algo()
+
+    if args.bc_checkpoint:
+        bc_path = Path(args.bc_checkpoint)
+        print(f"Loading BC weights from {bc_path}...")
+        for pname in policy_names:
+            state_file = bc_path / pname / "module_state.pkl"
+            if not state_file.exists():
+                print(f"WARNING: {state_file} not found, skipping {pname}", file=sys.stderr)
+                continue
+            with open(state_file, "rb") as f:
+                state = pickle.load(f)
+            algo.learner_group._learner.module[pname].set_state(state)
+        algo.env_runner_group.sync_weights(
+            from_worker_or_learner_group=algo.learner_group,
+            inference_only=True,
+        )
+        print("BC weights loaded and synced to env runners.")
 
     checkpoint_dir = os.path.expanduser("~/haskell/haskboard/python/runs/rllib_checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)

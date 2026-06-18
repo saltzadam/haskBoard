@@ -34,3 +34,5 @@ python/runs*
 plans/
 ray_results/
 *ray_tmp*
+*bc_checkpoint/
+*bc_data/

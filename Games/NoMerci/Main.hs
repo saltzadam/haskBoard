@@ -102,11 +102,15 @@ runTUIMode = do
 runWSAgentsMode :: FilePath -> Int -> IO ()
 runWSAgentsMode checkpoint humanN = do
   absCheckpoint <- makeAbsolute checkpoint
+  -- Support both algo checkpoint layout (learner_group/learner/rl_module/)
+  -- and flat BC checkpoint layout (player_0/module_state.pkl)
   let rlModuleDir = absCheckpoint </> "learner_group" </> "learner" </> "rl_module"
-  exists <- doesDirectoryExist rlModuleDir
-  unless exists $ do
-    putStrLn $ "Error: No learner_group/learner/rl_module/ found in: " ++ absCheckpoint
-    putStrLn $ "Pass the algo checkpoint root, e.g.: runs/rllib_checkpoints/"
+      bcDir       = absCheckpoint </> "player_0"
+  algoExists <- doesDirectoryExist rlModuleDir
+  bcExists   <- doesDirectoryExist bcDir
+  unless (algoExists || bcExists) $ do
+    putStrLn $ "Error: No checkpoint found in: " ++ absCheckpoint
+    putStrLn $ "Expected either learner_group/learner/rl_module/ (algo) or player_0/ (BC)"
     exitFailure
   let (gs, gr, hints) = noMerci 3
       players      = S.toList (gs ^. #players)
