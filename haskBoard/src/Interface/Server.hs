@@ -258,20 +258,6 @@ waitForAction actionChan toGameChan = do
     _           -> waitForAction actionChan toGameChan
 
 -- | Spawn a Python WebSocket agent that connects to the server and plays
--- using a trained agilerl IPPO checkpoint.
-spawnAgileRLAgent
-  :: FilePath     -- ^ Path to ws_agent.py
-  -> FilePath     -- ^ Path to checkpoint (.pt file)
-  -> PlayerNum    -- ^ Player slot to fill
-  -> IO ProcessHandle
-spawnAgileRLAgent scriptPath checkpointPath playerNum =
-  spawnProcess "uv"
-    [ "run", "--project", "python", "python", scriptPath
-    , "--checkpoint", checkpointPath
-    , "--player", show (fromEnum playerNum)
-    ]
-
--- | Spawn a Python WebSocket agent that connects to the server and plays
 -- using a trained RLlib checkpoint (no Ray cluster needed).
 -- Stdout/stderr are redirected to errors.log to avoid corrupting the Brick TUI.
 spawnRLLibAgent

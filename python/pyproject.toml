@@ -4,8 +4,6 @@ version = "0.1.0"
 description = "Python training interface for haskboard MARL games"
 requires-python = ">=3.10"
 dependencies = [
-    "accelerate>=1.7.0",
-    "agilerl",
     "basedpyright>=1.39.6",
     "gymnasium",
     "matplotlib>=3.9.4",
@@ -15,13 +13,9 @@ dependencies = [
     "ray[rllib]>=2.40",
     "setuptools==81.0.0",
     "tensorboard",
-    "tensorflow>=2.20.0",
     "torch",
     "websockets",
 ]
-
-[project.scripts]
-train = "main:main"
 
 [build-system]
 requires = ["hatchling"]
