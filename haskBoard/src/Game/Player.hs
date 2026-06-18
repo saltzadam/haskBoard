@@ -12,6 +12,7 @@ import GHC.Generics (Generic)
 data PlayerNum = PlayerOne | PlayerTwo | PlayerThree | PlayerFour | PlayerFive | PlayerSix
   deriving (Eq, Ord, Generic, Finitary, Show, Read, Bounded, Enum, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
+
 displayPlayerNum :: PlayerNum -> String
 displayPlayerNum PlayerOne = "Player One"
 displayPlayerNum PlayerTwo = "Player Two"

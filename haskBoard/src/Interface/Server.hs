@@ -6,6 +6,7 @@ module Interface.Server where
 
 import Control.Concurrent (Chan, MVar, forkIO, modifyMVar, modifyMVar_, newChan, newMVar, putMVar, readChan, readMVar, threadDelay, writeChan)
 import System.Directory (makeAbsolute)
+import System.FilePath (takeDirectory)
 import System.Process (ProcessHandle, spawnProcess, createProcess, proc, std_out, std_err, StdStream(..))
 import System.IO (openFile, IOMode(..))
 import Control.Concurrent.Async (withAsync)
@@ -268,9 +269,10 @@ spawnRLLibAgent
 spawnRLLibAgent scriptPath checkpointPath playerNum = do
   absScript <- makeAbsolute scriptPath
   absCheckpoint <- makeAbsolute checkpointPath
+  let projectDir = takeDirectory absScript
   logH <- openFile "errors.log" AppendMode
   let cp = (proc "uv"
-              [ "run", "--project", "python", "python", absScript
+              [ "run", "--project", projectDir, "python", absScript
               , "--checkpoint", absCheckpoint
               , "--player", show (fromEnum playerNum)
               ]) { std_out = UseHandle logH, std_err = UseHandle logH }

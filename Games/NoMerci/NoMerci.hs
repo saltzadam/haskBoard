@@ -15,9 +15,7 @@ import Helpers
 import Game.Location (NoCounters)
 import Objects 
 import Util (ifM, maximaByScoreM)
-import Data.Maybe (listToMaybe, mapMaybe)
-import NumberedPiece
-import Control.Applicative ((<|>))
+import Data.Maybe (mapMaybe)
 import qualified Data.Map as M
 
 
@@ -111,16 +109,16 @@ noMerci numPlayers =
 -- if you have the most chips and the card is >=18, don't take it
 
 hint x = return (Just x)
-noHint = return (Nothing)
+noHint = return Nothing
 
-lookCenterCardVal :: GameRule NMLocation cn NMResource ph pl (Maybe Int)
-lookCenterCardVal = do
-  cardAvailable <- listToMaybe <$> listResAtF CenterOfTableCard isCard
-  return $ cardAvailable >>= extractCard
+-- lookCenterCardVal :: GameRule NMLocation cn NMResource ph pl (Maybe Int)
+-- lookCenterCardVal = do
+--   cardAvailable <- listToMaybe <$> listResAtF CenterOfTableCard isCard
+--   return $ cardAvailable >>= extractCard
 
 -- TODO: use guard?
 takeRun :: NMHint
-takeRun pls = 
+takeRun _ = 
   do
     cardAvailable <- peek CenterOfTableCard
     currPlayer <- lookCurrentTurnOwner
@@ -134,7 +132,7 @@ takeRun pls =
         else noHint
     
 takeOverValued :: NMHint
-takeOverValued pls = 
+takeOverValued _ = 
     do
     cardAvailable <- peek CenterOfTableCard
     case cardAvailable >>= extractCard of
@@ -144,7 +142,7 @@ takeOverValued pls =
         if chipsAvailable >= cardVal then hint Take else noHint
 
 takeForceOthers :: NMHint
-takeForceOthers pls = do
+takeForceOthers _ = do
   currPlayer <- lookCurrentTurnOwner 
   players <- lookPlayers
   playerChips <- sequence . M.fromList $  [(p, howManyAt (PlayerStuff p) Chip ) | p <- players]
@@ -157,16 +155,15 @@ takeForceOthers pls = do
           else noHint
   
 takeGeneral :: NMHint
-takeGeneral pls = do
+takeGeneral _ = do
   currPlayer <- lookCurrentTurnOwner
   players <- lookPlayers
   myChips <- howManyAt (PlayerStuff currPlayer) Chip
   cardAvailable <- peek CenterOfTableCard
-  let cardAvailableValue = cardAvailable >>= extractCard
   chipsAvailable <- howManyAt ChipPile Chip
-
   maxPlayerChips <- fmap maximum . sequence $ [ howManyAt (PlayerStuff p) Chip | p <- players, p /= currPlayer]
   let cardAvailableValue  = cardAvailable >>= extractCard
+
   if myChips > 3 && Just (chipsAvailable + 3) >= cardAvailableValue -- TODO: not great
   then hint Take
   else if myChips > 3

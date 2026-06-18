@@ -34,12 +34,10 @@ library
 
 executable NoMerci
     main-is: Main.hs
-    hs-source-dirs: .
-    other-modules: NoMerci, Objects, Tui
-    build-depends: base, NoMerci,  haskBoard, containers,lens, generic-lens, array, these,
-                 text, formatting, MonadRandom, random, prettyprinter,
-                effectful, effectful-core, mtl, finitary,  safe,
-                brick, effectful-plugin, haskBoard, vty, finite-typelits, Helpers, async,
+    hs-source-dirs: app
+    build-depends: base, NoMerci, haskBoard, containers, lens, generic-lens,
+                 text, effectful, effectful-core,
+                brick, effectful-plugin, vty, finitary, Helpers, async,
                 aeson, nonempty-containers, directory, filepath
 -- vty-crossplatform,
     default-extensions: DeriveFunctor, DeriveGeneric, FlexibleContexts, GADTs, TypeApplications, FlexibleInstances, DataKinds, DuplicateRecordFields, OverloadedLabels, ScopedTypeVariables, TypeOperators, FlexibleInstances, NoFieldSelectors, GADTs, MultiParamTypeClasses

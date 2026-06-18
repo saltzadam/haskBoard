@@ -1,2 +1,16 @@
 cradle:
   cabal:
+    - path: "Games/NoMerci/app"
+      component: "NoMerci:exe:NoMerci"
+
+    - path: "Games/NoMerci"
+      component: "lib:NoMerci"
+
+    - path: "Helpers"
+      component: "lib:Helpers"
+
+    - path: "haskBoard/src"
+      component: "lib:haskBoard"
+
+    - path: "haskBoard-brick"
+      component: "lib:haskBoard-brick"
