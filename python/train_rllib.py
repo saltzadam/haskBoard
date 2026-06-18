@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 import ray
-from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -176,35 +175,31 @@ def main() -> None:
         )
         print("BC weights loaded and synced to env runners.")
 
-    checkpoint_dir = f"python/runs/{name}/rllib_checkpoints"
+    checkpoint_dir = str(Path(f"runs/{name}/rllib_checkpoints").resolve())
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    print(f"Starting training for {args.train_steps} iterations...")
-    print(f"Binary: {binary_path}")
-    print(f"Players: {num_players}")
-    print(f"Env runners: {args.num_env_runners}")
+    total = args.train_steps
+    print(f"Training {total} steps | {num_players} players | {args.num_env_runners} runners")
 
-    for step in range(1, args.train_steps + 1):
+    for step in range(1, total + 1):
         results = algo.train()
 
         if step % 10 == 0:
-            # Print per-policy mean rewards
-            reward_parts = []
+            remaining = total - step
             env_runners = results.get("env_runners", {})
             policy_reward = env_runners.get("module_episode_returns_mean", {})
-            for name in policy_names:
-                r = policy_reward.get(name, float("nan"))
-                reward_parts.append(f"{name}={r:.4f}")
+            reward_parts = []
+            for pn in policy_names:
+                r = policy_reward.get(pn, float("nan"))
+                reward_parts.append(f"{pn}={r:.4f}")
             reward_str = ", ".join(reward_parts) if reward_parts else "N/A"
-            print(f"Step {step}: rewards=[{reward_str}]")
-
-        if step % 10 == 0:
-            save_path = algo.save(checkpoint_dir)
-            print(f"Checkpoint saved: {save_path}")
+            print(f"Step {step}/{total} ({remaining} remaining)  rewards=[{reward_str}]")
+            save_result = algo.save(checkpoint_dir)
+            print(f"  checkpoint: {save_result.checkpoint.path}")
 
     algo.stop()
     ray.shutdown()
-    print("Training complete.")
+    print(f"Training complete. Final checkpoint: {checkpoint_dir}")
 
 
 if __name__ == "__main__":

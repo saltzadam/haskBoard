@@ -260,9 +260,9 @@ def main() -> None:
 
     name = _resolve_name(args.name)
     if args.data is None:
-        args.data = f"python/runs/{name}/bc_data/"
+        args.data = f"runs/{name}/bc_data/"
     if args.out is None:
-        args.out = f"python/runs/{name}/bc_checkpoint/"
+        args.out = f"runs/{name}/bc_checkpoint/"
     print(f"Run name: {name}", file=sys.stderr)
 
     data_dir = Path(args.data)

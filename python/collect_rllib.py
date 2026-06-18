@@ -224,7 +224,7 @@ def main() -> None:
     args = parser.parse_args()
     if args.out is None:
         name = _resolve_name(args.name)
-        args.out = f"python/runs/{name}/bc_data/"
+        args.out = f"runs/{name}/bc_data/"
         print(f"Run name: {name}", file=sys.stderr)
     binary = args.binary or find_binary()
     collect(num_games=args.games, output_dir=args.out, binary_path=binary)
