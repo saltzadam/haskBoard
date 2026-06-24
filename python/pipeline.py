@@ -4,8 +4,9 @@ Runs the full collect -> BC train -> RL train pipeline as a single command,
 with stage skipping when outputs already exist.
 
 Usage:
-    uv run --project python python/pipeline.py --name my_run --players 4
-    uv run --project python python/pipeline.py --name my_run --force  # re-run all
+    uv run --project python python/pipeline.py --game NoMerci --players 4
+    uv run --project python python/pipeline.py --game NoMerci --force  # re-run all
+    uv run --project python python/pipeline.py --game NoMerci --name custom_run
 """
 
 from __future__ import annotations
@@ -17,13 +18,11 @@ import sys
 from pathlib import Path
 
 
-def find_binary(binary_arg: str | None) -> str:
-    """Return binary path, auto-detecting via cabal if not provided."""
-    if binary_arg:
-        return binary_arg
+def find_binary(game: str) -> str:
+    """Return binary path for a game, auto-detecting via cabal list-bin."""
     try:
         result = subprocess.run(
-            ["cabal", "list-bin", "NoMerci"],
+            ["cabal", "list-bin", game],
             capture_output=True,
             text=True,
             check=True,
@@ -34,8 +33,7 @@ def find_binary(binary_arg: str | None) -> str:
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
     raise FileNotFoundError(
-        "Could not find NoMerci binary. Build with 'cabal build NoMerci' "
-        "or pass --binary explicitly."
+        f"Could not find {game} binary. Build with 'cabal build {game}' first."
     )
 
 
@@ -56,17 +54,18 @@ def run_stage(cmd: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="haskboard training pipeline orchestrator")
-    parser.add_argument("--name", required=True, help="Run name -> python/runs/<name>/")
+    parser.add_argument("--game", required=True, help="Game executable name (e.g. NoMerci)")
+    parser.add_argument("--name", default=None, help="Run name -> runs/<name>/ (default: {game}_default_{players})")
     parser.add_argument("--players", type=int, default=3, help="Number of players, 3-5 (default: 3)")
     parser.add_argument("--collect-games", type=int, default=5000, help="Games for BC collection (default: 5000)")
     parser.add_argument("--bc-epochs", type=int, default=20, help="BC training epochs (default: 20)")
     parser.add_argument("--train-steps", type=int, default=1000, help="RL training iterations (default: 1000)")
     parser.add_argument("--force", action="store_true", help="Re-run all stages even if outputs exist")
-    parser.add_argument("--binary", default=None, help="Path to Haskell binary (auto-detected)")
     args = parser.parse_args()
 
-    binary = find_binary(args.binary)
-    run_dir = Path(f"runs/{args.name}")
+    binary = find_binary(args.game)
+    name = args.name or f"{args.game}_default_{args.players}"
+    run_dir = Path(f"runs/{name}")
 
     bc_data_dir = run_dir / "bc_data"
     bc_ckpt_dir = run_dir / "bc_checkpoint"
@@ -74,7 +73,8 @@ def main() -> None:
 
     summary: list[str] = []
 
-    print(f"Pipeline: {args.name}")
+    print(f"Pipeline: {name}")
+    print(f"  game:    {args.game}")
     print(f"  binary:  {binary}")
     print(f"  players: {args.players}")
     print(f"  stages:  collect({args.collect_games}) -> bc({args.bc_epochs}ep) -> rl({args.train_steps}it)")
@@ -90,7 +90,7 @@ def main() -> None:
         cmd = [
             "uv", "run", "--project", "python",
             "python", "python/collect_rllib.py",
-            "--name", args.name,
+            "--name", name,
             "--games", str(args.collect_games),
             "--binary", binary,
         ]
@@ -110,7 +110,7 @@ def main() -> None:
         cmd = [
             "uv", "run", "--project", "python",
             "python", "python/train_bc.py",
-            "--name", args.name,
+            "--name", name,
             "--epochs", str(args.bc_epochs),
         ]
         run_stage(cmd)
@@ -129,7 +129,7 @@ def main() -> None:
         cmd = [
             "uv", "run", "--project", "python",
             "python", "python/train_rllib.py",
-            "--name", args.name,
+            "--name", name,
             "--num-players", str(args.players),
             "--train-steps", str(args.train_steps),
             "--bc-checkpoint", str(bc_ckpt_dir),
