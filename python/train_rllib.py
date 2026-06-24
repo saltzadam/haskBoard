@@ -60,7 +60,8 @@ def env_creator(config: dict[str, Any]) -> PettingZooEnv:
     """Factory for creating PettingZoo-wrapped haskboard AEC environments."""
     binary = config.get("binary_path", find_binary())
     extra_args = config.get("extra_args", [])
-    aec_env = HaskboardAECEnv(binary_path=binary, extra_args=extra_args)
+    num_players = config.get("num_players")
+    aec_env = HaskboardAECEnv(binary_path=binary, extra_args=extra_args, num_players=num_players)
     return PettingZooEnv(aec_env)
 
 
@@ -129,6 +130,7 @@ def main() -> None:
             env_config={
                 "binary_path": binary_path,
                 "extra_args": [],
+                "num_players": num_players,
             },
         )
         .env_runners(

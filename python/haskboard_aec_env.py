@@ -105,10 +105,17 @@ class HaskboardAECEnv(AECEnv):
     metadata = {"render_modes": [], "name": "haskboard_aec_v0"}
     render_mode = None
 
-    def __init__(self, binary_path: str, extra_args: list[str] | None = None):
+    def __init__(
+        self,
+        binary_path: str,
+        extra_args: list[str] | None = None,
+        num_players: int | None = None,
+    ):
         super().__init__()
         self._binary_path = binary_path
         self._extra_args = extra_args or []
+        if num_players is not None:
+            self._extra_args += ["--players", str(num_players)]
         self._proc: subprocess.Popen | None = None
 
         # Start the process and read the InitMsg

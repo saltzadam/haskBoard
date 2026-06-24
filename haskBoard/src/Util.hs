@@ -4,7 +4,8 @@
 
 module Util where
 
-import Control.Monad (foldM, (>=>))
+import Control.Monad (foldM, (>=>), void)
+import Control.Concurrent (forkIO)
 import Data.Finitary (Finitary, inhabitants)
 import qualified Data.Foldable as F
 import Data.Foldable1 (foldMap1)
@@ -146,3 +147,7 @@ mkPairs (x : xs) = concat [((x, selection) :) <$> mkPairs remainder | (selection
         go (y : ys) revHeads = (y, revHeads, ys) : go ys (y : revHeads)
         go [] _ = []
 mkPairs [] = []
+
+
+forkIO_ :: IO () -> IO ()
+forkIO_ = void . forkIO

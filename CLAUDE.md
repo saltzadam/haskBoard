@@ -10,6 +10,10 @@ This is a Haskell game engine framework with Python MARL (multi-agent reinforcem
 
 When encountering build/runtime errors, fix them iteratively but do NOT claim success until you have actually verified the fix compiles/runs cleanly. Always run the build command after making changes.
 
+## Linting
+
+After completing code changes to Haskell files, run `hlint` on all modified `.hs` files and fix any warnings before reporting completion.
+
 ## Build Commands
 
 ```bash

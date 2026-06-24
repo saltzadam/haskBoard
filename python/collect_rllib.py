@@ -71,13 +71,16 @@ def _wrap_obs(game_obs: Any, legal: list[int], n_actions: int) -> dict:
     }
 
 
-def collect(num_games: int, output_dir: str, binary_path: str) -> None:
+def collect(num_games: int, output_dir: str, binary_path: str, num_players: int | None = None) -> None:
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    print(f"Spawning {binary_path} --collect ...", file=sys.stderr)
+    cmd = [binary_path, "--collect"]
+    if num_players is not None:
+        cmd += ["--players", str(num_players)]
+    print(f"Spawning {' '.join(cmd)} ...", file=sys.stderr)
     proc = subprocess.Popen(
-        [binary_path, "--collect"],
+        cmd,
         stdout=subprocess.PIPE,
         stdin=subprocess.DEVNULL,
     )
@@ -221,13 +224,15 @@ def main() -> None:
                         help="Output directory (overrides --name)")
     parser.add_argument("--binary", default=None,
                         help="Path to Haskell binary (auto-detected if omitted)")
+    parser.add_argument("--players", type=int, default=None,
+                        help="Number of players, 3-5 (passed to Haskell binary)")
     args = parser.parse_args()
     if args.out is None:
         name = _resolve_name(args.name)
         args.out = f"runs/{name}/bc_data/"
         print(f"Run name: {name}", file=sys.stderr)
     binary = args.binary or find_binary()
-    collect(num_games=args.games, output_dir=args.out, binary_path=binary)
+    collect(num_games=args.games, output_dir=args.out, binary_path=binary, num_players=args.players)
 
 
 if __name__ == "__main__":

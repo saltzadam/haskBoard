@@ -7,10 +7,8 @@
 module Interface.Controller
   ( PlayerInterface (..),
     GameController (..),
-    commonInterface,
     agentToInterface,
     chooseInterface,
-    agentFromInterface,
     buildInterface,
   )
 where
@@ -110,7 +108,7 @@ sendAnnouncement gc speaker announcement = liftIO $ traverse_ sendAnnouncement' 
     sendAnnouncement' interface = writeChan (interface ^. #fromGameChannel) (SendAnnouncement speaker announcement)
 
 buildInterface :: [Player] -> IO (GameController l cn r ph pl)
-buildInterface ps = fmap (GameController . M.fromList) $ traverse go ps
+buildInterface ps = GameController . M.fromList <$> traverse go ps
   where
     go :: Player -> IO (Player, PlayerInterface l cn r ph pl)
     go p = do
@@ -118,25 +116,6 @@ buildInterface ps = fmap (GameController . M.fromList) $ traverse go ps
       c1 <- newChan :: IO (Chan pl)
       return (p, PlayerInterface c0 c1)
 
--- Use the same interface for all players (e.g. a multi-player TUI or testing)
-commonInterface ::
-  [Player] ->
-  Chan (GameToInterfacePayload l cn r ph pl) ->
-  Chan pl ->
-  GameController l cn r ph pl
-commonInterface ps fromGameChan' toGameChan' =
-  let theInterface = PlayerInterface fromGameChan' toGameChan'
-   in GameController (M.fromList [(p, theInterface) | p <- ps])
-
 agentToInterface :: Agent l cn r ph pl IO -> PlayerInterface l cn r ph pl
 agentToInterface agent = PlayerInterface (agent ^. #fromGameChannel) (agent ^. #toGameChannel)
 
-agentFromInterface ::
-  PlayerInterface l cn r ph pl ->
-  (GameStateView l cn r ph -> Options pl -> m pl) ->
-  (GameStateView l cn r ph -> m ()) ->
-  (Maybe Player -> Text -> m ()) ->
-  ([Player] -> m ()) ->
-  Agent l cn r ph pl m
-agentFromInterface (PlayerInterface fromChan toChan) chooser stater announcer winner =
-  Agent chooser stater winner announcer fromChan toChan

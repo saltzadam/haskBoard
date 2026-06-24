@@ -1,8 +1,7 @@
 module Interface.Training
-  ( LoopMode (..),
-    trainingLoop,
+  ( 
     stdioTrainingLoop,
-    collectLoop,
+    collectLoop
   )
 where
 
@@ -13,7 +12,8 @@ import qualified Data.ByteString.Char8 as BS
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import Game.GameState (GameRules, GameState)
 import Interface.Controller (GameController)
-import Interface.Stdio (InMsg (..), sendInit)
+import Interface.Protocol (InMsg (..))
+import Run.Stdio (sendInit)
 import Run (runGameSeparateChannels)
 import System.Exit (exitSuccess)
 import System.IO (BufferMode (..), hSetBuffering, stdin, stdout)

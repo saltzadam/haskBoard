@@ -2,12 +2,16 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Interface.Server where
+module Run.Server
+  ( server,
+    spawnRLLibAgent,
+  )
+where
 
-import Control.Concurrent (Chan, MVar, forkIO, modifyMVar, modifyMVar_, newChan, newMVar, putMVar, readChan, readMVar, threadDelay, writeChan)
+import Control.Concurrent (Chan, MVar, modifyMVar, modifyMVar_, newChan, newMVar, putMVar, readChan, readMVar, threadDelay, writeChan)
 import System.Directory (makeAbsolute)
 import System.FilePath (takeDirectory)
-import System.Process (ProcessHandle, spawnProcess, createProcess, proc, std_out, std_err, StdStream(..))
+import System.Process (ProcessHandle, createProcess, proc, std_out, std_err, StdStream(..))
 import System.IO (openFile, IOMode(..))
 import Control.Concurrent.Async (withAsync)
 import Control.Exception (finally)
@@ -20,7 +24,6 @@ import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Map (Map)
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
-import Game.Location (inventoryTotals)
 import qualified Data.Map as M
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -28,13 +31,13 @@ import GHC.Generics (Generic)
 import Game.Choose (GameToInterfacePayload (..))
 import Game.GameState (GameRules, GameState)
 import Game.Options (decodeAction, legalActionIndices)
-import Game.Player (Player (..), PlayerNum, mkPlayers)
+import Game.Player (Player (..), PlayerNum)
 import Game.View (GameStateView (..))
 import Interface.Controller (GameController, PlayerInterface (..))
-import Interface.Stdio (ActionSource (..), InMsg (..), StepMsg (..), buildInitMsg, encodeGameObjectsObs)
+import Interface.Protocol (ActionSource (..), InMsg (..), StepMsg (..), buildInitMsg, encodeGameObjectsObs)
 import Network.WebSockets as WS
 import Text.Read (readMaybe)
-import Util (ifM)
+import Util (ifM, forkIO_)
 
 data ServerStatus
   = NotEnoughClients
@@ -54,11 +57,9 @@ makeFields ''ServerState
 newServerState :: Int -> ServerState
 newServerState n = ServerState M.empty NotEnoughClients n 0
 
-serverNumPlayers :: ServerState -> Int
-serverNumPlayers server_ = length (server_ ^. #clients)
 
 clientExists :: Player -> ServerState -> Bool
-clientExists client server_ = client `elem` (M.keys $ server_ ^. #clients)
+clientExists client server_ = client `elem` M.keys (server_ ^. #clients)
 
 addClient' :: Player -> Connection -> ServerState -> ServerState
 addClient' p conn = over #clients (M.insert p conn)
@@ -86,7 +87,7 @@ server totals numPlayers gs gr controller mReady = do
   let waitReady = case mReady of Just _ -> True; Nothing -> False
   state <- newMVar (newServerState numPlayers)
   forM_ mReady $ \readyVar ->
-    void $ forkIO $ waitForActive state readyVar
+    forkIO_ $ waitForActive state readyVar
   WS.runServer "127.0.0.1" 9159 $ application waitReady totals gs gr controller state
 
 waitForActive :: MVar ServerState -> MVar () -> IO ()
@@ -110,8 +111,7 @@ application ::
 application waitReady totals gs gr controller state pending = do
   conn <- WS.acceptRequest pending
   -- Monitor readyPlayers count; set Active when all expected players are ready
-  void $
-    forkIO $
+  forkIO_ $
       void $
         runExceptT $
           forever $
@@ -124,8 +124,7 @@ application waitReady totals gs gr controller state pending = do
     msg <- WS.receiveData conn
     case toEnum <$> (readMaybe (T.unpack msg) :: Maybe Int) of
       Nothing -> WS.sendTextData conn ("Not a player number" :: Text)
-      Just playerNum
-        | otherwise -> flip finally (disconnect playerNum) $ do
+      Just playerNum -> flip finally (disconnect playerNum) $ do
             let player' = Player playerNum
             let client = (player', conn)
             modifyMVar_ state $ \s -> do
@@ -147,6 +146,7 @@ application waitReady totals gs gr controller state pending = do
                 modifyMVar_ state $ \ss ->
                   return ss { readyPlayers = (ss ^. #readyPlayers) + 1 }
                 playerWorker totals controller player' state
+              -- TODO: why doesn't this wait for more players?
               else do
                 -- Mark ready immediately (connection = ready)
                 modifyMVar_ state $ \ss ->
@@ -171,24 +171,6 @@ awaitReadyMsg conn = do
   case decode raw :: Maybe (Map Text Value) of
     Just m | M.lookup "type" m == Just (String "ready") -> return ()
     _ -> awaitReadyMsg conn
-
-updateStatus :: MVar ServerState -> ServerStatus -> IO ()
-updateStatus state' status =
-  modifyMVar_ state' (\s -> return s {serverStatus = status})
-
-withWorker :: IO a -> IO a -> IO a
-withWorker outer inner = withAsync outer $ const inner
-
-runGame ::
-  (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
-  Map r Int ->
-  GameController l cn r ph pl ->
-  MVar ServerState ->
-  IO ()
-runGame totals controller ss = do
-  ss' <- readMVar ss
-  let players = mkPlayers (ss' ^. #expectedPlayers)
-  foldr withWorker (return ()) ((\p -> playerWorker totals controller p ss) <$> players)
 
 exit :: e -> ExceptT e IO a
 exit = ExceptT . return . Left
