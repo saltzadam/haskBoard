@@ -24,11 +24,16 @@ cabal.project.local~
 *.log
 log
 python/__pycache__/
-python/runs
+# python/runs
 game_gaps.md
 report.html
 warnings.txt
-python/runs*
+
+python/runs/*
+!python/runs/NoMerci_default_3
+python/runs/NoMerci_default_3/*
+!python/runs/NoMerci_default_3/rllib_checkpoints
+
 *.npz
 *.pt
 plans/
@@ -37,3 +42,4 @@ ray_results/
 *bc_checkpoint/
 *bc_data/
 haskBoard/src/scratch/
+docker/

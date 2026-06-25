@@ -10,6 +10,7 @@ where
 
 import Control.Concurrent (Chan, MVar, modifyMVar, modifyMVar_, newChan, newMVar, putMVar, readChan, readMVar, threadDelay, writeChan)
 import System.Directory (makeAbsolute)
+import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory)
 import System.Process (ProcessHandle, createProcess, proc, std_out, std_err, StdStream(..))
 import System.IO (openFile, IOMode(..))
@@ -226,9 +227,7 @@ playerWorker totals controller p ss = do
 wsReader :: Connection -> Chan InMsg -> IO ()
 wsReader conn actionChan = forever $ do
   raw <- WS.receiveData conn :: IO LBS.ByteString
-  case decode raw of
-    Just msg -> writeChan actionChan msg
-    Nothing  -> return ()
+  forM_ (decode raw) (writeChan actionChan)
 
 -- | Read from the action channel until we get an ActionMsg.
 waitForAction ::
@@ -251,12 +250,16 @@ spawnRLLibAgent
 spawnRLLibAgent scriptPath checkpointPath playerNum = do
   absScript <- makeAbsolute scriptPath
   absCheckpoint <- makeAbsolute checkpointPath
-  let projectDir = takeDirectory absScript
-  logH <- openFile "errors.log" AppendMode
-  let cp = (proc "uv"
-              [ "run", "--project", projectDir, "python", absScript
-              , "--checkpoint", absCheckpoint
-              , "--player", show (fromEnum playerNum)
-              ]) { std_out = UseHandle logH, std_err = UseHandle logH }
+  pythonCmd <- lookupEnv "HASKBOARD_PYTHON_CMD"
+  let (cmd, args) = case pythonCmd of
+        Just c  -> (c, [absScript, "--checkpoint", absCheckpoint
+                       , "--player", show (fromEnum playerNum)])
+        Nothing -> let projectDir = takeDirectory absScript
+                   in ("uv", ["run", "--project", projectDir, "python", absScript
+                             , "--checkpoint", absCheckpoint
+                             , "--player", show (fromEnum playerNum)])
+  let logFile = "errors-" ++ show (fromEnum playerNum) ++ ".log"
+  logH <- openFile logFile AppendMode
+  let cp = (proc cmd args) { std_out = UseHandle logH, std_err = UseHandle logH }
   (_, _, _, ph) <- createProcess cp
   return ph
