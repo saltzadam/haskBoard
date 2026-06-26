@@ -133,6 +133,9 @@ class HaskboardAECEnv(AECEnv):
         self.agents: list[str] = list(self.possible_agents)
         self._agent_id_map = {f"player_{i}": i for i in agent_ids}
 
+        self.score_bounds = tuple(init_msg.get("scoreBounds", [0, 0]))
+        self.reward_config = init_msg.get("rewardConfig", "ZeroSum")
+
         obs_spaces_raw = init_msg["observationSpaces"]
         act_space_spec = init_msg["actionSpace"]
         self._act_space = _build_space(act_space_spec)

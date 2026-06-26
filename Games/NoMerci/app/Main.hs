@@ -8,6 +8,7 @@ import Control.Monad (when)
 import Data.List (elemIndex)
 import Data.Maybe (fromJust, fromMaybe)
 import NoMerci (noMerci)
+import Interface.Protocol (RewardConfig (..))
 import Run.Game (RunMode (..), runGame)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
@@ -24,7 +25,7 @@ main = do
     exitFailure
   let run = runGame noMerci (Just app) "nomerci.log" numPlayers
   case () of
-    _ | "--stdio"     `elem` args -> run Stdio
+    _ | "--stdio"     `elem` args -> run (Stdio ZeroSum)
       | "--collect"   `elem` args -> run Collect
       | "--ws-agents" `elem` args ->
           let checkpoint = args !! succ (fromJust (elemIndex "--ws-agents" args))

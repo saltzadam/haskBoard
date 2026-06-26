@@ -12,7 +12,7 @@ import qualified Data.ByteString.Char8 as BS
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import Game.GameState (GameRules, GameState)
 import Interface.Controller (GameController)
-import Interface.Protocol (InMsg (..))
+import Interface.Protocol (InMsg (..), RewardConfig)
 import Run.Stdio (sendInit)
 import Run (runGameSeparateChannels)
 import System.Exit (exitSuccess)
@@ -30,11 +30,12 @@ trainingLoop
   -> (GameState l cn r ph pl, GameRules l cn r ph pl)
   -> FilePath
   -> GameController l cn r ph pl
+  -> RewardConfig
   -> IO ()
-trainingLoop mode (gs0, gr0) logFile controller = do
+trainingLoop mode (gs0, gr0) logFile controller rc = do
   hSetBuffering stdout LineBuffering
   case mode of WaitForResetSignal -> hSetBuffering stdin LineBuffering; _ -> pure ()
-  sendInit gs0 gr0
+  sendInit gs0 gr0 rc
   betweenEpisodes
   loop
   where
@@ -52,6 +53,7 @@ stdioTrainingLoop
   => (GameState l cn r ph pl, GameRules l cn r ph pl)
   -> FilePath
   -> GameController l cn r ph pl
+  -> RewardConfig
   -> IO ()
 stdioTrainingLoop = trainingLoop WaitForResetSignal
 
@@ -61,6 +63,7 @@ collectLoop
   => (GameState l cn r ph pl, GameRules l cn r ph pl)
   -> FilePath
   -> GameController l cn r ph pl
+  -> RewardConfig
   -> IO ()
 collectLoop = trainingLoop AutoReset
 

@@ -6,9 +6,11 @@ module Interface.Protocol
     StepMsg (..),
     InMsg (..),
     ActionSource (..),
+    RewardConfig (..),
     buildInitMsg,
     encodeGameObjectsObs,
     addScoresToObs,
+    computeReward,
   )
 where
 
@@ -40,6 +42,24 @@ import Game.Options (actionSpaceSize)
 import Game.Player (Player (..))
 import Game.View (GameObjectsView (..), gameObjectsViewSpace, viewGameStateAs')
 
+-- ---- Reward config ----
+
+data RewardConfig = ZeroSum | ScoreNormalized
+  deriving (Eq, Ord, Show, Generic, ToJSON, FromJSON)
+
+computeReward :: RewardConfig -> (Int, Int) -> Player -> [Player] -> [Player] -> M.Map Player Int -> Float
+computeReward ZeroSum _ thisPlayer allPlayers winners _ =
+  let n = length allPlayers
+      nWinners = length (filter (`elem` winners) allPlayers)
+      nLosers  = n - nWinners
+  in if thisPlayer `elem` winners
+     then fromIntegral nLosers / fromIntegral n
+     else -(fromIntegral nWinners / fromIntegral n)
+computeReward ScoreNormalized (lo, hi) thisPlayer _ _ scores =
+  let myScore = fromIntegral $ M.findWithDefault 0 thisPlayer scores
+      flo = fromIntegral lo; fhi = fromIntegral hi
+  in if fhi == flo then 0.0 else 2.0 * (myScore - flo) / (fhi - flo) - 1.0
+
 -- ---- Message types ----
 
 data ActionSource = Hint | Random | Agent | Human
@@ -48,7 +68,9 @@ data ActionSource = Hint | Random | Agent | Human
 data InitMsg = InitMsg
   { agents :: [Int],
     observationSpaces :: M.Map Int GymSpace,
-    actionSpace :: GymSpace
+    actionSpace :: GymSpace,
+    scoreBounds :: (Int, Int),
+    rewardConfig :: RewardConfig
   }
   deriving (Generic, ToJSON)
 
@@ -106,8 +128,8 @@ addScoresToObs _ _ _ v = v
 buildInitMsg
   :: forall l cn r ph pl.
      (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
-  => GameState l cn r ph pl -> GameRules l cn r ph pl -> InitMsg
-buildInitMsg gs gr = InitMsg agentNums obsSpaces actSpace
+  => GameState l cn r ph pl -> GameRules l cn r ph pl -> RewardConfig -> InitMsg
+buildInitMsg gs gr = InitMsg agentNums obsSpaces actSpace (gr ^. #scoreBounds)
   where
     toAgentNum (Player pnum) = fromEnum pnum
     players    = S.toList (gs ^. #players)

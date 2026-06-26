@@ -29,7 +29,7 @@ import Game.Options (Options (..), decodeAction, legalActionIndices)
 import Game.Player (Player (..))
 import Game.View (GameObjectsView (..), GameStateView (..))
 import Interface.Hint (HintM, applyHintsPure)
-import Interface.Protocol (ActionSource (..), InMsg (..), InitMsg, StepMsg (..), addScoresToObs, buildInitMsg, encodeGameObjectsObs)
+import Interface.Protocol (ActionSource (..), InMsg (..), InitMsg, RewardConfig (..), StepMsg (..), addScoresToObs, buildInitMsg, computeReward, encodeGameObjectsObs)
 import System.Exit (exitSuccess)
 
 -- ---- I/O helpers ----
@@ -52,8 +52,8 @@ readAction =
 sendInit
   :: forall l cn r ph pl.
      (GameLocation l, GameCounter cn, GameResource r, GamePlay pl)
-  => GameState l cn r ph pl -> GameRules l cn r ph pl -> IO ()
-sendInit gs gr = putJson (buildInitMsg gs gr)
+  => GameState l cn r ph pl -> GameRules l cn r ph pl -> RewardConfig -> IO ()
+sendInit gs gr rc = putJson (buildInitMsg gs gr rc)
 
 -- ---- Stdio agent ----
 
@@ -66,6 +66,7 @@ runStdioAgent
   => Map r Int
   -> [HintM l cn r ph pl]
   -> Bool
+  -> RewardConfig
   -> Player
   -> MVar ()
   -> [Player]
@@ -73,7 +74,7 @@ runStdioAgent
   -> Chan (GameToInterfacePayload l cn r ph pl)
   -> Chan pl
   -> IO ()
-runStdioAgent totals hints selfPlay thisPlayer lock allPlayers gr fromChan toChan = do
+runStdioAgent totals hints selfPlay rc thisPlayer lock allPlayers gr fromChan toChan = do
   scoreRef <- newIORef (M.empty :: M.Map Player Int)
   forever $ do
     payload <- readChan fromChan
@@ -110,11 +111,7 @@ runStdioAgent totals hints selfPlay thisPlayer lock allPlayers gr fromChan toCha
       SendWinners winners -> do
         let Player thisPnum = thisPlayer
         let agentNum = fromEnum thisPnum
-        let n        = length allPlayers
-        let nWinners = length (filter (`elem` winners) allPlayers)
-        let nLosers  = n - nWinners
-        let reward   = if thisPlayer `elem` winners
-                        then fromIntegral nLosers / fromIntegral n
-                        else -(fromIntegral nWinners / fromIntegral n) :: Float
-        let msg      = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False Nothing Agent
+        scores <- readIORef scoreRef
+        let reward = computeReward rc (gr ^. #scoreBounds) thisPlayer allPlayers winners scores
+        let msg    = StepMsg "terminal" agentNum (toJSON (Nothing :: Maybe ())) [] reward True False Nothing Agent
         withMVar lock $ \_ -> putJson msg

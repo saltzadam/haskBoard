@@ -24,6 +24,7 @@ cabal.project.local~
 *.log
 log
 python/__pycache__/
+python/.venv/
 # python/runs
 game_gaps.md
 report.html

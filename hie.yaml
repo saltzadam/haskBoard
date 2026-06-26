@@ -11,6 +11,3 @@ cradle:
 
     - path: "haskBoard/src"
       component: "lib:haskBoard"
-
-    - path: "haskBoard-brick"
-      component: "lib:haskBoard-brick"

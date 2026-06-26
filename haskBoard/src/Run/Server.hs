@@ -35,7 +35,7 @@ import Game.Options (decodeAction, legalActionIndices)
 import Game.Player (Player (..), PlayerNum)
 import Game.View (GameStateView (..))
 import Interface.Controller (GameController, PlayerInterface (..))
-import Interface.Protocol (ActionSource (..), InMsg (..), StepMsg (..), buildInitMsg, encodeGameObjectsObs)
+import Interface.Protocol (ActionSource (..), InMsg (..), RewardConfig (..), StepMsg (..), buildInitMsg, encodeGameObjectsObs)
 import Network.WebSockets as WS
 import Text.Read (readMaybe)
 import Util (ifM, forkIO_)
@@ -137,7 +137,7 @@ application waitReady totals gs gr controller state pending = do
               return s'
 
             -- Send InitMsg so clients can build obs/act spaces
-            let initMsg = buildInitMsg gs gr
+            let initMsg = buildInitMsg gs gr ZeroSum
             WS.sendTextData conn (encodeToLazyText (toJSON initMsg))
 
             if waitReady

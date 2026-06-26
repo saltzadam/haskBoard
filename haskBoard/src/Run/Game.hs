@@ -26,6 +26,7 @@ import Interface.Controller (PlayerInterface (..), buildInterface)
 import Interface.Hint (HintM)
 import Run.Server (server, spawnRLLibAgent)
 import Run.Stdio (runStdioAgent)
+import Interface.Protocol (RewardConfig (..))
 import Interface.Training (collectLoop, stdioTrainingLoop)
 import Run (runGameSeparateChannels)
 import System.Directory (doesDirectoryExist, doesFileExist, makeAbsolute)
@@ -35,7 +36,7 @@ import System.FilePath ((</>))
 withWorker :: IO a -> IO a -> IO a
 withWorker outer inner = withAsync outer $ const inner
 
-data RunMode = Stdio | Collect | WSAgents FilePath Int
+data RunMode = Stdio RewardConfig | Collect | WSAgents FilePath Int
 
 runGame
   :: (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl, Ord name)
@@ -51,16 +52,16 @@ runGame initGame mTuiApp logFile numPlayers mode = do
   let totals = inventoryTotals (gs ^. (#objects . #locations))
   interface <- buildInterface players
   case mode of
-    Stdio -> do
+    Stdio rc -> do
       lock <- newMVar ()
       forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
-        void $ forkIO $ runStdioAgent totals [] False p lock players gr fromChan toChan
-      stdioTrainingLoop (gs, gr) "training.log" interface
+        void $ forkIO $ runStdioAgent totals [] False rc p lock players gr fromChan toChan
+      stdioTrainingLoop (gs, gr) "training.log" interface rc
     Collect -> do
       lock <- newMVar ()
       forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
-        void $ forkIO $ runStdioAgent totals hints True p lock players gr fromChan toChan
-      collectLoop (gs, gr) "collect.log" interface
+        void $ forkIO $ runStdioAgent totals hints True ZeroSum p lock players gr fromChan toChan
+      collectLoop (gs, gr) "collect.log" interface ZeroSum
     WSAgents checkpointPath humanN -> do
       let tuiApp = fromMaybe (error "WSAgents mode requires a TUI app") mTuiApp
           humanPlayer  = Player (toEnum humanN)
