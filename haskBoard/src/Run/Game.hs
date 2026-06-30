@@ -13,6 +13,8 @@ import Control.Lens ((^.))
 import Control.Monad (forM_, unless, void)
 import Data.List (delete)
 import qualified Data.Map as M
+import qualified Data.Text as T
+import qualified Data.Text.IO as TIO
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as S
 import Game.Agent (BEvent)
@@ -31,7 +33,7 @@ import Interface.Training (collectLoop, stdioTrainingLoop)
 import Run (runGameSeparateChannels)
 import System.Directory (doesDirectoryExist, doesFileExist, makeAbsolute)
 import System.Exit (exitFailure)
-import System.FilePath ((</>))
+import System.FilePath ((</>), replaceExtension)
 
 withWorker :: IO a -> IO a -> IO a
 withWorker outer inner = withAsync outer $ const inner
@@ -43,12 +45,13 @@ runGame
   => (Int -> (GameState l cn r ph pl, GameRules l cn r ph pl, [HintM l cn r ph pl]))
   -> Maybe (App (TUIState l cn r ph pl) (BEvent l cn r ph pl) name)
   -> FilePath
-  -> FilePath 
+  -> FilePath
   -> Int
   -> RunMode
   -> IO ()
 runGame initGame mTuiApp logFile jsonFile numPlayers mode = do
   let (gs,gr,hints) = initGame numPlayers
+  let winnersFile = replaceExtension jsonFile ".csv"
   let players = S.toList (gs ^. #players)
   let totals = inventoryTotals (gs ^. (#objects . #locations))
   interface <- buildInterface players
@@ -90,11 +93,13 @@ runGame initGame mTuiApp logFile jsonFile numPlayers mode = do
                                     (snd $ channels M.! humanPlayer) brickToGameBChan
           gsv     = viewGameStateAs' gs humanPlayer
           initTUI = TUIState gsv humanPlayer ShowState [] brickToGameBChan Nothing True []
+      let header = T.intercalate (T.pack ",") (map (\i -> T.pack ("player_" ++ show i)) [0 .. numPlayers - 1]) <> T.pack ",human"
+      TIO.writeFile winnersFile (header <> T.pack "\n")
       forM_ aiPlayerNums $ \n ->
         void $ forkIO $ void $ spawnRLLibAgent script absCheckpoint (toEnum n)
       let gameLoop = do
             let (gs', gr',_hints) = initGame numPlayers
-            void $ runGameSeparateChannels logFile jsonFile interface gs' gr'
+            void $ runGameSeparateChannels logFile jsonFile winnersFile (Just humanPlayer) interface gs' gr'
             gameLoop
       withWorker (runAgentIO playerAgent)
         $ withWorker gameLoop

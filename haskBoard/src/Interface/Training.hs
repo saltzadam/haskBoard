@@ -14,7 +14,7 @@ import Game.GameState (GameRules, GameState)
 import Interface.Controller (GameController)
 import Interface.Protocol (InMsg (..), RewardConfig)
 import Run.Stdio (sendInit)
-import Run (runGameSeparateChannels, runGameSeparateChannelsNoLogs)
+import Run (runGameSeparateChannelsNoLogs)
 import System.Exit (exitSuccess)
 import System.IO (BufferMode (..), hSetBuffering, stdin, stdout)
 
