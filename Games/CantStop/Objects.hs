@@ -3,7 +3,7 @@
 
 module Objects where
 
-import Data.Finitary (Finitary)
+import Data.Finitary (Finitary, inhabitants)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import Data.Set (Set)
@@ -18,11 +18,25 @@ import Game.Player
 import Game.Rules
 import Game.View (GameStateView)
 import Track (Track (..))
+import NumberedPiece (NumberedPiece, number)
 
-data TrackName = Two | Three | Four | Five | Six | Seven | Eight | Nine | Ten | Eleven | Twelve
-  deriving (Eq, Ord, Show, Enum, Bounded, Generic, Finitary)
+newtype TrackName = TrackName (NumberedPiece 11)
+  deriving (Eq, Ord, Show, Generic, Finitary)
 
-data TrackHeight = HOne | HTwo | HThree | HFour | HFive | HSix | HSeven | HEight | HNine | HTen | HEleven | HTwelve | HThirteen deriving (Eq, Ord, Show, Enum, Generic, Finitary)
+trackNames :: [TrackName]
+trackNames = inhabitants 
+
+trackNum :: TrackName -> Int
+trackNum (TrackName i) = number i + 2
+
+newtype TrackHeight = TrackHeight (NumberedPiece 13)
+  deriving (Eq, Ord, Show, Generic, Finitary)
+
+trackHeights :: [TrackHeight]
+trackHeights = inhabitants
+
+trackHeight :: TrackHeight -> Int
+trackHeight (TrackHeight i) = number i + 1
 
 data CantStopLocation
   = BoxTop
@@ -31,22 +45,20 @@ data CantStopLocation
 
 maxSlot :: TrackName -> Int
 maxSlot t =
-  if t <= Seven
+  if trackNum t <= 7
     then trackNum t
     else 24 - trackNum t
-  where
-    trackNum t = 2 * fromEnum t + 2
 
 track :: TrackName -> Track CantStopLocation
-track name = Track (NE.fromList [TrackSpot name slot | slot <- [HOne .. toEnum (maxSlot name)]])
+track name = Track (NE.fromList [TrackSpot name slot | slot <- inhabitants, trackHeight slot <= maxSlot name])
 
 diceToTrack :: Int -> TrackName
-diceToTrack x = toEnum . fromEnum $ (x - 2)
+diceToTrack x = TrackName (toEnum $ x - 2)
 
 data CantStopResource = PlayerMarker Player | TemporaryMarker deriving (Eq, Ord, Show, Generic, Finitary)
 
 data CantStopCounterName = DieOne | DieTwo | DieThree | DieFour
-  deriving (Eq, Ord, Show, Generic, Finitary, Enum)
+  deriving (Eq, Ord, Show, Generic, Finitary)
 
 type CantStopLocations = Locations CantStopLocation CantStopResource
 
@@ -55,7 +67,7 @@ type CantStopCounters = Counters CantStopCounterName
 type CantStopGameObjects = GameObjects CantStopLocation CantStopCounterName CantStopResource
 
 theDice :: [CantStopCounterName]
-theDice = [DieOne .. DieFour]
+theDice = inhabitants
 
 marker :: Maybe Player -> CantStopResource
 marker (Just p) = PlayerMarker p
@@ -66,7 +78,6 @@ owner (PlayerMarker p) = Just p
 owner TemporaryMarker = Nothing
 
 initLocations' :: Set Player -> CantStopLocation -> LocationShape CantStopResource
--- initLocations' _ (TrackSpot _ _) = Deck Seq.empty
 initLocations' players BoxTop = Pile $ M.singleton TemporaryMarker 3 <> mconcat [M.singleton (PlayerMarker player) 11 | player <- S.toList players]
 initLocations' _ _ = Pile M.empty
 
@@ -83,36 +94,33 @@ initGameObjects ps =
       counters = FTMap initCounters
     }
 
--- data CantStopIssue
---   = NotEnoughMarkers
---   | TrackCompleted
---   | AtTop
---   | CanMoveTwo
---   deriving (Eq, Ord, Show, Generic)
-
 data CantStopPlayName
-  = TwoMove Player TrackName TrackName
-  | OneMove Player TrackName
-  | Stop Player
-  | DontStop Player
-  | ForceStop Player
+  = TwoMove TrackName TrackName
+  | OneMove TrackName
+  | Stop
+  | DontStop
+  | ForceStop -- TODO: don't think we should need this
   deriving (Show, Generic)
 
+-- TODO: investigate
 thereIsBiggerMove :: CantStopPlayName -> CantStopPlayName -> Bool
-thereIsBiggerMove (OneMove _ u) (TwoMove _ s t) = (s == u) || (t == u)
+thereIsBiggerMove (OneMove u) (TwoMove s t) = (s == u) || (t == u)
 thereIsBiggerMove _ _ = False
 
 instance Eq CantStopPlayName where
-  (TwoMove p s t) == (TwoMove p' s' t') = p == p' && ((s == s' && t == t') || (s == t' && t == s'))
-  (OneMove p s) == (OneMove p' s') = p == p' && s == s'
-  (Stop p) == (Stop p') = p == p'
-  (DontStop p) == (DontStop p') = p == p'
-  (ForceStop p) == (ForceStop p') = p == p'
+  (TwoMove s t) == (TwoMove s' t') = ((s == s' && t == t') || (s == t' && t == s'))
+  (OneMove s) == (OneMove s') = s == s'
+  Stop == Stop = True
+  DontStop  == DontStop   = True
+  ForceStop  == ForceStop  = True
   _ == _ = False
 
 deriving instance Ord CantStopPlayName
 
 data CantStopPhaseName = CSTurn Player deriving (Eq, Ord, Show, Generic)
+
+playerTurn :: Player -> CantStopTurn
+playerTurn p = Turn p (NE.singleton (CSTurn p))
 
 type CantStopTurn = Turn CantStopPhaseName
 
@@ -126,12 +134,7 @@ type CantStopOptions = Options CantStopPlayName
 
 type CantStopGameRules = GameRules CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName
 
--- type CantStopGameNode = GameNode CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue
-
--- type CSM a = GameEff CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName CantStopIssue a
 type CSM a = GameRule CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName CantStopPlayName a
 
 type CSView = GameStateView CantStopLocation CantStopCounterName CantStopResource CantStopPhaseName
 
-playerTurn :: Player -> CantStopTurn
-playerTurn p = Turn p (NE.singleton (CSTurn p))

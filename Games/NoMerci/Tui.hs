@@ -45,9 +45,11 @@ renderBoardView g =
 renderNothing :: Widget Name
 renderNothing = str $ unlines (replicate 9 (replicate 9 ' '))
 
-renderCard :: Int -> Int -> Widget Name
-renderCard i chips =
-  str $
+renderCard :: Int -> Int -> Widget n
+renderCard i chips = str (renderCard' i chips)
+
+renderCard' :: Int -> Int -> String
+renderCard' i chips =
     unlines
       [ " ------- ",
         "|       |",
@@ -62,15 +64,21 @@ renderCard i chips =
   where
     showNum i = if i < 10 then " " ++ show i else show i
     cardLine :: Int -> String
-    cardLine i = "|   " ++ showNum i ++ "  |"
+    cardLine i = let
+      lenScore = length (showNum i)
+      leftSpace = (7 - lenScore) `div` 2 + (7 - lenScore) `mod` 2
+      rightSpace = (7 - lenScore) `div` 2
+      in "|" ++ replicate leftSpace ' ' ++ showNum i ++ replicate rightSpace ' ' ++ "|"
     chipsLine :: Int -> String
     chipsLine chips =
       let lenChips = length (drawChips chips)
+      -- let lenChips = length (showNum chips) --length (drawChips chips)
           leftSpace = (7 - lenChips) `div` 2 + (7 - lenChips) `mod` 2
           rightSpace = (7 - lenChips) `div` 2
        in "|"
             ++ replicate leftSpace ' '
-            ++ drawChips chips
+            ++ drawChips chips -- too cute
+            -- ++ if chips == 0 then " " else showNum chips
             ++ replicate rightSpace ' '
             ++ "|"
 
@@ -83,17 +91,20 @@ renderMenu tui =
         let p = tui ^. #gameStateView . #currentTurnView . #owner
          in simpleMenuBody (drawCurrentPlayer p) (drawOptions printPlay) tui
 
+-- TODO: needs improvement -- how do we reuse score from NoMerci?
+playerScore :: NMView -> Player -> Int
+playerScore nmv p = 
+        let chips = fromMaybe 0 (viewHowManyAt nmv (PlayerStuff p) Chip)
+            cardTotal = maybe 0 (scoreCards . S.fromList . inventoryItems) (viewLocation nmv (PlayerStuff p))
+         in cardTotal - chips
+
 renderEndGame :: NMTUIState -> Widget Name
 renderEndGame tui =
   let g = tui ^. #gameStateView
       players = S.toList (g ^. #playersView)
-      playerScore p =
-        let chips = fromMaybe 0 (viewHowManyAt g (PlayerStuff p) Chip)
-            cardTotal = maybe 0 (scoreCards . S.fromList . inventoryItems) (viewLocation g (PlayerStuff p))
-         in cardTotal - chips
    in drawEndGame (tui ^. #winner)
         <=> str " "
-        <=> vBox [str (displayPlayer p ++ ": " ++ show (playerScore p)) | p <- players]
+        <=> vBox [str (displayPlayer p ++ ": " ++ show (playerScore g p)) | p <- players]
         <=> str " "
         <=> str "[Enter] new game  [q] quit"
 
@@ -107,7 +118,9 @@ renderPlayers g = vBox (drawPlayer g <$> g ^. #playersView . to S.toList)
     drawPlayer :: NMView -> Player -> Widget Name
     drawPlayer g p =
       padTop (Pad 1) $
-        str (displayPlayer p ++ maybe " " (printCards . filter isCard . inventoryItems) (viewLocation g (PlayerStuff p)))
+        strWrap (displayPlayer p 
+                    ++ maybe " " (printCards . filter isCard . inventoryItems) (viewLocation g (PlayerStuff p)))
+          <=> str ("Score: " ++ show (playerScore g p))
           <=> str ("Chips: " ++ maybe "" show (viewHowManyAt g (PlayerStuff p) Chip))
 
 printCards :: [NMResource] -> String

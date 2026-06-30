@@ -11,3 +11,9 @@ cradle:
 
     - path: "haskBoard/src"
       component: "lib:haskBoard"
+
+    - path: "Games/CantStop"
+      component: "lib:CantStop"
+
+    - path: "Games/CantStop/app"
+      component: "CantStop:exe:CantStop"

@@ -5,7 +5,7 @@
 module Game.Options where
 
 import Control.Lens (makeFields)
-import Control.Monad (filterM)
+import Control.Monad (filterM, join)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Finitary (Finitary (..), inhabitants, toFinite, fromFinite)
 import Data.Generics.Labels ()
@@ -17,6 +17,7 @@ import Data.Set.NonEmpty (NESet)
 import qualified Data.Set.NonEmpty as NESet
 import GHC.Generics (Generic)
 import Game.Player
+import qualified Data.Set.NonEmpty as NES
 
 -- | Convert a Set to Maybe NESet (Nothing if empty).
 fromSetMaybe :: Ord a => Set a -> Maybe (NESet a)
@@ -33,11 +34,15 @@ makeFields ''Options
 instance Ord pl => Semigroup (Options pl) where
   Options l o <> Options l' _ = Options (l <> l') o
 
+
 youMay' :: Ord pl => Player -> NESet pl -> Options pl
 youMay' p basePlays = Options basePlays p
 
 youMay :: (Functor f, Ord pl) => Player -> f (NESet pl) -> f (Options pl)
 youMay p mBasePlays = youMay' p <$> mBasePlays
+
+youMayOnly :: (Ord pl, Monad f) => Player -> pl -> f (Options pl)
+youMayOnly p play = youMay p (return $ NES.singleton play)
 
 youMayNot' :: Ord pl => [pl] -> Options pl -> Maybe (Options pl)
 youMayNot' pls (Options opls p) =
@@ -47,11 +52,19 @@ youMayNot :: (Functor f, Ord pl) => [pl] -> f (Options pl) -> f (Maybe (Options 
 youMayNot pls = fmap (youMayNot' pls)
 
 -- filter out plays IF THE CONDITION IS TRUE; returns Nothing if all plays filtered out
-exceptIf :: (Monad m, Ord pl) => (pl -> m Bool) -> m (Options pl) -> m (Maybe (Options pl))
-exceptIf mfilt mopts = do
-  Options plays player <- mopts
-  kept <- fromSetMaybe . S.fromList <$> filterM (fmap not . mfilt) (foldr (:) [] plays)
-  return (fmap (`Options` player) kept)
+exceptIf :: (Monad m, Ord pl) => (pl -> m Bool) -> pl -> m (Options pl) -> m (Options pl)
+exceptIf mfilt def mopts = mopts >>=  (exceptIf' mfilt def )
+
+exceptIf' :: (Monad m, Ord pl) => (pl -> m Bool) -> pl -> Options pl -> m (Options pl)
+exceptIf' mfilt def (Options plays player) = do
+  filteredPlays <- filterM mfilt (NE.toList . NES.toList $ plays)
+  case NE.nonEmpty filteredPlays of
+    Nothing -> return (Options (NES.singleton def) player)
+    Just ps -> return (Options (NES.fromList ps) player)
+
+composer :: (Functor f, Monad m) => ( f a -> m (Maybe (f a))) -> (f a -> m (Maybe (f a))) ->  Maybe (f a) -> m (Maybe (f a))
+composer g h xs = join $ fmap (fmap join . traverse h) (fmap join $ traverse g xs )
+   
 
 help :: (pl -> pl -> Bool) -> [pl] -> [pl]
 help comparer list =
@@ -63,12 +76,19 @@ helpM mcomparer list = do
   let filters x = and <$> traverse (`mcomparer` x) list
   filterM filters list
 
--- mcomparer a b = if a is in mopts then remove b
-unlessYouCould :: (Ord pl, Monad m) => (pl -> pl -> m Bool) -> m (Options pl) -> m (Maybe (Options pl))
-unlessYouCould mcomparer mopts = do
+
+replaceNonEmpty :: Ord a => a -> a -> NES.NESet a -> NES.NESet a
+replaceNonEmpty del add = NES.insertSet add . NES.delete del
+
+-- mcomparer a b = if true then remove b
+unlessYouCould :: (Ord pl, Monad m) => (pl -> pl -> m Bool) -> pl -> m (Options pl) -> m (Options pl)
+unlessYouCould mcomparer def mopts = do
   Options legal p <- mopts
-  newLegal <- fromSetMaybe . S.fromList <$> helpM mcomparer (foldr (:) [] legal)
-  return (fmap (`Options` p) newLegal)
+  newLegal <- helpM mcomparer (NE.toList . NES.toList $ legal)
+  -- TODO: improve
+  case newLegal of
+    [] -> return (Options (NES.singleton def) p)
+    newLegal' -> return (Options (NES.fromList . NE.fromList $ newLegal') p)
 
 -- Sparse list of legal action indices (0-indexed by Finitary ordering)
 legalActionIndices :: forall pl. (Finitary pl) => Options pl -> [Int]

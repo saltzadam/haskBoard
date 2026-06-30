@@ -24,6 +24,7 @@ import orjson
 import torch
 import torch.nn.functional as F
 from ray.rllib.core.columns import Columns
+from torch.utils.tensorboard import SummaryWriter
 
 from haskboard_aec_env import _build_space
 from haskboard_rl_module import HaskboardRLModule
@@ -98,6 +99,7 @@ def train_player(
     n_actions: int,
     args: argparse.Namespace,
     device: torch.device,
+    writer: SummaryWriter | None = None,
 ) -> dict:
     """Train one player's module and return its state dict."""
     # Load data
@@ -206,6 +208,12 @@ def train_player(
         test_loss = test_loss_sum / max(test_total, 1)
         test_acc = test_correct / max(test_total, 1)
 
+        if writer is not None:
+            writer.add_scalar(f"bc/{policy_name}/train_loss", train_loss, epoch)
+            writer.add_scalar(f"bc/{policy_name}/train_acc", train_acc, epoch)
+            writer.add_scalar(f"bc/{policy_name}/test_loss", test_loss, epoch)
+            writer.add_scalar(f"bc/{policy_name}/test_acc", test_acc, epoch)
+
         print(
             f"    Epoch {epoch + 1:3d}/{args.epochs}  "
             f"train_loss={train_loss:.4f}  train_acc={train_acc:.3f}  "
@@ -284,6 +292,9 @@ def main() -> None:
     print(f"Device: {device}", file=sys.stderr)
     print(f"Agents: {agent_ids}, actions: {n_actions}", file=sys.stderr)
 
+    tb_dir = str(Path(f"runs/{name}/tensorboard").resolve())
+    writer = SummaryWriter(log_dir=tb_dir)
+
     for aid in agent_ids:
         policy_name = f"player_{aid}"
         data_path = data_dir / f"bc_data_player_{aid}.jsonl"
@@ -301,6 +312,7 @@ def main() -> None:
             n_actions=n_actions,
             args=args,
             device=device,
+            writer=writer,
         )
 
         if not state:
@@ -313,6 +325,7 @@ def main() -> None:
             pickle.dump(state, f)
         print(f"  Saved: {ckpt_path / 'module_state.pkl'}", file=sys.stderr)
 
+    writer.close()
     print(f"\nBC training complete. Checkpoint: {out_dir}", file=sys.stderr)
 
 

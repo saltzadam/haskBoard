@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module NumberedPiece (NumberedPiece (..), nextMaybe, prevMaybe) where
+module NumberedPiece (NumberedPiece (..), nextMaybe, prevMaybe, number) where
 
 import Data.Aeson (FromJSON (..), ToJSON (..), ToJSONKey (..), FromJSONKey (..))
 import Data.Aeson.Types (FromJSONKeyFunction (..), toJSONKeyText)
@@ -15,13 +16,16 @@ import Text.Read (readMaybe)
 -- Use this instead of raw 'Finite n': it serialises as a plain JSON number
 -- and has a clean Show instance (displays as the integer).
 newtype NumberedPiece n = NumberedPiece (Finite n)
-  deriving (Eq, Ord, Generic, Finitary, Show, Read)
+  deriving (Eq, Ord, Generic, Finitary, Show, Read, Enum)
 
 nextMaybe :: KnownNat n => NumberedPiece n -> Maybe (NumberedPiece n)
 nextMaybe (NumberedPiece fin) = NumberedPiece <$> packFinite (getFinite fin + 1)
 
 prevMaybe :: KnownNat n => NumberedPiece n -> Maybe (NumberedPiece n)
 prevMaybe (NumberedPiece fin) = NumberedPiece <$> packFinite (getFinite fin - 1)
+
+number :: KnownNat n => NumberedPiece n -> Int
+number (NumberedPiece i) = fromEnum i
 
 -- instance Show (NumberedPiece n) where
 --   show (NumberedPiece i) = show (getFinite i)

@@ -59,7 +59,7 @@ transferTo source targetTrack = transfer source (start targetTrack)
 -- removes the highest instance of the resource
 transferFrom :: (Ord r, Eq l) => Track l -> l -> r -> GameRule l cn r ph pl ()
 transferFrom sourceTrack target res = do
-  sourceSlot <- resMaxSlot res sourceTrack
+  sourceSlot <- rMaxSlot res sourceTrack
   case sourceSlot of
     Nothing -> return ()
     Just sourceSlot' -> transfer sourceSlot' target res
@@ -110,30 +110,31 @@ count res (Track slots) = sum <$> traverse (`howManyAt` res) slots
 holds :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl Bool
 holds res track' = (> 0) <$> count res track'
 
-resMinSlot :: forall r l cn ph pl. (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl (Maybe l)
-resMinSlot res (Track slots) = go res slots
+rMinSlot :: forall r l cn ph pl. (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl (Maybe l)
+rMinSlot res (Track slots) = go res slots
   where
     go :: r -> NonEmpty l -> GameRule l cn r ph pl (Maybe l)
     go r (slot :| []) = ifM (slot `has` r) (pure $ Just slot) (pure Nothing)
     go r (slot :| (next : rest)) = ifM (slot `has` r) (pure $ Just slot) (go r (next :| rest))
 
-resMaxSlot :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl (Maybe l)
-resMaxSlot res (Track slots) = resMinSlot res (Track (NE.reverse slots))
+rMaxSlot :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl (Maybe l)
+rMaxSlot res (Track slots) = rMinSlot res (Track (NE.reverse slots))
 
-resMinHeight :: (Ord r, Eq a) => r -> Track a -> GameRule a cn r ph pl (Maybe Int)
-resMinHeight res track = (slotHeight track =<<) <$> resMinSlot res track
+rMinHeight :: (Ord r, Eq a) => r -> Track a -> GameRule a cn r ph pl (Maybe Int)
+rMinHeight res track = (slotHeight track =<<) <$> rMinSlot res track
 
-resMaxHeight :: (Ord r, Eq a) => r -> Track a -> GameRule a cn r ph pl (Maybe Int)
-resMaxHeight res track = (slotHeight track =<<) <$> resMaxSlot res track
+rMaxHeight :: (Ord r, Eq a) => r -> Track a -> GameRule a cn r ph pl (Maybe Int)
+rMaxHeight res track = (slotHeight track =<<) <$> rMaxSlot res track
 
 removeAll :: (Ord r, Eq l) => r -> Track l -> l -> GameRule l cn r ph pl ()
 removeAll res track target = do
   num <- count res track
   replicateM_ num (transferFrom track target res)
 
+
 resAtTop :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl Bool
 resAtTop r track = do
-  rSlot <- resMaxSlot r track
+  rSlot <- rMaxSlot r track
   let height = slotHeight track =<< rSlot
   let maxHeight = slotHeight track (end track)
   return (height == maxHeight)

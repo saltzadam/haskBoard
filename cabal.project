@@ -1,6 +1,6 @@
 packages:   haskBoard/
             Helpers/
---            Games/CantStop/
+            Games/CantStop/
             Games/NoMerci/
 --            Games/LoveLetter/
 

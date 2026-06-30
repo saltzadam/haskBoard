@@ -63,6 +63,13 @@ def main() -> None:
     parser.add_argument("--force", action="store_true", help="Re-run all stages even if outputs exist")
     args = parser.parse_args()
 
+    # Resolve sibling scripts relative to this file's directory
+    script_dir = Path(__file__).resolve().parent
+    collect_script = str(script_dir / "collect_rllib.py")
+    bc_script = str(script_dir / "train_bc.py")
+    rl_script = str(script_dir / "train_rllib.py")
+    project_dir = str(script_dir)
+
     binary = find_binary(args.game)
     name = args.name or f"{args.game}_default_{args.players}"
     run_dir = Path(f"runs/{name}")
@@ -88,8 +95,8 @@ def main() -> None:
     else:
         header("Stage 1: Collect BC data", "RUN")
         cmd = [
-            "uv", "run", "--project", "python",
-            "python", "python/collect_rllib.py",
+            "uv", "run", "--project", project_dir,
+            "python", collect_script,
             "--name", name,
             "--games", str(args.collect_games),
             "--binary", binary,
@@ -108,8 +115,8 @@ def main() -> None:
     else:
         header("Stage 2: Train BC", "RUN")
         cmd = [
-            "uv", "run", "--project", "python",
-            "python", "python/train_bc.py",
+            "uv", "run", "--project", project_dir,
+            "python", bc_script,
             "--name", name,
             "--epochs", str(args.bc_epochs),
         ]
@@ -127,8 +134,8 @@ def main() -> None:
     else:
         header("Stage 3: Train RL (PPO)", "RUN")
         cmd = [
-            "uv", "run", "--project", "python",
-            "python", "python/train_rllib.py",
+            "uv", "run", "--project", project_dir,
+            "python", rl_script,
             "--name", name,
             "--num-players", str(args.players),
             "--train-steps", str(args.train_steps),

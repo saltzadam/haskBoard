@@ -13,6 +13,7 @@ import os
 import pickle
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,8 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from ray.tune.registry import register_env
+
+from torch.utils.tensorboard import SummaryWriter
 
 from haskboard_aec_env import HaskboardAECEnv
 from haskboard_rl_module import HaskboardRLModule
@@ -180,16 +183,61 @@ def main() -> None:
     checkpoint_dir = str(Path(f"runs/{name}/rllib_checkpoints").resolve())
     os.makedirs(checkpoint_dir, exist_ok=True)
 
+    tb_dir = str(Path(f"runs/{name}/tensorboard").resolve())
+    writer = SummaryWriter(log_dir=tb_dir)
+
     total = args.train_steps
     print(f"Training {total} steps | {num_players} players | {args.num_env_runners} runners")
 
+    train_start = time.time()
     for step in range(1, total + 1):
+        step_start = time.time()
         results = algo.train()
+        step_duration = time.time() - step_start
+        total_elapsed = time.time() - train_start
 
+        # -- TensorBoard logging --
+        env_runners = results.get("env_runners", {})
+
+        # Per-policy reward
+        policy_reward = env_runners.get("module_episode_returns_mean", {})
+        for pn in policy_names:
+            r = policy_reward.get(pn)
+            if r is not None:
+                writer.add_scalar(f"rllib/rewards/{pn}", r, step)
+
+        # Global episode metrics
+        for key, tag in [
+            ("episode_return_mean", "rllib/episode_return_mean"),
+            ("episode_len_mean", "rllib/episode_len_mean"),
+            ("num_env_steps_sampled_lifetime", "rllib/num_env_steps_sampled_lifetime"),
+        ]:
+            val = env_runners.get(key)
+            if val is not None:
+                writer.add_scalar(tag, val, step)
+
+        # Per-policy learner metrics
+        learners = results.get("learners", {})
+        for pn in policy_names:
+            plearner = learners.get(pn, {})
+            for key, suffix in [
+                ("policy_loss", "policy_loss"),
+                ("vf_loss", "vf_loss"),
+                ("entropy", "entropy"),
+                ("mean_kl_loss", "mean_kl_loss"),
+                ("vf_explained_var", "vf_explained_var"),
+            ]:
+                val = plearner.get(key)
+                if val is not None:
+                    writer.add_scalar(f"rllib/learners/{pn}/{suffix}", val, step)
+
+        # Timing
+        writer.add_scalar("rllib/time/step_duration_s", step_duration, step)
+        writer.add_scalar("rllib/time/total_elapsed_s", total_elapsed, step)
+
+        # -- Console logging & checkpoints (every 10 steps) --
         if step % 10 == 0:
             remaining = total - step
-            env_runners = results.get("env_runners", {})
-            policy_reward = env_runners.get("module_episode_returns_mean", {})
             reward_parts = []
             for pn in policy_names:
                 r = policy_reward.get(pn, float("nan"))
@@ -199,6 +247,7 @@ def main() -> None:
             save_result = algo.save(checkpoint_dir)
             print(f"  checkpoint: {save_result.checkpoint.path}")
 
+    writer.close()
     algo.stop()
     ray.shutdown()
     print(f"Training complete. Final checkpoint: {checkpoint_dir}")
