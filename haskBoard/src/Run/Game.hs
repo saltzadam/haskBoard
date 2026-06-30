@@ -43,10 +43,11 @@ runGame
   => (Int -> (GameState l cn r ph pl, GameRules l cn r ph pl, [HintM l cn r ph pl]))
   -> Maybe (App (TUIState l cn r ph pl) (BEvent l cn r ph pl) name)
   -> FilePath
+  -> FilePath 
   -> Int
   -> RunMode
   -> IO ()
-runGame initGame mTuiApp logFile numPlayers mode = do
+runGame initGame mTuiApp logFile jsonFile numPlayers mode = do
   let (gs,gr,hints) = initGame numPlayers
   let players = S.toList (gs ^. #players)
   let totals = inventoryTotals (gs ^. (#objects . #locations))
@@ -56,12 +57,12 @@ runGame initGame mTuiApp logFile numPlayers mode = do
       lock <- newMVar ()
       forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
         void $ forkIO $ runStdioAgent totals [] False rc p lock players gr fromChan toChan
-      stdioTrainingLoop (gs, gr) "training.log" interface rc
+      stdioTrainingLoop (gs, gr) interface rc
     Collect -> do
       lock <- newMVar ()
       forM_ (M.toList (interface ^. #playerInterfaces)) $ \(p, PlayerInterface fromChan toChan) ->
         void $ forkIO $ runStdioAgent totals hints True ZeroSum p lock players gr fromChan toChan
-      collectLoop (gs, gr) "collect.log" interface ZeroSum
+      collectLoop (gs, gr) interface ZeroSum
     WSAgents checkpointPath humanN -> do
       let tuiApp = fromMaybe (error "WSAgents mode requires a TUI app") mTuiApp
           humanPlayer  = Player (toEnum humanN)
@@ -93,7 +94,7 @@ runGame initGame mTuiApp logFile numPlayers mode = do
         void $ forkIO $ void $ spawnRLLibAgent script absCheckpoint (toEnum n)
       let gameLoop = do
             let (gs', gr',_hints) = initGame numPlayers
-            void $ runGameSeparateChannels logFile interface gs' gr'
+            void $ runGameSeparateChannels logFile jsonFile interface gs' gr'
             gameLoop
       withWorker (runAgentIO playerAgent)
         $ withWorker gameLoop

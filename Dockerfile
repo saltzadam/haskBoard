@@ -58,6 +58,10 @@ COPY ${CHECKPOINT_DIR} /app/checkpoint/
 COPY docker/entrypoint-play.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
+# JSON game logs go here; mount to access on host:
+#   docker run -v ./game-logs:/app/logs ...
+RUN mkdir -p /app/logs
+
 ENV TERM=xterm-256color
 ENV HASKBOARD_PYTHON_CMD=python
 

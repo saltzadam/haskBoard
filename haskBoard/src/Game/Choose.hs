@@ -2,7 +2,6 @@
 
 module Game.Choose where
 
-import Control.Monad.Free (liftF)
 import Data.Map (Map)
 import Data.Text
 import Effectful
@@ -11,7 +10,6 @@ import GHC.Generics (Generic)
 import Game.GameState
 import Game.Options (Options)
 import Game.Player
-import Game.Rules (GameRule, GameRuleF (..))
 import Game.View (GameStateView)
 
 data Interface l cn r ph pl :: Effect where
@@ -61,6 +59,3 @@ announceWinners winners = send (AnnounceWinners winners)
 
 announce :: (Interface l cn r ph pl :> es) => Maybe Player -> Text -> Eff es ()
 announce speaker announcement = send (Announce speaker announcement)
-
-mkChoice :: Options pl -> GameRule l cn r ph pl pl
-mkChoice opts = liftF (MakeChoice opts id)

@@ -17,7 +17,7 @@ type GameCounter cn =
 
 -- | Everything a resource type must satisfy.
 type GameResource r =
-  (Finitary r, Eq r, Ord r, Show r, ToJSON r, FromJSON r, FromJSONKey r)
+  (Finitary r, Eq r, Ord r, Show r, ToJSON r, FromJSON r, FromJSONKey r, ToJSONKey r)
 
 -- | Everything a phase-name type must satisfy.
 -- ph is NOT required to be Finitary — phases often carry data like Player.

@@ -14,7 +14,7 @@ import Game.GameState (GameRules, GameState)
 import Interface.Controller (GameController)
 import Interface.Protocol (InMsg (..), RewardConfig)
 import Run.Stdio (sendInit)
-import Run (runGameSeparateChannels)
+import Run (runGameSeparateChannels, runGameSeparateChannelsNoLogs)
 import System.Exit (exitSuccess)
 import System.IO (BufferMode (..), hSetBuffering, stdin, stdout)
 
@@ -28,11 +28,10 @@ trainingLoop
   :: (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl)
   => LoopMode
   -> (GameState l cn r ph pl, GameRules l cn r ph pl)
-  -> FilePath
   -> GameController l cn r ph pl
   -> RewardConfig
   -> IO ()
-trainingLoop mode (gs0, gr0) logFile controller rc = do
+trainingLoop mode (gs0, gr0) controller rc = do
   hSetBuffering stdout LineBuffering
   case mode of WaitForResetSignal -> hSetBuffering stdin LineBuffering; _ -> pure ()
   sendInit gs0 gr0 rc
@@ -43,7 +42,7 @@ trainingLoop mode (gs0, gr0) logFile controller rc = do
       WaitForResetSignal -> waitForReset
       AutoReset          -> pure ()
     loop = do
-      void $ runGameSeparateChannels logFile controller gs0 gr0
+      void $ runGameSeparateChannelsNoLogs controller gs0 gr0
       betweenEpisodes
       loop
 
@@ -51,7 +50,6 @@ trainingLoop mode (gs0, gr0) logFile controller rc = do
 stdioTrainingLoop
   :: (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl)
   => (GameState l cn r ph pl, GameRules l cn r ph pl)
-  -> FilePath
   -> GameController l cn r ph pl
   -> RewardConfig
   -> IO ()
@@ -61,7 +59,6 @@ stdioTrainingLoop = trainingLoop WaitForResetSignal
 collectLoop
   :: (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl)
   => (GameState l cn r ph pl, GameRules l cn r ph pl)
-  -> FilePath
   -> GameController l cn r ph pl
   -> RewardConfig
   -> IO ()
