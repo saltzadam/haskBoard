@@ -23,7 +23,7 @@ main = do
   when (numPlayers < 3 || numPlayers > 5) $ do
     putStrLn "Error: --players must be between 3 and 5"
     exitFailure
-  let run = runGame noMerci (Just app) "nomerci.log" "logs/nomerci.json" numPlayers
+  let run = runGame noMerci (Just app) "logs/nomerci.log" "logs/nomerci.json" numPlayers
   case () of
     _ | "--stdio"     `elem` args -> run (Stdio ZeroSum)
       | "--collect"   `elem` args -> run Collect
