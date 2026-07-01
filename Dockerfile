@@ -33,7 +33,7 @@ RUN cabal build ${GAME_NAME} \
     && strip /usr/local/bin/${GAME_NAME}
 
 # =============================================================================
-# Stage 3: Final play image (python + numpy + binary + checkpoint)
+# Stage 3: Final play image (python + numpy + binary + checkpoints)
 # =============================================================================
 FROM python:3.13-slim AS game
 ARG GAME_NAME=NoMerci
@@ -52,8 +52,14 @@ COPY --from=haskell-build /usr/local/bin/${GAME_NAME} /usr/local/bin/${GAME_NAME
 # Place lite script at the path Haskell expects (python/ws_agent_rllib.py)
 COPY python/ws_agent_lite.py /app/python/ws_agent_rllib.py
 
-ARG CHECKPOINT_DIR=python/runs/${GAME_NAME}_default_3/rllib_checkpoints
-COPY ${CHECKPOINT_DIR} /app/checkpoint/
+# Copy per-player-count checkpoints.
+# Override CHECKPOINT_DIR_N to use a different checkpoint for N players.
+ARG CHECKPOINT_DIR_3=python/runs/default_lrem5_3/rllib_checkpoints
+ARG CHECKPOINT_DIR_4=python/runs/default_lrem5_4/rllib_checkpoints
+ARG CHECKPOINT_DIR_5=python/runs/default_lrem5_5/rllib_checkpoints
+COPY ${CHECKPOINT_DIR_3} /app/checkpoints/3/
+COPY ${CHECKPOINT_DIR_4} /app/checkpoints/4/
+COPY ${CHECKPOINT_DIR_5} /app/checkpoints/5/
 
 COPY docker/entrypoint-play.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

@@ -13,11 +13,13 @@ import os
 import pickle
 import subprocess
 import sys
+import json
 import time
 from pathlib import Path
 from typing import Any
 
 import ray
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -84,12 +86,14 @@ def main() -> None:
                         help="Path to Haskell game binary (auto-detected if omitted)")
     parser.add_argument("--num-players", type=int, default=3,
                         help="Number of players (default: 3)")
-    parser.add_argument("--num-env-runners", type=int, default=4,
-                        help="Number of parallel env runners (default: 4)")
+    parser.add_argument("--num-env-runners", type=int, default=6,
+                        help="Number of parallel env runners (default: 6)")
     parser.add_argument("--train-steps", type=int, default=1000,
                         help="Number of training iterations (default: 1000)")
     parser.add_argument("--bc-checkpoint", type=str, default=None,
                         help="Path to BC checkpoint dir to warm-start from")
+    parser.add_argument("--force", action="store_true",
+                        help="Force restart from scratch, ignoring existing checkpoints")
     args = parser.parse_args()
 
     name = _resolve_name(args.name)
@@ -149,7 +153,7 @@ def main() -> None:
             ),
         )
         .training(
-            lr=3e-4,
+            lr=3e-5, # down one oom
             gamma=0.99,
             lambda_=0.95,
             clip_param=0.2,
@@ -161,36 +165,55 @@ def main() -> None:
         )
     )
 
-    algo = config.build_algo()
-
-    if args.bc_checkpoint:
-        bc_path = Path(args.bc_checkpoint)
-        print(f"Loading BC weights from {bc_path}...")
-        for pname in policy_names:
-            state_file = bc_path / pname / "module_state.pkl"
-            if not state_file.exists():
-                print(f"WARNING: {state_file} not found, skipping {pname}", file=sys.stderr)
-                continue
-            with open(state_file, "rb") as f:
-                state = pickle.load(f)
-            algo.learner_group._learner.module[pname].set_state(state)
-        algo.env_runner_group.sync_weights(
-            from_worker_or_learner_group=algo.learner_group,
-            inference_only=True,
-        )
-        print("BC weights loaded and synced to env runners.")
-
     checkpoint_dir = str(Path(f"runs/{name}/rllib_checkpoints").resolve())
     os.makedirs(checkpoint_dir, exist_ok=True)
+    progress_file = Path(f"runs/{name}/progress.json")
+
+    # Try to resume from existing checkpoint
+    start_step = 0
+    algo = None
+
+    if not args.force and progress_file.exists():
+        with open(progress_file) as f:
+            progress = json.load(f)
+        last_step = progress.get("step", 0)
+        ckpt_path = progress.get("checkpoint_path")
+        if ckpt_path and Path(ckpt_path).exists():
+            print(f"Resuming from step {last_step}: {ckpt_path}")
+            algo = Algorithm.from_checkpoint(ckpt_path)
+            start_step = last_step
+        else:
+            print(f"Warning: checkpoint not found at {ckpt_path}, starting fresh", file=sys.stderr)
+
+    if algo is None:
+        algo = config.build_algo()
+
+        if args.bc_checkpoint:
+            bc_path = Path(args.bc_checkpoint)
+            print(f"Loading BC weights from {bc_path}...")
+            for pname in policy_names:
+                state_file = bc_path / pname / "module_state.pkl"
+                if not state_file.exists():
+                    print(f"WARNING: {state_file} not found, skipping {pname}", file=sys.stderr)
+                    continue
+                with open(state_file, "rb") as f:
+                    state = pickle.load(f)
+                algo.learner_group._learner.module[pname].set_state(state)
+            algo.env_runner_group.sync_weights(
+                from_worker_or_learner_group=algo.learner_group,
+                inference_only=True,
+            )
+            print("BC weights loaded and synced to env runners.")
 
     tb_dir = str(Path(f"runs/{name}/tensorboard").resolve())
     writer = SummaryWriter(log_dir=tb_dir)
 
     total = args.train_steps
-    print(f"Training {total} steps | {num_players} players | {args.num_env_runners} runners")
+    remaining = total - start_step
+    print(f"Training steps {start_step + 1}–{total} ({remaining} remaining) | {num_players} players | {args.num_env_runners} runners")
 
     train_start = time.time()
-    for step in range(1, total + 1):
+    for step in range(start_step + 1, total + 1):
         step_start = time.time()
         results = algo.train()
         step_duration = time.time() - step_start
@@ -246,6 +269,8 @@ def main() -> None:
             print(f"Step {step}/{total} ({remaining} remaining)  rewards=[{reward_str}]")
             save_result = algo.save(checkpoint_dir)
             print(f"  checkpoint: {save_result.checkpoint.path}")
+            with open(progress_file, "w") as f:
+                json.dump({"step": step, "checkpoint_path": str(save_result.checkpoint.path)}, f)
 
     writer.close()
     algo.stop()

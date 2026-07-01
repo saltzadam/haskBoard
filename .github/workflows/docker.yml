@@ -45,7 +45,10 @@ jobs:
         with:
           context: .
           target: game
-          build-args: CHECKPOINT_DIR=python/runs/NoMerci_default_3/rllib_checkpoints
+          build-args: |
+            CHECKPOINT_DIR_3=python/runs/default_lrem5_3/rllib_checkpoints
+            CHECKPOINT_DIR_4=python/runs/default_lrem5_4/rllib_checkpoints
+            CHECKPOINT_DIR_5=python/runs/default_lrem5_5/rllib_checkpoints
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
