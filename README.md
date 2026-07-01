@@ -8,12 +8,6 @@
 docker pull ghcr.io/saltzadam/nomerci:main
 ```
 
-### Build
-
-```bash
-docker build -t haskboard .
-```
-
 ### Run
 
 ```bash
