@@ -43,4 +43,5 @@ ray_results/
 *bc_checkpoint/
 *bc_data/
 haskBoard/src/scratch/
+logs/
 # docker/
