@@ -34,6 +34,7 @@ python/runs/*
 !python/runs/NoMerci_default_3
 python/runs/NoMerci_default_3/*
 !python/runs/NoMerci_default_3/rllib_checkpoints
+!python/runs/default_lrem5_*
 
 *.npz
 *.pt
