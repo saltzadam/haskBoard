@@ -11,10 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy only project config and .cabal files so this layer caches until
 # dependencies change (not on every source edit).
+# All game .cabal files are needed because cabal.project lists them all.
 COPY cabal.project cabal.project.freeze ./
 COPY haskBoard/haskBoard.cabal haskBoard/
 COPY Helpers/helpers.cabal Helpers/
-COPY Games/${GAME_NAME}/*.cabal Games/${GAME_NAME}/
+COPY Games/NoMerci/noMerci.cabal Games/NoMerci/
+COPY Games/CantStop/cantStop.cabal Games/CantStop/
 
 RUN cabal update && cabal build --only-dependencies all
 
@@ -26,7 +28,8 @@ ARG GAME_NAME=NoMerci
 
 COPY haskBoard/src/ haskBoard/src/
 COPY Helpers/ Helpers/
-COPY Games/${GAME_NAME}/ Games/${GAME_NAME}/
+COPY Games/NoMerci/ Games/NoMerci/
+COPY Games/CantStop/ Games/CantStop/
 
 RUN cabal build ${GAME_NAME} \
     && cp "$(cabal list-bin ${GAME_NAME})" /usr/local/bin/${GAME_NAME} \
