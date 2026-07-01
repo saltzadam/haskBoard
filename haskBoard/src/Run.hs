@@ -37,7 +37,7 @@ runGameSeparateChannels logFile jsonFile winnersFile humanPlayer controller game
         let humanSuffix = maybe T.empty (\(Player p) -> T.pack ("," ++ show (fromEnum p))) humanPlayer
             writers = M.fromList
               [ (ActionLog,  TIO.hPutStrLn hAction)
-              , (ChoiceLog,  TIO.hPutStrLn hChoice)
+              , (ChoiceLog,  const (return ()))
               , (WinnersLog, \t -> TIO.hPutStrLn hWinners (t <> humanSuffix))
               ]
         runEff
