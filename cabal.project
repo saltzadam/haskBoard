@@ -2,6 +2,7 @@ packages:   haskBoard/
             Helpers/
             Games/CantStop/
             Games/NoMerci/
+            Games/Coup/
 --            Games/LoveLetter/
 
 multi-repl: True
