@@ -28,7 +28,8 @@ packages = ["."]
 [tool.uv.sources]
 torch = [
   { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
-  { index = "pytorch-cu130", marker = "sys_platform != 'linux'" },
+  { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+  # macOS (arm64) has no CUDA/cpu-index wheels; use default PyPI (MPS/CPU build).
 ]
 
 [[tool.uv.index]]

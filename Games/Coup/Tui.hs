@@ -10,13 +10,13 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import qualified Data.Set as S
 import Data.Text (Text)
 import qualified Data.Text as T
-import Game.Location (NoCounters, inventory)
+import Game.Location (inventory)
 import Game.Player (Player, displayPlayer)
 import qualified Graphics.Vty as V
 import Helpers
 import Objects
 
-type CoupTUIState = TUIState CoupLocation NoCounters CoupResource CoupPhaseName CoupPlayName
+type CoupTUIState = TUIState CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName
 
 type Name = ()
 
@@ -167,7 +167,7 @@ printPlay (Reveal r) = T.pack ("Give up your " ++ show r)
 -- Player state readouts ---------------------------------------------------------
 
 coinsOf :: CoupView -> Player -> Int
-coinsOf g p = fromMaybe 0 (viewHowManyAt g (Coins p) Coin)
+coinsOf g p = fromMaybe 0 (viewCounterVal g (PlayerCoins p))
 
 -- | Roles actually present at a location. Must filter by count > 0: a 'Pile'
 -- retains a zero-count key after its last card leaves (moveFromL only

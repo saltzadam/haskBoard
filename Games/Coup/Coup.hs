@@ -13,9 +13,8 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as S
 import qualified Data.Set.NonEmpty as NES
 import qualified Data.Text as T
-import Game.GameAction (GameAction (MakeAnnouncement))
+import Game.GameAction (GameAction (..))
 import Game.GameState (GameRules (..), GameState (..))
-import Game.Location (NoCounters)
 import Game.Player (Player, displayPlayer, mkPlayers)
 import Game.Rules
 import Game.Visibility (VisData (..), VisibilityMap, hideManyFromAll, makeInvisible)
@@ -47,14 +46,17 @@ opts p plays = baseOptions p (NES.fromList (NE.fromList plays))
 
 -- Coins ------------------------------------------------------------------------
 
+-- Coins are a bounded per-player counter. increment/decrement respect the
+-- counter's (0, coinCap) bounds (out-of-range changes are no-ops), so these
+-- never over/underflow given the action economy.
 gainCoins :: Player -> Int -> CoupM ()
-gainCoins p n = replicateM_ n (transfer Treasury (Coins p) Coin)
+gainCoins p n = replicateM_ n (act (IncrementCounter (PlayerCoins p)))
 
 payCoins :: Player -> Int -> CoupM ()
-payCoins p n = replicateM_ n (transfer (Coins p) Treasury Coin)
+payCoins p n = replicateM_ n (act (DecrementCounter (PlayerCoins p)))
 
 coinsOf :: Player -> CoupM Int
-coinsOf p = howManyAt (Coins p) Coin
+coinsOf p = lookCounterVal (PlayerCoins p)
 
 -- Influence --------------------------------------------------------------------
 
@@ -177,7 +179,8 @@ stealCoins :: Player -> Player -> CoupM ()
 stealCoins thief victim = do
   available <- coinsOf victim
   let amount = min 2 available
-  replicateM_ amount (transfer (Coins victim) (Coins thief) Coin)
+  replicateM_ amount (act (DecrementCounter (PlayerCoins victim)))
+  replicateM_ amount (act (IncrementCounter (PlayerCoins thief)))
   sayBy thief (pname thief <> tpack " steals " <> coinsWord amount <> tpack " from " <> pname victim)
 
 -- | Ambassador exchange: draw two, then return two (player's choice) to the
@@ -294,7 +297,7 @@ advanceToNextAlive = do
 -- Initialization ---------------------------------------------------------------
 
 -- | You see your own face-down cards; the court deck is hidden from all.
-coupVisibility :: [Player] -> VisibilityMap CoupLocation NoCounters
+coupVisibility :: [Player] -> VisibilityMap CoupLocation CoupCounter
 coupVisibility players =
   let hideCourt = hideManyFromAll players [VisLocation CourtDeck]
       pairs = [(owner, other) | owner <- players, other <- players, owner /= other]

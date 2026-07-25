@@ -27,39 +27,43 @@ data Role = Duke | Assassin | Captain | Ambassador | Contessa
 allRoles :: [Role]
 allRoles = inhabitants
 
--- | Resources: coins and the role cards themselves.
-data CoupResource = Coin | RoleCard Role
+-- | The only resource is the role cards. Coins are a per-player 'CoupCounter'
+-- (see below), not a resource — an unbounded coin supply can't be represented
+-- as a resource without either capping the whole economy or bloating every
+-- location's observation encoding, whereas a bounded counter encodes the exact
+-- count faithfully.
+newtype CoupResource = RoleCard Role
   deriving (Eq, Ord, Show, Generic, Finitary, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
 
 extractRole :: CoupResource -> Maybe Role
 extractRole (RoleCard r) = Just r
-extractRole _ = Nothing
 
 isRoleCard :: CoupResource -> Bool
 isRoleCard = isJust . extractRole
 
--- | Where things live.
+-- | Where role cards live.
 --
---   * 'CourtDeck'    — the face-down draw deck of role cards (hidden from all).
---   * 'Treasury'     — an infinite supply of coins.
+--   * 'CourtDeck'    — the face-down draw deck (hidden from all).
 --   * 'Influence' p  — p's face-down cards (only p may see them).
 --   * 'Revealed'  p  — p's lost, face-up cards (public).
---   * 'Coins'     p  — p's coin pile (public).
 --   * 'ExchangeZone' — scratch space for the Ambassador exchange.
 data CoupLocation
   = CourtDeck
-  | Treasury
   | Influence Player
   | Revealed Player
-  | Coins Player
   | ExchangeZone
   deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 extractPlayer :: CoupLocation -> Maybe Player
 extractPlayer (Influence p) = Just p
 extractPlayer (Revealed p) = Just p
-extractPlayer (Coins p) = Just p
 extractPlayer _ = Nothing
+
+-- | Coins are tracked per player as a bounded counter (0..'coinCap'). A counter
+-- encodes as an exact bounded value in the RL observation (no clipping) and,
+-- unlike a resource pool, models an unbounded coin supply cleanly.
+newtype CoupCounter = PlayerCoins Player
+  deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 -- | Every atomic decision a player can be asked to make. At each decision
 -- point only the legal subset is offered (via 'Options'); the play runner
@@ -94,7 +98,7 @@ data CoupPhaseName = CoupTurn Player
 
 -- Initialization --------------------------------------------------------------
 
-type CoupGameObjects = GameObjects CoupLocation NoCounters CoupResource
+type CoupGameObjects = GameObjects CoupLocation CoupCounter CoupResource
 
 -- | Three copies of each role make the 15-card court deck.
 courtDeckCards :: [CoupResource]
@@ -103,13 +107,14 @@ courtDeckCards = concatMap (replicate 3 . RoleCard) allRoles
 startingCoins :: Int
 startingCoins = 2
 
+-- | Max coins a player can hold. In practice you can reach at most 12 (9 + a
+-- Tax of 3; 10+ forces a Coup), and this bounds the observation encoding.
+coinCap :: Int
+coinCap = 12
+
 initLocations' :: Set Player -> CoupLocation -> LocationShape CoupResource
 initLocations' _ CourtDeck = deckOf courtDeckCards
-initLocations' _ Treasury = infinite Coin
 initLocations' _ ExchangeZone = emptyPile
-initLocations' players (Coins p)
-  | p `S.member` players = pileOf Coin startingCoins
-  | otherwise = dummy
 initLocations' players (Influence p)
   | p `S.member` players = emptyPile -- dealt during setup
   | otherwise = dummy
@@ -120,30 +125,35 @@ initLocations' players (Revealed p)
 initLocations :: Set Player -> FTMap CoupLocation (LocationShape CoupResource)
 initLocations ps = FTMap (initLocations' ps)
 
+initCounters' :: Set Player -> CoupCounter -> Counter
+initCounters' players (PlayerCoins p)
+  | p `S.member` players = Counter startingCoins (0, coinCap)
+  | otherwise = dummyCounter
+
 initGameObjects :: Set Player -> CoupGameObjects
 initGameObjects ps =
   GameObjects
     { locations = initLocations ps,
-      counters = FTMap (const dummyCounter)
+      counters = FTMap (initCounters' ps)
     }
 
 -- Type aliases ----------------------------------------------------------------
 
 type CoupTurn = Turn CoupPhaseName
 
-type CoupPhase = Phase CoupPhaseName CoupLocation NoCounters CoupResource CoupPlayName
+type CoupPhase = Phase CoupPhaseName CoupLocation CoupCounter CoupResource CoupPlayName
 
-type CoupGameState = GameState CoupLocation NoCounters CoupResource CoupPhaseName CoupPlayName
+type CoupGameState = GameState CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName
 
 type CoupOptions = Options CoupPlayName
 
-type CoupGameRules = GameRules CoupLocation NoCounters CoupResource CoupPhaseName CoupPlayName
+type CoupGameRules = GameRules CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName
 
-type CoupM a = GameRule CoupLocation NoCounters CoupResource CoupPhaseName CoupPlayName a
+type CoupM a = GameRule CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName a
 
-type CoupView = GameStateView CoupLocation NoCounters CoupResource CoupPhaseName
+type CoupView = GameStateView CoupLocation CoupCounter CoupResource CoupPhaseName
 
-type CoupEvent = BEvent CoupLocation NoCounters CoupResource CoupPhaseName CoupPlayName
+type CoupEvent = BEvent CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName
 
 -- | The turn structure for a player: a single 'CoupTurn' phase.
 playerTurn :: Player -> CoupTurn
