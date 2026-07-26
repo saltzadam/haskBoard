@@ -63,7 +63,10 @@ def find_binary() -> str:
 
 def env_creator(config: dict[str, Any]) -> PettingZooEnv:
     """Factory for creating PettingZoo-wrapped haskboard AEC environments."""
-    binary = config.get("binary_path", find_binary())
+    # NB: `or find_binary()`, not `.get(key, find_binary())` — the latter calls
+    # find_binary() eagerly, which shells out to `cabal list-bin` and fails in a
+    # Ray worker where cabal isn't on PATH, even when binary_path is provided.
+    binary = config.get("binary_path") or find_binary()
     extra_args = config.get("extra_args", [])
     num_players = config.get("num_players")
     aec_env = HaskboardAECEnv(binary_path=binary, extra_args=extra_args, num_players=num_players)
@@ -102,8 +105,10 @@ def main() -> None:
     binary_path = args.binary or find_binary()
     num_players = args.num_players
 
-    ray_tmp = Path(__file__).parent / "ray_tmp"
-    ray_tmp.mkdir(exist_ok=True)
+    # Keep this SHORT: macOS caps AF_UNIX socket paths at 103 bytes, and Ray
+    # appends "session_<ts>/sockets/plasma_store" (~62 bytes) to _temp_dir.
+    ray_tmp = Path(os.environ.get("HASKBOARD_RAY_TMP", "/tmp/hb_ray"))
+    ray_tmp.mkdir(parents=True, exist_ok=True)
     ray.init(
         _temp_dir=str(ray_tmp),
         runtime_env={"working_dir": ".", "excludes": [".venv/", "runs/", "__pycache__/", "ray_tmp/", "*.npz", "bc_data/", "bc_checkpoint/"]},

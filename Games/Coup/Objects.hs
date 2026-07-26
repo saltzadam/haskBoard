@@ -19,6 +19,7 @@ import Game.Options (Options)
 import Game.Player
 import Game.Rules (GameRule)
 import Game.View (GameStateView)
+import Interface.Hint (HintM)
 
 -- | The five character roles. Each backs a claimed action or block.
 data Role = Duke | Assassin | Captain | Ambassador | Contessa
@@ -154,6 +155,10 @@ type CoupM a = GameRule CoupLocation CoupCounter CoupResource CoupPhaseName Coup
 type CoupView = GameStateView CoupLocation CoupCounter CoupResource CoupPhaseName
 
 type CoupEvent = BEvent CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName
+
+-- | Heuristic-hint type (used by randomAgent / BC collection). Coup ships none
+-- (@[]@) for now — PPO trains from scratch.
+type CoupHint = HintM CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName
 
 -- | The turn structure for a player: a single 'CoupTurn' phase.
 playerTurn :: Player -> CoupTurn

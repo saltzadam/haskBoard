@@ -342,5 +342,6 @@ coupRules =
       setupPhase = Just coupSetup
     }
 
-coup :: Int -> (CoupGameState, CoupGameRules)
-coup n = (initGameState n, coupRules)
+-- | The triple 'runGame' expects: initial state, rules, and hints ([] = none).
+coup :: Int -> (CoupGameState, CoupGameRules, [CoupHint])
+coup n = (initGameState n, coupRules, [])

@@ -10,14 +10,17 @@ import Brick.Game.Tui (TUIMode (..), TUIState (..))
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.))
 import Control.Monad (forM_, void)
-import Coup (coupRules, initGameState)
+import Coup (coup, coupRules, initGameState)
+import Data.List (elemIndex)
 import qualified Data.Map as M
+import Data.Maybe (fromJust, fromMaybe)
 import Game.Player (displayPlayer, mkPlayers)
 import Game.View (viewGameStateAs')
 import Interface.Agent (brickAgent, randomAgent, runAgentIO)
 import Interface.Controller (PlayerInterface (..), buildInterface)
-import Data.Maybe (fromMaybe)
+import Interface.Protocol (RewardConfig (ZeroSum))
 import Run (runGameSeparateChannelsNoLogs)
+import Run.Game (RunMode (..), runGame)
 import System.Environment (getArgs)
 import Text.Read (readMaybe)
 import Tui (app)
@@ -33,8 +36,20 @@ parsePlayers args =
 main :: IO ()
 main = do
   args <- getArgs
-  let numPlayers = parsePlayers args
-  if "--auto" `elem` args then autoMain numPlayers else tuiMain numPlayers
+  let argPairs = zip args (drop 1 args)
+      numPlayers = parsePlayers args
+      -- Training / trained-play modes go through the shared runGame harness.
+      run = runGame coup (Just app) "logs/coup.log" "logs/coup.json" numPlayers
+  case () of
+    _
+      | "--stdio" `elem` args -> run (Stdio ZeroSum) -- RL training (RLlib env)
+      | "--collect" `elem` args -> run Collect -- BC data collection
+      | "--ws-agents" `elem` args ->
+          let checkpoint = args !! succ (fromJust (elemIndex "--ws-agents" args))
+              humanN = maybe 0 read (lookup "--human-player" argPairs)
+           in run (WSAgents checkpoint humanN) -- play vs a trained checkpoint
+      | "--auto" `elem` args -> autoMain numPlayers -- headless random self-play
+      | otherwise -> tuiMain numPlayers -- default: play vs random agents in the TUI
 
 -- | Headless self-play: every seat is a random agent; run to completion and
 -- print the winner. Verifies the turn loop, elimination and win condition.
