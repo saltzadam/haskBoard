@@ -1,14 +1,16 @@
 #!/bin/bash
 # Play Coup locally.
 #
-#   ./run-coup.sh [N]             play vs RANDOM agents in the TUI (default 3 players)
-#   ./run-coup.sh --trained [N]   play vs TRAINED agents (needs python/runs/coup_v1_<N>/)
-#   ./run-coup.sh --auto [N]      headless random self-play, prints the winner
+#   ./scripts/run-coup.sh [N]             play vs RANDOM agents in the TUI (default 3 players)
+#   ./scripts/run-coup.sh --trained [N]   play vs TRAINED agents (needs python/runs/coup_v1_<N>/)
+#   ./scripts/run-coup.sh --auto [N]      headless random self-play, prints the winner
 #
 # --trained spawns the RLlib agent via `uv run --project python`, so uv + the
 # trained checkpoint must exist. You are always seat 0 (Player One).
 set -e
-cd "$(dirname "$0")"
+# Run from the repo root so relative paths (python/runs/..., cabal, logs) resolve
+# regardless of where this script is invoked from.
+cd "$(dirname "$0")/.."
 # cabal (ghcup) + uv (the game shells out to `uv` to launch the trained agent).
 export PATH="$HOME/.ghcup/bin:/opt/homebrew/bin:$PATH"
 mkdir -p logs

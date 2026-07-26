@@ -14,11 +14,13 @@
 #     CPU/MPS index (e.g. the default PyPI torch) if `uv` fails to resolve.
 #
 # Usage:
-#   ./run-nomerci.sh [PLAYERS] [HUMAN_PLAYER]
-#   ./run-nomerci.sh           # 3 players, you are player 0
-#   ./run-nomerci.sh 5 2       # 5 players, you are player 2
+#   ./scripts/run-nomerci.sh [PLAYERS] [HUMAN_PLAYER]
+#   ./scripts/run-nomerci.sh           # 3 players, you are player 0
+#   ./scripts/run-nomerci.sh 5 2       # 5 players, you are player 2
 set -e
-cd "$(dirname "$0")"
+# Run from the repo root so relative paths (python/runs/..., cabal, logs) resolve
+# regardless of where this script is invoked from.
+cd "$(dirname "$0")/.."
 
 PLAYERS="${1:-3}"
 HUMAN="${2:-0}"
