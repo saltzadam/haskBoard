@@ -17,6 +17,8 @@ import Data.Tuple (swap)
 import Data.Maybe (fromJust, fromMaybe, isJust, mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Text (Text)
+import qualified Data.Text as T
 
 
 -- TODO: assess whether these two are ever actually necessary
@@ -151,3 +153,6 @@ mkPairs [] = []
 
 forkIO_ :: IO () -> IO ()
 forkIO_ = void . forkIO
+
+tshow :: (Show a) => a -> Text
+tshow = T.pack . show

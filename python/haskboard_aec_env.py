@@ -100,6 +100,13 @@ class HaskboardAECEnv(AECEnv):
         Path to the compiled Haskell executable (must accept ``--stdio`` flag).
     extra_args:
         Additional CLI arguments forwarded to the binary.
+    step_penalty:
+        Reward subtracted from an agent for each decision it makes. Offsets the
+        incentive discounting gives a losing agent to prolong the game.
+    max_steps:
+        Truncate the episode after this many decisions (all agents combined).
+        The unfinished Haskell game is then drained with first-legal-action
+        play on reset, so that play must terminate for the game in question.
     """
 
     metadata = {"render_modes": [], "name": "haskboard_aec_v0"}
@@ -110,9 +117,14 @@ class HaskboardAECEnv(AECEnv):
         binary_path: str,
         extra_args: list[str] | None = None,
         num_players: int | None = None,
+        step_penalty: float = 0.0,
+        max_steps: int | None = None,
     ):
         super().__init__()
         self._binary_path = binary_path
+        self._step_penalty = step_penalty
+        self._max_steps = max_steps
+        self._steps = 0
         self._extra_args = extra_args or []
         if num_players is not None:
             self._extra_args += ["--players", str(num_players)]
@@ -172,6 +184,9 @@ class HaskboardAECEnv(AECEnv):
 
         # Track whether we need to drain before reset
         self._game_over = True
+        # The agent Haskell is waiting on. Differs from agent_selection once a
+        # truncation hands agent_selection to PettingZoo's dead-step cycling.
+        self._awaiting_agent: str = self.possible_agents[0]
 
     # ------------------------------------------------------------------
     # Low-level I/O
@@ -230,6 +245,7 @@ class HaskboardAECEnv(AECEnv):
             self.agent_selection = agent_name
         else:
             self.agent_selection = agent_name
+            self._awaiting_agent = agent_name
 
     def _drain_to_terminal(self) -> None:
         """Send legal actions until Haskell reaches a terminal state.
@@ -237,7 +253,7 @@ class HaskboardAECEnv(AECEnv):
         Called when we need to reset but the game has not ended yet.
         """
         while not self._game_over:
-            legal = self._legal_actions.get(self.agent_selection, [])
+            legal = self._legal_actions.get(self._awaiting_agent, [])
             action = legal[0] if legal else 0
             self._send({"type": "action", "action": action})
             self._advance()
@@ -279,6 +295,7 @@ class HaskboardAECEnv(AECEnv):
         self._send({"type": "reset"})
         self.agents = list(self.possible_agents)
         self._game_over = False
+        self._steps = 0
 
         self._observations = {
             a: _zeros(self._game_obs_spaces[a]) for a in self.possible_agents
@@ -302,10 +319,20 @@ class HaskboardAECEnv(AECEnv):
         agent = self.agent_selection
         self._send({"type": "action", "action": int(action)})
 
-        # Clear reward for acting agent before advancing
-        self.rewards[agent] = 0.0
+        # last() reports reward accrued since the agent's previous action, and
+        # the caller has already read it, so start this agent's tally afresh.
+        # Clear every agent's per-step reward so none is accumulated twice.
+        self._cumulative_rewards[agent] = 0.0
+        self.rewards = {a: 0.0 for a in self.possible_agents}
 
         self._advance()
+
+        self.rewards[agent] -= self._step_penalty
+
+        self._steps += 1
+        if not self._game_over and self._max_steps is not None and self._steps >= self._max_steps:
+            # Haskell's game is still running; reset() drains it.
+            self.truncations = {a: True for a in self.possible_agents}
 
         # Accumulate rewards
         self._cumulative_rewards = {

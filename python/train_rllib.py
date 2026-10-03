@@ -61,6 +61,9 @@ def find_binary() -> str:
     )
 
 
+GAMMA = 0.99
+
+
 def env_creator(config: dict[str, Any]) -> PettingZooEnv:
     """Factory for creating PettingZoo-wrapped haskboard AEC environments."""
     # NB: `or find_binary()`, not `.get(key, find_binary())` — the latter calls
@@ -69,7 +72,15 @@ def env_creator(config: dict[str, Any]) -> PettingZooEnv:
     binary = config.get("binary_path") or find_binary()
     extra_args = config.get("extra_args", [])
     num_players = config.get("num_players")
-    aec_env = HaskboardAECEnv(binary_path=binary, extra_args=extra_args, num_players=num_players)
+    step_penalty = config.get("step_penalty", 0.0)
+    max_steps = config.get("max_steps")
+    aec_env = HaskboardAECEnv(
+        binary_path=binary,
+        extra_args=extra_args,
+        num_players=num_players,
+        step_penalty=step_penalty,
+        max_steps=max_steps,
+    )
     return PettingZooEnv(aec_env)
 
 
@@ -95,6 +106,11 @@ def main() -> None:
                         help="Number of training iterations (default: 1000)")
     parser.add_argument("--bc-checkpoint", type=str, default=None,
                         help="Path to BC checkpoint dir to warm-start from")
+    parser.add_argument("--step-penalty", type=float, default=None,
+                        help="Reward subtracted per decision (default: (1 - gamma) / num_players, "
+                             "the break-even point at which stalling stops paying for a losing agent)")
+    parser.add_argument("--max-steps", type=int, default=1000,
+                        help="Truncate an episode after this many decisions, all agents combined (default: 1000)")
     parser.add_argument("--force", action="store_true",
                         help="Force restart from scratch, ignoring existing checkpoints")
     args = parser.parse_args()
@@ -104,6 +120,7 @@ def main() -> None:
 
     binary_path = args.binary or find_binary()
     num_players = args.num_players
+    step_penalty = args.step_penalty if args.step_penalty is not None else (1 - GAMMA) / num_players
 
     # Keep this SHORT: macOS caps AF_UNIX socket paths at 103 bytes, and Ray
     # appends "session_<ts>/sockets/plasma_store" (~62 bytes) to _temp_dir.
@@ -143,6 +160,8 @@ def main() -> None:
                 "binary_path": binary_path,
                 "extra_args": [],
                 "num_players": num_players,
+                "step_penalty": step_penalty,
+                "max_steps": args.max_steps,
             },
         )
         .env_runners(
@@ -159,7 +178,7 @@ def main() -> None:
         )
         .training(
             lr=3e-5, # down one oom
-            gamma=0.99,
+            gamma=GAMMA,
             lambda_=0.95,
             clip_param=0.2,
             entropy_coeff=0.01,

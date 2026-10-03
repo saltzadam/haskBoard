@@ -6,7 +6,6 @@ module Helpers where
 
 import Control.Lens (view, (^.))
 import Control.Monad (replicateM_)
-import Control.Monad.Free (liftF)
 import Data.Finitary (Finitary)
 import Data.Foldable (traverse_)
 import Data.List.NonEmpty (NonEmpty)
@@ -14,7 +13,7 @@ import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import Data.Set.NonEmpty (NESet)
 import qualified Data.Map as M
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, listToMaybe)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Text (Text)
@@ -32,7 +31,7 @@ import Util (getNextCyclic, inhabitantsSet, invertNestedMaps)
 -- particular actions
 
 roll :: cn -> GameRule l cn r ph pl ()
-roll l = liftF (Act (RollCounter l) ())
+roll = act . RollCounter
 
 transfer :: l -> l -> r -> GameRule l cn r ph pl ()
 transfer l l' r = act (MkTransfer l l' r)
@@ -61,6 +60,22 @@ endGame winners = act (EndGame winners)
 announceGame :: Text -> GameRule l cn r ph pl ()
 announceGame announcement = act (MakeAnnouncement Nothing announcement)
 
+-- | Announce an event attributed to a player, so per-player UI can show it
+-- alongside that player. Global logs show it regardless.
+announceBy :: Player -> Text -> GameRule l cn r ph pl ()
+announceBy p = act . MakeAnnouncement (Just p)
+
+-- | Counter changes are no-ops when they would leave the counter's bounds.
+incrementCounter :: cn -> GameRule l cn r ph pl ()
+incrementCounter = act . IncrementCounter
+
+decrementCounter :: cn -> GameRule l cn r ph pl ()
+decrementCounter = act . DecrementCounter
+
+-- | Move one unit between counters; a no-op if either would leave its bounds.
+transferCounter :: cn -> cn -> GameRule l cn r ph pl ()
+transferCounter from to = act (TransferCounter from to)
+
 -- bulk operations
 unsafeSwapAll :: (Finitary l, Ord r, Ord l) => l -> l -> GameRule l cn r ph pl ()
 unsafeSwapAll l0 l1 = do
@@ -76,8 +91,15 @@ advanceTurnCyclic :: (Player -> Turn ph) -> GameRule l cn r ph pl ()
 advanceTurnCyclic mkTurn = do
   ps <- lookPlayers
   p  <- lookCurrentTurnOwner
-  let next = getNextTurn2 mkTurn (NE.fromList $ ps) p
+  let next = getNextTurn2 mkTurn (NE.fromList ps) p
   advanceTurn next
+
+-- | The next player after @current@ in seat order among @eligible@, wrapping
+-- around. @current@ itself need not be eligible (e.g. just eliminated) and is
+-- never returned. 'Nothing' if no other player is eligible.
+nextPlayerAmong :: Player -> [Player] -> Maybe Player
+nextPlayerAmong current eligible =
+  listToMaybe (filter (> current) eligible ++ filter (< current) eligible)
 
 getNextTurn2 :: (Player -> Turn ph) -> NE.NonEmpty Player -> Player -> Turn ph
 getNextTurn2 mkTurn eligiblePlayers currentPlayer = mkTurn (fromJust (getNextCyclic currentPlayer eligiblePlayers))
@@ -213,6 +235,11 @@ viewCounterVal gsv cn = view #val <$> gsv ^. #objectsView . #countersView . ftAt
 
 viewCurrentPlayer :: GameStateView l cn r ph -> Player
 viewCurrentPlayer gsv = gsv ^. #currentTurnView . #owner
+
+-- | View counterpart of 'whatsAt': resources actually present (count > 0),
+-- or 'Nothing' if the location is hidden from this view.
+viewWhatsAt :: (Ord r, Eq l) => GameStateView l cn r ph -> l -> Maybe (Set r)
+viewWhatsAt g l = M.keysSet . M.filter (> 0) . inventory <$> viewLocation g l
 
 viewHowManyAt :: (Ord r, Eq l) => GameStateView l cn r ph -> l -> r -> Maybe Int
 viewHowManyAt g l r = flip howMany' r <$> viewLocation g l

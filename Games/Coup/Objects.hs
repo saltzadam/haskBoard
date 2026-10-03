@@ -7,7 +7,6 @@ module Objects where
 import Data.Aeson (FromJSON, FromJSONKey, ToJSON, ToJSONKey)
 import Data.Finitary
 import qualified Data.List.NonEmpty as NE
-import Data.Maybe (isJust)
 import Data.Set (Set)
 import qualified Data.Set as S
 import FinitaryMap (FTMap (..))
@@ -36,29 +35,19 @@ allRoles = inhabitants
 newtype CoupResource = RoleCard Role
   deriving (Eq, Ord, Show, Generic, Finitary, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
 
-extractRole :: CoupResource -> Maybe Role
-extractRole (RoleCard r) = Just r
-
-isRoleCard :: CoupResource -> Bool
-isRoleCard = isJust . extractRole
+roleOf :: CoupResource -> Role
+roleOf (RoleCard r) = r
 
 -- | Where role cards live.
 --
 --   * 'CourtDeck'    — the face-down draw deck (hidden from all).
 --   * 'Influence' p  — p's face-down cards (only p may see them).
 --   * 'Revealed'  p  — p's lost, face-up cards (public).
---   * 'ExchangeZone' — scratch space for the Ambassador exchange.
 data CoupLocation
   = CourtDeck
   | Influence Player
   | Revealed Player
-  | ExchangeZone
   deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
-
-extractPlayer :: CoupLocation -> Maybe Player
-extractPlayer (Influence p) = Just p
-extractPlayer (Revealed p) = Just p
-extractPlayer _ = Nothing
 
 -- | Coins are tracked per player as a bounded counter (0..'coinCap'). A counter
 -- encodes as an exact bounded value in the RL observation (no clipping) and,
@@ -91,15 +80,15 @@ data CoupPlayName
   | BlockAssassination
   | -- which influence card to give up
     Reveal Role
+  | -- which card to return to the court deck after an Exchange
+    ReturnCard Role
   deriving (Eq, Ord, Show, Generic, Finitary, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 -- | One phase per player turn.
-data CoupPhaseName = CoupTurn Player
+data CoupPhaseName = CoupTurnPhase Player
   deriving (Eq, Ord, Show, Generic, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 -- Initialization --------------------------------------------------------------
-
-type CoupGameObjects = GameObjects CoupLocation CoupCounter CoupResource
 
 -- | Three copies of each role make the 15-card court deck.
 courtDeckCards :: [CoupResource]
@@ -115,7 +104,6 @@ coinCap = 12
 
 initLocations' :: Set Player -> CoupLocation -> LocationShape CoupResource
 initLocations' _ CourtDeck = deckOf courtDeckCards
-initLocations' _ ExchangeZone = emptyPile
 initLocations' players (Influence p)
   | p `S.member` players = emptyPile -- dealt during setup
   | otherwise = dummy
@@ -140,6 +128,8 @@ initGameObjects ps =
 
 -- Type aliases ----------------------------------------------------------------
 
+type CoupGameObjects = GameObjects CoupLocation CoupCounter CoupResource
+
 type CoupTurn = Turn CoupPhaseName
 
 type CoupPhase = Phase CoupPhaseName CoupLocation CoupCounter CoupResource CoupPlayName
@@ -160,6 +150,6 @@ type CoupEvent = BEvent CoupLocation CoupCounter CoupResource CoupPhaseName Coup
 -- (@[]@) for now — PPO trains from scratch.
 type CoupHint = HintM CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName
 
--- | The turn structure for a player: a single 'CoupTurn' phase.
+-- | The turn structure for a player: a single 'CoupTurnPhase' phase.
 playerTurn :: Player -> CoupTurn
-playerTurn p = Turn p (NE.singleton (CoupTurn p))
+playerTurn p = Turn p (NE.singleton (CoupTurnPhase p))
