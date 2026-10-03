@@ -28,6 +28,7 @@ import Game.Rules
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
 import ShuffleRNG
+import Util (tshow)
 
 -- TODO: some kind of history besides log
 -- TODO: consider modifying/assign w/ built-in updateGS
@@ -55,9 +56,6 @@ updateGS = do
   scoreFn <- getScore
   scores  <- M.fromList <$> traverse (\p -> fmap (\s -> (p, s)) (evalRule (scoreFn p))) (S.toList (gs ^. #players))
   update gs scores
-
-tshow :: Show a => a -> T.Text
-tshow = T.pack . show
 
 logAction2 :: (GameInteract l cn r ph pl :> es, Log2 :> es, Show cn, Show ph, Ord r, Eq l, Show r, Show l, Eq cn) => GameAction l cn r ph -> Eff es ()
 logAction2 (IncrementCounter cn) = do
