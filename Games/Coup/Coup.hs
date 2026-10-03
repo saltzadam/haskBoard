@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 -- | Coup — complete: the full action set (Income, Foreign Aid, Tax, Coup,
@@ -13,32 +15,22 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Set as S
 import qualified Data.Set.NonEmpty as NES
 import qualified Data.Text as T
-import Game.GameAction (GameAction (..))
 import Game.GameState (GameRules (..), GameState (..))
 import Game.Player (Player, displayPlayer, mkPlayers)
 import Game.Rules
 import Game.Visibility (VisData (..), VisibilityMap, hideManyFromAll, makeInvisible)
 import Helpers
 import Objects
-import Util (ifM)
+import Util (ifM, tshow)
 
 -- Small helpers ----------------------------------------------------------------
 
 pname :: Player -> T.Text
 pname = T.pack . displayPlayer
 
--- | Announce an event tagged with the player it concerns, so per-player UI
--- (the action table / Players block) can attribute it. The global log shows
--- these regardless of the tag.
-sayBy :: Player -> T.Text -> CoupM ()
-sayBy p msg = act (MakeAnnouncement (Just p) msg)
-
 -- | "1 coin" / "3 coins".
 coinsWord :: Int -> T.Text
-coinsWord n = T.pack (show n ++ if n == 1 then " coin" else " coins")
-
-tpack :: String -> T.Text
-tpack = T.pack
+coinsWord n = tshow n <> if n == 1 then " coin" else " coins"
 
 -- | Build an options prompt for a specific player from a (non-empty) play list.
 opts :: Player -> [CoupPlayName] -> CoupOptions
@@ -50,25 +42,23 @@ opts p plays = baseOptions p (NES.fromList (NE.fromList plays))
 -- counter's (0, coinCap) bounds (out-of-range changes are no-ops), so these
 -- never over/underflow given the action economy.
 gainCoins :: Player -> Int -> CoupM ()
-gainCoins p n = replicateM_ n (act (IncrementCounter (PlayerCoins p)))
+gainCoins p n = replicateM_ n (incrementCounter (PlayerCoins p))
 
 payCoins :: Player -> Int -> CoupM ()
-payCoins p n = replicateM_ n (act (DecrementCounter (PlayerCoins p)))
+payCoins p n = replicateM_ n (decrementCounter (PlayerCoins p))
 
 coinsOf :: Player -> CoupM Int
 coinsOf p = lookCounterVal (PlayerCoins p)
 
 -- Influence --------------------------------------------------------------------
 
--- | Distinct roles a player currently holds face-down. Filtered by actual
--- count: a 'Pile' keeps a zero-count entry after its last card is removed
--- (moveFromL only decrements), so we must not report those phantom roles.
+-- | Distinct roles a player currently holds face-down.
 influenceRoles :: Player -> CoupM [Role]
-influenceRoles p = filterM (fmap (> 0) . howManyAt (Influence p) . RoleCard) allRoles
+influenceRoles p = map roleOf . S.toList <$> whatsAt (Influence p)
 
 -- | Total face-down cards (counts duplicate roles).
 influenceCount :: Player -> CoupM Int
-influenceCount p = sum <$> traverse (howManyAt (Influence p) . RoleCard) allRoles
+influenceCount p = sum <$> resourcesAt (Influence p)
 
 hasInfluence :: Player -> CoupM Bool
 hasInfluence p = (> 0) <$> influenceCount p
@@ -80,38 +70,39 @@ aliveOthers p = filterM hasInfluence =<< lookOtherPlayers p
 revealCard :: Player -> Role -> CoupM ()
 revealCard p role = do
   transfer (Influence p) (Revealed p) (RoleCard role)
-  sayBy p (pname p <> tpack (" loses an influence — their " ++ show role ++ " is turned face up"))
+  announceBy p ("loses an influence — their " <> tshow role <> " is turned face up")
 
 -- | Make @p@ lose an influence: they choose which card when they hold more
 -- than one distinct role, otherwise it is forced. Ends the game if this leaves
--- a single survivor.
+-- a single survivor. A no-op for a player who is already out.
 loseInfluence :: Player -> CoupM ()
 loseInfluence p = do
   roles <- influenceRoles p
   case roles of
-    [] -> justDoNothing -- already out
-    [only] -> revealCard p only
+    [] -> justDoNothing -- already out: nothing to lose or announce
+    [only] -> revealCard p only >> afterLoss
     (r0 : _ : _) -> do
       chosen <- makeChoice (opts p (map Reveal roles))
       case chosen of
         Reveal role -> revealCard p role
         _ -> revealCard p r0
-  checkElimination p
-  checkWin
+      afterLoss
+  where
+    afterLoss = checkElimination p >> checkWin
 
 checkElimination :: Player -> CoupM ()
 checkElimination p =
   ifM
     (hasInfluence p)
     justDoNothing
-    (sayBy p (pname p <> T.pack " has been eliminated!"))
+    (announceBy p "has been eliminated!")
 
 -- | End the game the moment a single player still holds influence.
 checkWin :: CoupM ()
 checkWin = do
   survivors <- filterM hasInfluence =<< lookPlayers
   case survivors of
-    [w] -> sayBy w (pname w <> T.pack " wins the game!") >> endGame [w]
+    [w] -> announceBy w "wins the game!" >> endGame [w]
     _ -> justDoNothing
 
 -- Challenges -------------------------------------------------------------------
@@ -135,19 +126,19 @@ challengeWindow claimant role = aliveOthers claimant >>= go
 resolveChallenge :: Player -> Role -> Player -> CoupM Bool
 resolveChallenge claimant role challenger = do
   proves <- has (Influence claimant) (RoleCard role)
-  sayBy challenger (pname challenger <> tpack " CHALLENGES " <> pname claimant <> tpack ("'s " ++ show role ++ " claim!"))
+  announceBy challenger ("CHALLENGES " <> pname claimant <> "'s " <> tshow role <> " claim!")
   if proves
     then do
-      sayBy claimant (pname claimant <> tpack (" reveals a genuine " ++ show role ++ " — the challenge fails; they draw a new card"))
+      announceBy claimant ("reveals a genuine " <> tshow role <> " — the challenge fails; they draw a new card")
       -- claimant returns the proven card, reshuffles, draws a replacement
       transfer (Influence claimant) CourtDeck (RoleCard role)
       shuffle CourtDeck
       Cards.draw CourtDeck (Influence claimant)
-      sayBy challenger (pname challenger <> tpack " pays for the failed challenge")
+      announceBy challenger "pays for the failed challenge"
       loseInfluence challenger
       return True
     else do
-      sayBy claimant (pname claimant <> tpack (" had no " ++ show role ++ " — the bluff is caught!"))
+      announceBy claimant ("had no " <> tshow role <> " — the bluff is caught!")
       loseInfluence claimant
       return False
 
@@ -169,7 +160,7 @@ blockWindow (b : bs) blockOpts = do
       case lookup dec blockOpts of
         Nothing -> blockWindow bs blockOpts -- allowed it
         Just role -> do
-          sayBy b (pname b <> tpack (" blocks, claiming " ++ show role))
+          announceBy b ("blocks, claiming " <> tshow role)
           blockStands <- challengeWindow b role
           if blockStands then return True else blockWindow bs blockOpts
 
@@ -179,9 +170,8 @@ stealCoins :: Player -> Player -> CoupM ()
 stealCoins thief victim = do
   available <- coinsOf victim
   let amount = min 2 available
-  replicateM_ amount (act (DecrementCounter (PlayerCoins victim)))
-  replicateM_ amount (act (IncrementCounter (PlayerCoins thief)))
-  sayBy thief (pname thief <> tpack " steals " <> coinsWord amount <> tpack " from " <> pname victim)
+  replicateM_ amount (transferCounter (PlayerCoins victim) (PlayerCoins thief))
+  announceBy thief ("steals " <> coinsWord amount <> " from " <> pname victim)
 
 -- | Ambassador exchange: draw two, then return two (player's choice) to the
 -- deck, keeping the same number of cards as before.
@@ -192,7 +182,7 @@ doExchange p = do
   returnOne p
   returnOne p
   shuffle CourtDeck
-  sayBy p (pname p <> tpack " exchanges cards with the court deck")
+  announceBy p "exchanges cards with the court deck"
   where
     returnOne pl = do
       roles <- influenceRoles pl
@@ -200,8 +190,8 @@ doExchange p = do
         [] -> justDoNothing
         [only] -> transfer (Influence pl) CourtDeck (RoleCard only)
         (r0 : _ : _) -> do
-          chosen <- makeChoice (opts pl (map Reveal roles))
-          let role = case chosen of Reveal r -> r; _ -> r0
+          chosen <- makeChoice (opts pl (map ReturnCard roles))
+          let role = case chosen of ReturnCard r -> r; _ -> r0
           transfer (Influence pl) CourtDeck (RoleCard role)
 
 -- | The active player's menu of legal actions.
@@ -225,55 +215,61 @@ chooseAction p = do
 coupRunPlay :: CoupPlayName -> CoupM ()
 coupRunPlay Income = activePlayer $ \p -> do
   gainCoins p 1
-  sayBy p (pname p <> tpack " takes Income (+1 coin)")
+  announceBy p "takes Income (+1 coin)"
 coupRunPlay ForeignAid = activePlayer $ \p -> do
-  sayBy p (pname p <> tpack " attempts Foreign Aid")
+  announceBy p "attempts Foreign Aid"
   others <- aliveOthers p
   blocked <- blockWindow others [(BlockForeignAid, Duke)] -- any Duke can block
   if blocked
-    then sayBy p (pname p <> tpack "'s Foreign Aid is blocked")
+    then announceBy p "Foreign Aid is blocked"
     else do
       gainCoins p 2
-      sayBy p (pname p <> tpack " collects " <> coinsWord 2 <> tpack " (Foreign Aid)")
+      announceBy p ("collects " <> coinsWord 2 <> " (Foreign Aid)")
 coupRunPlay TakeTax = activePlayer $ \p -> do
-  sayBy p (pname p <> tpack " claims Duke and attempts Tax")
+  announceBy p "claims Duke and attempts Tax"
   stands <- challengeWindow p Duke
   if stands
     then do
       gainCoins p 3
-      sayBy p (pname p <> tpack " collects " <> coinsWord 3 <> tpack " (Tax)")
+      announceBy p ("collects " <> coinsWord 3 <> " (Tax)")
     else justDoNothing -- the caught bluff was already announced
 coupRunPlay (LaunchCoup target) = activePlayer $ \p -> do
   payCoins p 7
-  sayBy p (pname p <> tpack " pays " <> coinsWord 7 <> tpack " and launches a Coup against " <> pname target)
+  announceBy p ("pays " <> coinsWord 7 <> " and launches a Coup against " <> pname target)
   loseInfluence target
 coupRunPlay (Assassinate target) = activePlayer $ \p -> do
   payCoins p 3 -- paid whether or not it lands
-  sayBy p (pname p <> tpack " pays " <> coinsWord 3 <> tpack " and claims Assassin against " <> pname target)
+  announceBy p ("pays " <> coinsWord 3 <> " and claims Assassin against " <> pname target)
   stands <- challengeWindow p Assassin
   targetAlive <- hasInfluence target
   if stands && targetAlive
     then do
       blocked <- blockWindow [target] [(BlockAssassination, Contessa)]
-      if blocked
-        then sayBy p (pname p <> tpack "'s assassination of " <> pname target <> tpack " is blocked")
-        else do
-          sayBy target (pname target <> tpack " is assassinated!")
-          loseInfluence target
+      -- a caught Contessa bluff may have eliminated the target already
+      stillAlive <- hasInfluence target
+      if
+        | blocked -> announceBy p ("assassination of " <> pname target <> " is blocked")
+        | stillAlive -> do
+            announceBy target "is assassinated!"
+            loseInfluence target
+        | otherwise -> justDoNothing
     else justDoNothing
 coupRunPlay (Steal target) = activePlayer $ \p -> do
-  sayBy p (pname p <> tpack " claims Captain and attempts to steal from " <> pname target)
+  announceBy p ("claims Captain and attempts to steal from " <> pname target)
   stands <- challengeWindow p Captain
   targetAlive <- hasInfluence target
   if stands && targetAlive
     then do
       blocked <- blockWindow [target] [(BlockStealCaptain, Captain), (BlockStealAmbassador, Ambassador)]
-      if blocked
-        then sayBy p (pname p <> tpack "'s theft from " <> pname target <> tpack " is blocked")
-        else stealCoins p target
+      -- an eliminated player's coins return to the treasury, so nothing to steal
+      stillAlive <- hasInfluence target
+      if
+        | blocked -> announceBy p ("theft from " <> pname target <> " is blocked")
+        | stillAlive -> stealCoins p target
+        | otherwise -> justDoNothing
     else justDoNothing
 coupRunPlay ExchangeCards = activePlayer $ \p -> do
-  sayBy p (pname p <> tpack " claims Ambassador and attempts to Exchange")
+  announceBy p "claims Ambassador and attempts to Exchange"
   stands <- challengeWindow p Ambassador
   if stands then doExchange p else justDoNothing
 -- reaction / sub-choice plays resolve to nothing; orchestration code branches
@@ -287,12 +283,13 @@ coupRunPlay _ = justDoNothing
 -- themselves via a failed bluff.
 advanceToNextAlive :: CoupM ()
 advanceToNextAlive = do
-  ps <- lookPlayers
   current <- lookCurrentTurnOwner
-  alive <- filterM hasInfluence ps
-  case filter (> current) alive ++ filter (< current) alive of
-    (nxt : _) -> advanceTurn (playerTurn nxt)
-    [] -> justDoNothing -- only the current player remains; checkWin ends it
+  alive <- filterM hasInfluence =<< lookPlayers
+  case nextPlayerAmong current alive of
+    Just nxt -> advanceTurn (playerTurn nxt)
+    -- Unreachable: when one player remains, checkWin has already called
+    -- endGame, which halts the rule before we get here.
+    Nothing -> error "Coup.advanceToNextAlive: no other player holds influence"
 
 -- Initialization ---------------------------------------------------------------
 
@@ -314,7 +311,7 @@ score :: Player -> CoupM Int
 score p = ifM (hasInfluence p) 1 0
 
 coupPhases :: CoupPhaseName -> CoupPhase
-coupPhases name@(CoupTurn _) =
+coupPhases name@(CoupTurnPhase _) =
   mkPhase name (activePlayer chooseAction >> advanceToNextAlive)
 
 initGameState :: Int -> CoupGameState
@@ -325,7 +322,7 @@ initGameState numPlayers =
    in GameState
         { players = pset,
           objects = initGameObjects pset,
-          currentPhase = CoupTurn first,
+          currentPhase = CoupTurnPhase first,
           currentTurn = playerTurn first,
           nextTurn = playerTurn first, -- overwritten by advanceToNextAlive
           visibility = coupVisibility players

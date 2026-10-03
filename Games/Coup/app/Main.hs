@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-
 -- | Local Coup: you drive Player 1 through the Brick TUI; the remaining seats
 -- are filled by random-move AI agents. No trained checkpoint required.
 module Main where
@@ -9,7 +7,7 @@ import Brick.BChan (newBChan)
 import Brick.Game.Tui (TUIMode (..), TUIState (..))
 import Control.Concurrent (forkIO)
 import Control.Lens ((^.))
-import Control.Monad (forM_, void)
+import Control.Monad (forM_, void, when)
 import Coup (coup, coupRules, initGameState)
 import Data.List (elemIndex)
 import qualified Data.Map as M
@@ -22,23 +20,19 @@ import Interface.Protocol (RewardConfig (ZeroSum))
 import Run (runGameSeparateChannelsNoLogs)
 import Run.Game (RunMode (..), runGame)
 import System.Environment (getArgs)
+import System.Exit (exitFailure)
 import Text.Read (readMaybe)
 import Tui (app)
-
--- | Player count from @--players N@ (default 3, clamped to Coup's 2–6).
-parsePlayers :: [String] -> Int
-parsePlayers args =
-  let n = case dropWhile (/= "--players") args of
-        (_ : v : _) -> fromMaybe 3 (readMaybe v)
-        _ -> 3
-   in max 2 (min 6 n)
 
 main :: IO ()
 main = do
   args <- getArgs
   let argPairs = zip args (drop 1 args)
-      numPlayers = parsePlayers args
-      -- Training / trained-play modes go through the shared runGame harness.
+      numPlayers = fromMaybe 3 $ lookup "--players" argPairs >>= readMaybe
+  when (numPlayers < 2 || numPlayers > 6) $ do
+    putStrLn "Error: --players must be between 2 and 6"
+    exitFailure
+  let -- Training / trained-play modes go through the shared runGame harness.
       run = runGame coup (Just app) "logs/coup.log" "logs/coup.json" numPlayers
   case () of
     _
@@ -46,7 +40,7 @@ main = do
       | "--collect" `elem` args -> run Collect -- BC data collection
       | "--ws-agents" `elem` args ->
           let checkpoint = args !! succ (fromJust (elemIndex "--ws-agents" args))
-              humanN = maybe 0 read (lookup "--human-player" argPairs)
+              humanN = fromMaybe 0 (lookup "--human-player" argPairs >>= readMaybe)
            in run (WSAgents checkpoint humanN) -- play vs a trained checkpoint
       | "--auto" `elem` args -> autoMain numPlayers -- headless random self-play
       | otherwise -> tuiMain numPlayers -- default: play vs random agents in the TUI
