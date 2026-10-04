@@ -13,7 +13,7 @@ import Control.Monad
 import Data.Maybe (fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Effectful (MonadIO (..))
+import Control.Monad.IO.Class (MonadIO (..))
 import GHC.Generics (Generic)
 import Game.Agent (BEvent (..), extractReceive, extractRequest)
 import Game.Options (Options)

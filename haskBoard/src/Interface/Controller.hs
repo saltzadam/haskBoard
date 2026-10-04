@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -8,21 +7,18 @@ module Interface.Controller
   ( PlayerInterface (..),
     GameController (..),
     agentToInterface,
-    chooseInterface,
+    controllerInterface,
     buildInterface,
   )
 where
 
 import Control.Concurrent (Chan, newChan, readChan, writeChan)
-import Control.Exception (Exception)
-import Control.Exception.Base (throw)
+import Control.Exception (Exception, throwIO)
 import Control.Lens (at, makeLenses, to, (^.))
 import Data.Foldable (traverse_)
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Text
-import Effectful
-import Effectful.Dispatch.Dynamic (interpret)
 import GHC.Generics (Generic)
 import Game.Agent (Agent (..))
 import Game.Choose
@@ -50,62 +46,42 @@ newtype GameController l cn r ph pl = GameController
 makeLenses ''PlayerInterface
 makeLenses ''GameController
 
--- Interpret the Interface effect using a controller
-chooseInterface ::
-  (IOE :> es) =>
-  GameController l cn r ph pl ->
-  Eff (Interface l cn r ph pl : es) a ->
-  Eff es a
-chooseInterface controller = interpret $ \_ -> \case
-  Update gs scores -> sendUpdate controller gs scores
-  Choose gs opts -> sendChoice controller gs opts
-  AnnounceWinners winners -> sendWinners controller winners
-  Announce speaker announcement -> sendAnnouncement controller speaker announcement
-
 data ControllerException = NoSuchInterface Player deriving (Eq, Ord, Show)
 
 instance Exception ControllerException
 
--- sendUpdate :: _
-sendUpdate :: (IOE :> es) => GameController l cn r ph pl -> GameState l cn r ph pl -> Map Player Int -> Eff es ()
-sendUpdate gc gs scores = liftIO $ traverse_ (sendUpdate' gs) (gc ^. #playerInterfaces . to M.toList)
-  where
-    sendUpdate' :: GameState l cn r ph pl -> (Player, PlayerInterface l cn r ph pl) -> IO ()
-    sendUpdate' gs' (p, interface) =
-      writeChan
-        (interface ^. #fromGameChannel)
-        (SendState (viewGameStateAs gs' (LookAs p)) scores)
+-- | An 'Interface' that talks to each player through their channels.
+controllerInterface :: GameController l cn r ph pl -> Interface l cn r ph pl
+controllerInterface gc =
+  Interface
+    { choose = sendChoice gc,
+      update = sendUpdate gc,
+      announceWinners = sendWinners gc,
+      announce = sendAnnouncement gc
+    }
 
--- TODO: use some other idiom w/ throw
-sendChoice :: forall l cn r ph pl es. (IOE :> es) => GameController l cn r ph pl -> GameState l cn r ph pl -> Options pl -> Eff es pl
-sendChoice gc@(GameController interfaceMap) gs opts =
-  if chooser `notElem` M.keys interfaceMap
-    then throw (NoSuchInterface chooser)
-    else sendChoice' gc gs opts
+sendUpdate :: GameController l cn r ph pl -> GameState l cn r ph pl -> Map Player Int -> IO ()
+sendUpdate gc gs scores = traverse_ send (gc ^. #playerInterfaces . to M.toList)
   where
-    chooser = opts ^. #owner
+    send (p, interface) =
+      writeChan (interface ^. #fromGameChannel) (SendState (viewGameStateAs gs (LookAs p)) scores)
 
-sendChoice' :: forall l cn r ph pl es. (IOE :> es) => GameController l cn r ph pl -> GameState l cn r ph pl -> Options pl -> Eff es pl
-sendChoice' gc gs opts = case gc ^. #playerInterfaces . at chooser of
-  Nothing -> throw (NoSuchInterface chooser)
-  Just interface -> liftIO $ do
-    let gsv = viewGameStateAs gs (LookAs chooser)
-    writeChan (interface ^. #fromGameChannel) (SendOptions gsv opts)
+sendChoice :: GameController l cn r ph pl -> GameState l cn r ph pl -> Options pl -> IO pl
+sendChoice gc gs opts = case gc ^. #playerInterfaces . at chooser of
+  Nothing -> throwIO (NoSuchInterface chooser)
+  Just interface -> do
+    writeChan (interface ^. #fromGameChannel) (SendOptions (viewGameStateAs gs (LookAs chooser)) opts)
     readChan (interface ^. #toGameChannel)
   where
     chooser = opts ^. #owner
 
-sendWinners :: (IOE :> es) => GameController l cn r ph pl -> [Player] -> Eff es ()
-sendWinners gc winners = liftIO $ traverse_ sendWinners' (gc ^. #playerInterfaces . to M.elems)
-  where
-    sendWinners' :: PlayerInterface l cn r ph pl -> IO ()
-    sendWinners' interface = writeChan (interface ^. #fromGameChannel) (SendWinners winners)
+sendWinners :: GameController l cn r ph pl -> [Player] -> IO ()
+sendWinners gc winners =
+  traverse_ (\i -> writeChan (i ^. #fromGameChannel) (SendWinners winners)) (gc ^. #playerInterfaces . to M.elems)
 
-sendAnnouncement :: (IOE :> es) => GameController l cn r ph pl -> Maybe Player -> Text -> Eff es ()
-sendAnnouncement gc speaker announcement = liftIO $ traverse_ sendAnnouncement' (gc ^. #playerInterfaces . to M.elems)
-  where
-    sendAnnouncement' :: PlayerInterface l cn r ph pl -> IO ()
-    sendAnnouncement' interface = writeChan (interface ^. #fromGameChannel) (SendAnnouncement speaker announcement)
+sendAnnouncement :: GameController l cn r ph pl -> Maybe Player -> Text -> IO ()
+sendAnnouncement gc speaker announcement =
+  traverse_ (\i -> writeChan (i ^. #fromGameChannel) (SendAnnouncement speaker announcement)) (gc ^. #playerInterfaces . to M.elems)
 
 buildInterface :: [Player] -> IO (GameController l cn r ph pl)
 buildInterface ps = GameController . M.fromList <$> traverse go ps

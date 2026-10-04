@@ -1,22 +1,18 @@
 module Run (runGameSeparateChannels, runGameSeparateChannelsNoLogs) where
 
-import Control.Lens ((^.))
 import qualified Data.Map as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Effectful (runEff)
-import Effectful.Crypto.RNG
-import Effectful.Reader.Static (runReader)
-import Effectful.State.Static.Shared (evalState)
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
-import Game.GameE
+import Game.GameE (Env (..), playGame)
 import Game.GameState
 import Game.Player (Player (..))
-import Interface.Controller (GameController, chooseInterface)
-import Log
+import Interface.Controller (GameController, controllerInterface)
+import Log (LogTag (..), mkLogger, nullLogger)
 import System.Directory (createDirectoryIfMissing)
 import System.FilePath (takeDirectory)
 import System.IO (IOMode (..), withFile)
+import System.Random (initStdGen)
 
 runGameSeparateChannels ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
@@ -29,7 +25,7 @@ runGameSeparateChannels ::
   GameRules l cn r ph pl ->
   IO (GameState l cn r ph pl, [Player])
 runGameSeparateChannels logFile jsonFile winnersFile humanPlayer controller gameState gameRules = do
-  gen <- newCryptoRNGState
+  gen <- initStdGen
   createDirectoryIfMissing True (takeDirectory jsonFile)
   withFile logFile WriteMode $ \hAction ->
     withFile jsonFile AppendMode $ \hChoice ->
@@ -40,13 +36,10 @@ runGameSeparateChannels logFile jsonFile winnersFile humanPlayer controller game
               , (ChoiceLog,  const (return ()))
               , (WinnersLog, \t -> TIO.hPutStrLn hWinners (t <> humanSuffix))
               ]
-        runEff
-          . evalState gameState
-          . runCryptoRNG gen
-          . runReader gameRules
-          . chooseInterface controller
-          . runLogger writers
-          $ playGameTurns (gameRules ^. #setupPhase)
+        playGame
+          Env {rules = gameRules, interface = controllerInterface controller, logger = mkLogger writers}
+          gameState
+          gen
 
 runGameSeparateChannelsNoLogs ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
@@ -55,11 +48,8 @@ runGameSeparateChannelsNoLogs ::
   GameRules l cn r ph pl ->
   IO (GameState l cn r ph pl, [Player])
 runGameSeparateChannelsNoLogs controller gameState gameRules = do
-  gen <- newCryptoRNGState
-  runEff
-    . evalState gameState
-    . runCryptoRNG gen
-    . runReader gameRules
-    . chooseInterface controller
-    . nullLogger
-    $ playGameTurns (gameRules ^. #setupPhase)
+  gen <- initStdGen
+  playGame
+    Env {rules = gameRules, interface = controllerInterface controller, logger = nullLogger}
+    gameState
+    gen
