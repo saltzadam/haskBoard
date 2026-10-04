@@ -91,7 +91,7 @@ applyAction action (gs, g) = case action of
   RollCounter c ->
     let (v, g') = R.randomR (gs ^. counter c . #bounds) g
      in (set (counterVal c) v gs, g')
-  TransferCounter from to -> (over (#objects . #counters) (transferCounter from to) gs, g)
+  TransferCounter cnfrom cnto -> (over (#objects . #counters) (transferCounter cnfrom cnto) gs, g)
   Shuffle l -> case gs ^. location l of
     Deck cards ->
       let (shuffled, g') = shuffleList (F.toList cards) g

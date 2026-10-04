@@ -117,13 +117,14 @@ stepTests =
             chips l = howManyF (gs' ^. #objects . #locations . ftAt l) (== Chip)
         chips (PlayerStuff p1) @?= 10
         chips ChipPile @?= 1
-    , testCase "shuffle keeps the cards and is reproducible" $ do
+    , testCase "shuffle keeps the cards and depends on the seed" $ do
         let (gs, _, _) = noMerci 3
             shuffled seed = fst (applyAction (Shuffle CardDeck) (gs, mkStdGen seed))
             locInv s = inventory (s ^. #objects . #locations . ftAt CardDeck)
         locInv (shuffled 1) @?= locInv gs
-        deckList (shuffled 1) @?= deckList (shuffled 1)
         assertBool "order changed" (deckList (shuffled 1) /= deckList gs)
+        assertBool "seed matters" (deckList (shuffled 1) /= deckList (shuffled 2))
+        assertBool "generator advances" (snd (applyAction (Shuffle CardDeck) (gs, mkStdGen 1)) /= mkStdGen 1)
     , testCase "shuffleList edge cases" $ do
         fst (shuffleList ([] :: [Int]) (mkStdGen 0)) @?= []
         fst (shuffleList [7 :: Int] (mkStdGen 0)) @?= [7]
