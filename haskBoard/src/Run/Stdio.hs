@@ -28,7 +28,7 @@ import Game.GameState (GameRules, GameState)
 import Game.Options (Options (..), decodeAction, legalActionIndices)
 import Game.Player (Player (..))
 import Game.View (GameObjectsView (..), GameStateView (..))
-import Interface.Hint (HintM, applyHintsPure)
+import Interface.Hint (HintM, applyHints)
 import Interface.Protocol (ActionSource (..), InMsg (..), InitMsg, RewardConfig (..), StepMsg (..), addScoresToObs, buildInitMsg, computeReward, encodeGameObjectsObs)
 import System.Exit (exitSuccess)
 
@@ -91,7 +91,7 @@ runStdioAgent totals hints selfPlay rc thisPlayer lock allPlayers gr fromChan to
         let legal    = legalActionIndices opts
         if selfPlay
           then do
-            let hintResult = applyHintsPure gsv hints opts
+            let hintResult = applyHints gsv hints opts
             chosenPlay <- case hintResult of
               Just play -> return play
               Nothing -> do

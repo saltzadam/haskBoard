@@ -37,10 +37,10 @@ end (Track slots) = NE.last slots
 startTrack :: r -> l -> Track l -> GameRule l cn r ph pl ()
 startTrack piece currLoc (Track slots) = act (MkTransfer currLoc (NE.head slots) piece)
 
-lookSlot :: (Ord r, Finitary l, Ord l) => Track l -> l -> Maybe (GameRule l cn r ph pl (LocationShape r))
+lookSlot :: (QueryM l cn r ph pl m, Ord r, Finitary l, Ord l) => Track l -> l -> Maybe (m (LocationShape r))
 lookSlot (Track slots) l = fmap lookLocation (find (== l) slots)
 
-lookPosition :: (Eq l) => Track l -> Int -> Maybe (GameRule l cn r ph pl (LocationShape r))
+lookPosition :: (QueryM l cn r ph pl m, Eq l) => Track l -> Int -> Maybe (m (LocationShape r))
 lookPosition (Track slots) i =
   let enumSlots = zip [1 ..] (NE.toList slots)
    in fmap lookLocation (lookup i enumSlots)
@@ -104,26 +104,26 @@ recede res track = do
     Left _ -> return ()
     Right action -> act action
 
-count :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl Int
+count :: (QueryM l cn r ph pl m, Ord r, Eq l) => r -> Track l -> m Int
 count res (Track slots) = sum <$> traverse (`howManyAt` res) slots
 
-holds :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl Bool
+holds :: (QueryM l cn r ph pl m, Ord r, Eq l) => r -> Track l -> m Bool
 holds res track' = (> 0) <$> count res track'
 
-rMinSlot :: forall r l cn ph pl. (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl (Maybe l)
+rMinSlot :: forall r l cn ph pl m. (QueryM l cn r ph pl m, Ord r, Eq l) => r -> Track l -> m (Maybe l)
 rMinSlot res (Track slots) = go res slots
   where
-    go :: r -> NonEmpty l -> GameRule l cn r ph pl (Maybe l)
+    go :: r -> NonEmpty l -> m (Maybe l)
     go r (slot :| []) = ifM (slot `has` r) (pure $ Just slot) (pure Nothing)
     go r (slot :| (next : rest)) = ifM (slot `has` r) (pure $ Just slot) (go r (next :| rest))
 
-rMaxSlot :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl (Maybe l)
+rMaxSlot :: (QueryM l cn r ph pl m, Ord r, Eq l) => r -> Track l -> m (Maybe l)
 rMaxSlot res (Track slots) = rMinSlot res (Track (NE.reverse slots))
 
-rMinHeight :: (Ord r, Eq a) => r -> Track a -> GameRule a cn r ph pl (Maybe Int)
+rMinHeight :: (QueryM a cn r ph pl m, Ord r, Eq a) => r -> Track a -> m (Maybe Int)
 rMinHeight res track = (slotHeight track =<<) <$> rMinSlot res track
 
-rMaxHeight :: (Ord r, Eq a) => r -> Track a -> GameRule a cn r ph pl (Maybe Int)
+rMaxHeight :: (QueryM a cn r ph pl m, Ord r, Eq a) => r -> Track a -> m (Maybe Int)
 rMaxHeight res track = (slotHeight track =<<) <$> rMaxSlot res track
 
 removeAll :: (Ord r, Eq l) => r -> Track l -> l -> GameRule l cn r ph pl ()
@@ -132,7 +132,7 @@ removeAll res track target = do
   replicateM_ num (transferFrom track target res)
 
 
-resAtTop :: (Ord r, Eq l) => r -> Track l -> GameRule l cn r ph pl Bool
+resAtTop :: (QueryM l cn r ph pl m, Ord r, Eq l) => r -> Track l -> m Bool
 resAtTop r track = do
   rSlot <- rMaxSlot r track
   let height = slotHeight track =<< rSlot

@@ -47,7 +47,7 @@ import GHC.Generics (Generic)
 import Game.GameStateBase (GameState (..))
 import Game.Location
 import Game.Player
-import Game.Rules (GameRule)
+import Game.Rules (GameRule, Query)
 import Game.Visibility (VisibilityMap (..))
 
 data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame [Player] deriving (Eq, Ord, Show, Generic)
@@ -65,7 +65,7 @@ type PlayRunner l cn r ph pl = pl -> GameRule l cn r ph pl ()
 data GameRules l cn r ph pl = GameRules
   { playRunner :: PlayRunner l cn r ph pl,
     phases :: ph -> Phase ph l cn r pl,
-    score :: Player -> GameRule l cn r ph pl Int,
+    score :: Player -> Query l cn r ph pl Int,
     -- | (lo, hi) bounds used to describe the score observation space.
     scoreBounds :: (Int, Int),
     -- | When True, all players' scores are included in every agent's observation.
@@ -113,7 +113,7 @@ getRunner = Reader.asks (view #playRunner)
 getPhases :: (GameRun l cn r ph pl :> es) => Eff es (ph -> Phase ph l cn r pl)
 getPhases = Reader.asks (view #phases)
 
-getScore :: (GameRun l cn r ph pl :> es) => Eff es (Player -> GameRule l cn r ph pl Int)
+getScore :: (GameRun l cn r ph pl :> es) => Eff es (Player -> Query l cn r ph pl Int)
 getScore = Reader.asks (view #score)
 
 getSetupPhase :: (GameRun l cn r ph pl :> es) => Eff es (Maybe (GameRule l cn r ph pl ()))

@@ -5,72 +5,22 @@
 
 module Game.View where
 
-import Control.Lens (to, (^.), view, Getting)
+import Control.Lens (to, (^.), view)
 import Control.Lens.TH (makeFields)
-import Control.Monad.Free (Free (..))
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, Value, decodeStrict, object, withObject, (.:), (.=))
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GameResource)
 import Data.Finitary (Finitary, inhabitants)
-import Data.Text (pack)
+import Data.Text (Text, pack)
 import Data.Maybe (fromJust)
 import Data.Set (Set)
-import Data.Text (Text)
 import qualified Data.Text.Encoding as T
-import Effectful (Eff, (:>))
 import FinitaryMap (FTMap (..), ftAt, (!!!))
 import GHC.Generics (Generic)
 import Game.GameState
 import Data.Map (Map)
-import Game.Location (Counter (Counter), GameObjects (..), GymSpace (..), LocationShape (..), counterSpace, decodeLocationShape, encodeCounter, encodeLocationShape, locationShapeSpace, inventoryTotals, fromGymShape, toGymShape)
-import Game.Options (Options)
+import Game.Location (Counter (Counter), GameObjects (..), GymSpace (..), LocationShape (..), counterSpace, decodeLocationShape, encodeCounter, encodeLocationShape, locationShapeSpace, fromGymShape, toGymShape)
 import Game.Player (Player, Turn (..))
-import Game.Rules
-import Game.Visibility (LookerType (..), VisData (..), VisibilityMap (..), VisibilityType (..), runVis, allInvisible)
-
--- View is used for writing UIs and interfaces. The controller sends the interface a View which only contains information that is Visible to the user.
--- There are two ways to produce Views. One uses the GameRule monad. This should enable some code reuse: 
--- the same code that defines the game rules can also be used for views, and visibility will "just work." 
--- But how to run it? Interfaces currently demand GameStateView. 
--- They could instead send GameRules for interpretation. So this is still WIP.
-
--- The other way is to explicitly create a GameStateView object.
-
-viewRule :: (GameInteract l cn r ph pl :> es, Eq l, Eq cn) => Player -> (Options pl -> Eff es pl) -> GameRule l cn r ph pl a -> Eff es (Maybe a)
-viewRule p f (GameRule t) = viewRule' p f t
-
-viewRule' :: (Eq l, GameInteract l cn r ph pl :> es, Eq cn) => Player -> (Options pl -> Eff es pl) -> Free (GameRuleF l cn r ph pl) a -> Eff es (Maybe a)
-viewRule' p c (Free (Act _ next)) = viewRule' p c next
-viewRule' p c (Free (MakeChoice opts next)) = do
-  pl <- c opts
-  viewRule' p c (next pl)
-viewRule' p c (Free (LookLocation l next)) = do
-  shape <- useGameState (#objects . #locations . ftAt l)
-  withVisible p (VisLocation l) (viewRule' p c (next shape))
-viewRule' p c (Free (LookCounter cn next)) = do
-  shape <- useGameState (#objects . #counters . ftAt cn)
-  withVisible p (VisCounter cn) (viewRule' p c (next shape))
-viewRule' p c (Free (LookCurrentPhase next)) = do
-  phase <- useGameState #currentPhase
-  withVisible p VisCurrentPhase (viewRule' p c (next phase))
-viewRule' p c (Free (LookCurrentTurnOwner next)) = do
-  Turn currentPlayer _ <- useGameState #currentTurn
-  withVisible p (VisTurn currentPlayer) (viewRule' p c (next currentPlayer))
-viewRule' p c (Free (LookPlayers next)) = do
-  players <- useGameState #players
-  viewRule' p c (next players)
-viewRule' p c (Free (LookGameState next)) = do
-  gs <- getGameState
-  viewRule' p c (next gs)
-viewRule' _ _ (Pure a) = return (Just a)
-
-withVisible :: (GameInteract l cn r ph pl :> es) => Player -> VisData l cn -> Eff es (Maybe a) -> Eff es (Maybe a)
-withVisible p visData action = do
-  VisibilityMap canSee <- getVisibility
-  case canSee p visData of
-    Invisible -> return Nothing
-    Visible -> action
-
---- ====== ----
+import Game.Visibility (LookerType (..), VisData (..), VisibilityMap (..), runVis, allInvisible)
 
 data GameStateView l cn r ph = GameStateView
   { playersView :: Set Player,
@@ -181,17 +131,6 @@ viewGameStateAs gs LookFull = project gs
 
 makeFields ''GameStateView
 makeFields ''GameObjectsView
-
-getsGameStateView :: forall l cn r ph pl b es . (GameInteract l cn r ph pl :> es) =>  Player -> (GameStateView l cn r ph -> b) -> Eff es b
-getsGameStateView p f = (getsGameState 
-    (f . (`viewGameStateAs` (LookAs p))
-  )
-    )
-
-useGameStateView :: (GameInteract l cn r ph pl :> es) => Player -> Getting b (GameStateView l cn r ph) b -> Eff es b
-useGameStateView p o = getsGameStateView p (view o)
-
-
 
 -- | Derive a GymSpace descriptor from a player's view of the game objects.
 -- Hidden locations/counters (Nothing in the view) are omitted entirely.

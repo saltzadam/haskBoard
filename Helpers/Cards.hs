@@ -32,7 +32,7 @@ drawAll deck hand = do
     Just _  -> draw deck hand >> drawAll deck hand
 
 -- | Look at the top N cards of a deck without moving them.
-peekN :: (Eq l) => Int -> l -> GameRule l cn r ph pl [r]
+peekN :: (QueryM l cn r ph pl m, Eq l) => Int -> l -> m [r]
 peekN n loc = do
   shape <- lookLocation loc
   case shape of
@@ -41,7 +41,7 @@ peekN n loc = do
 
 -- | Deal one card from a deck to each of the given players.
 dealTo :: (Eq l, Show r) => l -> (Player -> l) -> [Player] -> GameRule l cn r ph pl ()
-dealTo deck playerLoc = traverse_ (\p -> draw deck (playerLoc p))
+dealTo deck playerLoc = traverse_ (draw deck . playerLoc)
 
 -- | Deal N cards from a deck to each of the given players (round-robin).
 dealNTo :: (Eq l, Show r) => Int -> l -> (Player -> l) -> [Player] -> GameRule l cn r ph pl ()

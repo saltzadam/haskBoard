@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
@@ -115,6 +116,10 @@ type NMOptions = Options NMPlayName
 type NMGameRules = GameRules NMLocation NoCounters NMResource NMPhaseName NMPlayName
 
 type NMM a = GameRule NMLocation NoCounters NMResource NMPhaseName NMPlayName a
+
+type NMQ a = Query NMLocation NoCounters NMResource NMPhaseName NMPlayName a
+
+type NMLooks m = QueryM NMLocation NoCounters NMResource NMPhaseName NMPlayName m
 
 type NMView = GameStateView NMLocation NoCounters NMResource NMPhaseName
 

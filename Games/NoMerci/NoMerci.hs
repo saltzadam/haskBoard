@@ -33,7 +33,7 @@ chooseMove p = do
           else Options [Take] p
   makeChoice_ options
 
-score :: Player -> NMM Int
+score :: Player -> NMQ Int
 score p =
   let cardScore = scoreCards <$> whatsAt (PlayerStuff p)
       chipScore = howManyAt (PlayerStuff p) Chip
@@ -45,7 +45,7 @@ checkEnd =
     (CardDeck `hasAny` cards)
     justDoNothing
     ( do
-        winners <- maximaByScoreM score =<< lookPlayers
+        winners <- maximaByScoreM (query . score) =<< lookPlayers
         endGame winners
     )
 
@@ -108,7 +108,10 @@ noMerci numPlayers =
 -- Take something if it has more chips than its value
 -- if you have the most chips and the card is >=18, don't take it
 
+hint :: a -> NMQ (Maybe a)
 hint x = return (Just x)
+
+noHint :: NMQ (Maybe a)
 noHint = return Nothing
 
 -- lookCenterCardVal :: GameRule NMLocation cn NMResource ph pl (Maybe Int)

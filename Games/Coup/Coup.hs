@@ -47,23 +47,23 @@ gainCoins p n = replicateM_ n (incrementCounter (PlayerCoins p))
 payCoins :: Player -> Int -> CoupM ()
 payCoins p n = replicateM_ n (decrementCounter (PlayerCoins p))
 
-coinsOf :: Player -> CoupM Int
+coinsOf :: (CoupLooks m) => Player -> m Int
 coinsOf p = lookCounterVal (PlayerCoins p)
 
 -- Influence --------------------------------------------------------------------
 
 -- | Distinct roles a player currently holds face-down.
-influenceRoles :: Player -> CoupM [Role]
+influenceRoles :: (CoupLooks m) => Player -> m [Role]
 influenceRoles p = map roleOf . S.toList <$> whatsAt (Influence p)
 
 -- | Total face-down cards (counts duplicate roles).
-influenceCount :: Player -> CoupM Int
+influenceCount :: (CoupLooks m) => Player -> m Int
 influenceCount p = sum <$> resourcesAt (Influence p)
 
-hasInfluence :: Player -> CoupM Bool
+hasInfluence :: (CoupLooks m) => Player -> m Bool
 hasInfluence p = (> 0) <$> influenceCount p
 
-aliveOthers :: Player -> CoupM [Player]
+aliveOthers :: (CoupLooks m) => Player -> m [Player]
 aliveOthers p = filterM hasInfluence =<< lookOtherPlayers p
 
 -- | Flip one of @p@'s face-down cards face-up (a lost influence).
@@ -307,7 +307,7 @@ coupSetup = do
   players <- lookPlayers
   Cards.dealNTo 2 CourtDeck Influence players
 
-score :: Player -> CoupM Int
+score :: Player -> CoupQ Int
 score p = ifM (hasInfluence p) 1 0
 
 coupPhases :: CoupPhaseName -> CoupPhase

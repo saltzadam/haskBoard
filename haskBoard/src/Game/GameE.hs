@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module Game.GameE (playGameTurns, evalRule, evalRule') where
+module Game.GameE (playGameTurns) where
 
 import Control.Applicative (asum)
 import Control.Lens (to, (^.))
@@ -33,29 +33,11 @@ import Util (tshow)
 -- TODO: some kind of history besides log
 -- TODO: consider modifying/assign w/ built-in updateGS
 
--- | Read-only interpreter for GameRule: evaluates Look* nodes against current
--- game state and returns the result. Must not be used with rules that contain
--- Act or MakeChoice nodes.
-evalRule' :: (Eq l, Eq cn, GameInteract l cn r ph pl :> es) => Free (GameRuleF l cn r ph pl) a -> Eff es a
-evalRule' (Pure a)                        = return a
-evalRule' (Free (LookLocation l k))       = useGameState (#objects . #locations . ftAt l) >>= evalRule' . k
-evalRule' (Free (LookCounter cn k))       = useGameState (#objects . #counters . ftAt cn) >>= evalRule' . k
-evalRule' (Free (LookPlayers k))          = useGameState #players >>= evalRule' . k
-evalRule' (Free (LookCurrentPhase k))     = useGameState #currentPhase >>= evalRule' . k
-evalRule' (Free (LookCurrentTurnOwner k)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= evalRule' . k
-evalRule' (Free (LookGameState k))        = getGameState >>= evalRule' . k
-evalRule' (Free (Act _ _))                = error "evalRule: score function must not perform actions"
-evalRule' (Free (MakeChoice _ _))         = error "evalRule: score function must not make choices"
-
-evalRule :: (Eq l, Eq cn, GameInteract l cn r ph pl :> es) => GameRule l cn r ph pl a -> Eff es a
-evalRule (GameRule rule) = evalRule' rule
-
 updateGS :: (Eq l, Eq cn, GameInteract l cn r ph pl :> es, GameRun l cn r ph pl :> es, Interface l cn r ph pl :> es) => Eff es ()
 updateGS = do
   gs      <- getGameState
   scoreFn <- getScore
-  scores  <- M.fromList <$> traverse (\p -> fmap (\s -> (p, s)) (evalRule (scoreFn p))) (S.toList (gs ^. #players))
-  update gs scores
+  update gs (M.fromSet (\p -> runQuery (scoreFn p) gs) (gs ^. #players))
 
 logAction2 :: (GameInteract l cn r ph pl :> es, Log2 :> es, Show cn, Show ph, Ord r, Eq l, Show r, Show l, Eq cn) => GameAction l cn r ph -> Eff es ()
 logAction2 (IncrementCounter cn) = do
@@ -156,7 +138,7 @@ runGameAction a@(AdvanceTurn t) = do
 runGameAction a@(EndGame winners) = do
   gs <- getGameState
   scoreFn <- getScore
-  scores <- traverse (evalRule . scoreFn) (S.toList (gs ^. #players))
+  let scores = map (\p -> runQuery (scoreFn p) gs) (S.toList (gs ^. #players))
   logWinners (T.intercalate "," (map tshow scores))
   announceWinners winners
   logAction2 a
@@ -220,15 +202,6 @@ runRuleControl' (Free (MakeChoice opts k)) = do
   case result of
     PCContinue -> runRuleControl' (k pl)
     _          -> return result
-runRuleControl' (Free (LookLocation l next)) = do
-  shape <- useGameState (#objects . #locations . ftAt l)
-  runRuleControl' (next shape)
-runRuleControl' (Free (LookCounter cn next)) = do
-  counter <- useGameState (#objects . #counters . ftAt cn)
-  runRuleControl' (next counter)
-runRuleControl' (Free (LookCurrentPhase next)) = useGameState #currentPhase >>= runRuleControl' . next
-runRuleControl' (Free (LookCurrentTurnOwner next)) = useGameState (#currentTurn . to (\(Turn p _) -> p)) >>= runRuleControl' . next
-runRuleControl' (Free (LookPlayers next)) = useGameState #players >>= runRuleControl' . next
 runRuleControl' (Free (LookGameState next)) = getGameState >>= runRuleControl' . next
 runRuleControl' (Pure _) = return PCContinue
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# HLINT ignore "Use newtype instead of data" #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
@@ -16,7 +17,7 @@ import Game.GameState (GameRules, GameState, Phase)
 import Game.Location
 import Game.Options (Options)
 import Game.Player
-import Game.Rules (GameRule)
+import Game.Rules (GameRule, Query, QueryM)
 import Game.View (GameStateView)
 import Interface.Hint (HintM)
 
@@ -141,6 +142,10 @@ type CoupOptions = Options CoupPlayName
 type CoupGameRules = GameRules CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName
 
 type CoupM a = GameRule CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName a
+
+type CoupQ a = Query CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName a
+
+type CoupLooks m = QueryM CoupLocation CoupCounter CoupResource CoupPhaseName CoupPlayName m
 
 type CoupView = GameStateView CoupLocation CoupCounter CoupResource CoupPhaseName
 

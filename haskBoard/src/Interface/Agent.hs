@@ -9,11 +9,8 @@ import Data.Finitary (Finitary)
 import Game.Agent
 import Game.Choose
 import Game.Options
-import Game.View (GameStateView, inject)
 import qualified Data.Set.NonEmpty as NESet
-import Interface.Hint (applyHints, HintM)
-import Effectful.State.Static.Shared (evalState)
-import Effectful (runEff)
+import Interface.Hint (HintM, applyHints)
 
 runAgentIO :: (Finitary l, Finitary cn, Show cn, Show l, Show r) => Agent l cn r ph pl IO -> IO ()
 runAgentIO agent = forever $ do
@@ -50,7 +47,7 @@ brickAgent fromGameChan toBrickBChan toGameChan fromBrickBChan =
 -- | Agent that applies hints in order, falling back to random choice.
 -- Pass @[]@ for a purely random agent.
 randomAgent ::
-  (Eq l, Eq cn) => [HintM l cn r ph pl] ->
+  [HintM l cn r ph pl] ->
   Chan (GameToInterfacePayload l cn r ph pl) ->
   Chan pl ->
   Agent l cn r ph pl IO
@@ -64,11 +61,10 @@ randomAgent hints fromGameChan toGameChan =
       toGameChannel = toGameChan
     }
   where
-    chooseWithHints gsv options@(Options legal _) = do
-      hintedChoice <- runEff . evalState (inject gsv) $ applyHints hints options
-      case hintedChoice of
+    chooseWithHints gsv options@(Options legal _) =
+      case applyHints gsv hints options of
         Just y -> return y
         Nothing -> do
           let n = NESet.size legal
-          i <- randomRIO (0,n-1)
+          i <- randomRIO (0, n - 1)
           return (foldr (:) [] legal !! i)

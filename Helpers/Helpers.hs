@@ -121,60 +121,60 @@ getNextTurnFrom mkTurn getPlayers gs =
 
 -- queries
 
-queryLocations :: (Eq l, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl (Map l (Map r Int))
+queryLocations :: (QueryM l cn r ph pl m, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> m (Map l (Map r Int))
 queryLocations lfilt rfilt =
   fmap (M.filter (not . null) . fmap (M.filterWithKey (\r _ -> rfilt r) . inventory)) . sequence $
     M.fromSet lookLocation (S.filter lfilt inhabitantsSet)
 
-queryLocationsHas :: (Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl (Map l [r])
+queryLocationsHas :: (QueryM l cn r ph pl m, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> m (Map l [r])
 queryLocationsHas lfilt rfilt = fmap M.keys <$> queryLocations lfilt rfilt
 
-queryResources :: (Eq l, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl (Map r (Map l Int))
+queryResources :: (QueryM l cn r ph pl m, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> m (Map r (Map l Int))
 queryResources lfilt rfilt = invertNestedMaps <$> queryLocations lfilt rfilt
 
 doNothing :: GameRule l cn r ph pl ()
 doNothing = pure ()
 
-queryResourcesAt :: (Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> GameRule l cn r ph pl (Map r [l])
+queryResourcesAt :: (QueryM l cn r ph pl m, Finitary l, Ord r, Ord l) => (l -> Bool) -> (r -> Bool) -> m (Map r [l])
 queryResourcesAt lfilt rfilt = fmap M.keys <$> queryResources lfilt rfilt
 
-resourcesAt :: (Ord r, Eq l) => l -> GameRule l cn r ph pl (Map r Int)
+resourcesAt :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> m (Map r Int)
 resourcesAt l = inventory <$> lookLocation l
 
-listResAtF :: (Ord r, Eq l, Finitary l, Ord l) => l -> (r -> Bool) -> GameRule l cn r ph pl [r]
+listResAtF :: (QueryM l cn r ph pl m, Ord r, Finitary l, Ord l) => l -> (r -> Bool) -> m [r]
 listResAtF l filt = M.keys <$> queryResourcesAt (== l) filt
 
-listResAt :: (Ord r, Eq l, Finitary l, Ord l) => l -> GameRule l cn r ph pl [r]
+listResAt :: (QueryM l cn r ph pl m, Ord r, Finitary l, Ord l) => l -> m [r]
 listResAt l = listResAtF l (const True)
 
-findResourceWithin' :: (Ord r, Eq l, Finitary l, Ord l) => r -> [l] -> GameRule l cn r ph pl [l]
+findResourceWithin' :: (QueryM l cn r ph pl m, Ord r, Finitary l, Ord l) => r -> [l] -> m [l]
 findResourceWithin' r locationNames = M.keys <$> queryLocations (`elem` locationNames) (== r)
 
-notWithin :: (Ord r, Eq l, Finitary l, Ord l) => r -> [l] -> GameRule l cn r ph pl Bool
+notWithin :: (QueryM l cn r ph pl m, Ord r, Finitary l, Ord l) => r -> [l] -> m Bool
 notWithin r locNames = null <$> findResourceWithin' r locNames
 
-howManyAt :: (Ord r, Eq l) => l -> r -> GameRule l cn r ph pl Int
+howManyAt :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> r -> m Int
 howManyAt l r = flip howMany' r <$> lookLocation l
 
 howManyAt' :: (Ord r) => Locations l r -> l -> r -> Int
 howManyAt' locs l = howMany' (locs !!! l)
 
-howManyAtF :: (Ord r, Eq l) => l -> r -> (Int -> Bool) -> GameRule l cn r ph pl Bool
+howManyAtF :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> r -> (Int -> Bool) -> m Bool
 howManyAtF l r predicate = predicate <$> howManyAt l r
 
-howManyWithin :: (Ord r, Eq l) => [l] -> r -> GameRule l cn r ph pl Int
+howManyWithin :: (QueryM l cn r ph pl m, Ord r, Eq l) => [l] -> r -> m Int
 howManyWithin ls r = sum <$> traverse (`howManyAt` r) ls
 
-peek :: (Eq l) => l -> GameRule l cn r ph pl (Maybe r)
+peek :: (QueryM l cn r ph pl m, Eq l) => l -> m (Maybe r)
 peek l = peek' <$> lookLocation l
 
-has :: (Ord r, Eq l) => l -> r -> GameRule l cn r ph pl Bool
+has :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> r -> m Bool
 has l r = (> 0) <$> howManyAt l r
 
 has'' :: (Ord r) => l -> r -> Locations l r -> Bool
 has'' l r locs = howManyAt' locs l r > 0
 
-hasMaybe :: (Ord a, Eq l) => l -> a -> GameRule l cn a ph pl (Maybe a)
+hasMaybe :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> r -> m (Maybe r)
 hasMaybe l r = do
   i <- howManyAt l r
   return $
@@ -182,16 +182,16 @@ hasMaybe l r = do
       then Just r
       else Nothing
 
-doesNotHave :: (Ord r, Eq l) => l -> r -> GameRule l cn r ph pl Bool
+doesNotHave :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> r -> m Bool
 doesNotHave l r = not <$> has l r
 
 doesNotHave' :: (Ord r) => l -> r -> Locations l r -> Bool
 doesNotHave' l r locs = not (has'' l r locs)
 
-anyHas :: (Ord r, Eq l) => l -> [r] -> GameRule l cn r ph pl Bool
+anyHas :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> [r] -> m Bool
 anyHas l = fmap or . traverse (has l)
 
-hasAny :: (Ord r, Eq l) => l -> [r] -> GameRule l cn r ph pl Bool
+hasAny :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> [r] -> m Bool
 hasAny = anyHas
 
 transferAll :: forall l r cn ph pl . (Ord r, Eq l, Finitary l, Ord l) => l -> l  -> GameRule l cn r ph pl ()
@@ -203,7 +203,7 @@ transferAll source target = do
 transferAllOf  :: (Ord r, Eq l) => l -> l -> r -> GameRule l cn r ph pl ()
 transferAllOf source target res = howManyAt source res >>= (`replicateM_` transfer source target res)
 
-whatsAt :: (Ord r, Eq l) => l -> GameRule l cn r ph pl (Set r)
+whatsAt :: (QueryM l cn r ph pl m, Ord r, Eq l) => l -> m (Set r)
 whatsAt loc = M.keysSet . M.filter (> 0) . inventory <$> lookLocation loc
 
 -- | Compose a list of functions left-to-right (first in list applied first).
@@ -222,7 +222,7 @@ a <+ i
 baseOptions :: Ord pl => Player -> NESet pl -> Options pl
 baseOptions p legals = Options legals p
 
-counterAtMax :: (Eq cn) => cn -> GameRule l cn r ph pl Bool
+counterAtMax :: (QueryM l cn r ph pl m, Eq cn) => cn -> m Bool
 counterAtMax cname = liftA2 (==) (lookCounterVal cname) (snd <$> lookCounterBounds cname)
 
 -- view for GameView
@@ -249,7 +249,7 @@ viewHowManyAt g l r = flip howMany' r <$> viewLocation g l
 activePlayer :: (Player -> GameRule l cn r ph pl a) -> GameRule l cn r ph pl a
 activePlayer action = lookCurrentTurnOwner >>= action
 
-lookOtherPlayers :: Player -> GameRule l cn r ph pl [Player]
+lookOtherPlayers :: (QueryM l cn r ph pl m) => Player -> m [Player]
 lookOtherPlayers p = filter (/= p) <$> lookPlayers
 
 -- | Construct a 'Phase' from its name and its rule sequence.
@@ -263,13 +263,13 @@ mkPhase ph rule = Phase { name = ph, seedNodes = rule }
 simpleTurn :: (Player -> Turn ph) -> ph -> GameRule l cn r ph pl () -> Phase ph l cn r pl
 simpleTurn mkTurn ph prelude = mkPhase ph (prelude >> advanceTurnCyclic mkTurn)
 
--- | Lift a pure scoring function into the 'GameRule' monad.
+-- | Lift a pure scoring function into a 'Query'.
 -- Use this when your score can be computed directly from the game state
 -- without needing to sequence additional game actions.
 --
 -- Example:
 -- > score = simpleScore $ \p gs -> cardsScore gs p - chipScore gs p
-simpleScore :: (Player -> GameState l cn r ph pl -> Int) -> Player -> GameRule l cn r ph pl Int
-simpleScore f p = f p <$> lookGameState
+simpleScore :: (Player -> GameState l cn r ph pl -> Int) -> Player -> Query l cn r ph pl Int
+simpleScore f p = Query (f p)
 
 
