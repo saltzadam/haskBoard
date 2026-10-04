@@ -17,8 +17,8 @@ After completing code changes to Haskell files, run `hlint` on all modified `.hs
 ## Build Commands
 
 ```bash
-# Build all packages
-cabal build all
+# Build everything that builds (`cabal build all` fails because Games/CantStop is broken)
+cabal build haskBoard Helpers NoMerci Coup
 
 # Build a specific package
 cabal build haskBoard
@@ -27,11 +27,11 @@ cabal build NoMerci
 # Run a game
 cabal run NoMerci
 
-# Run tests (currently commented out in cabal; re-enable in haskBoard/haskBoard.cabal to use)
-cabal test haskboard-test
+# Run the NoMerci regression and engine tests
+cabal test nomerci-test
 ```
 
-GHC version: 9.6.x (see `dist-newstyle/` for exact version). The cabal cradle (`hie.yaml`) is minimal — just `cradle: cabal:`.
+GHC version: 9.10.1. The cabal cradle (`hie.yaml`) is minimal — just `cradle: cabal:`.
 
 ## Architecture
 
@@ -81,11 +81,11 @@ Games are defined as `GameRule l cn r ph pl a` — a free monad over `GameRuleF`
 ### Queries and the engine (`Game.Rules`, `Game.GameE`)
 
 - `Game.Rules`: `Query l cn r ph pl a` is a read-only computation (a newtype over `GameState -> a`), run with `runQuery`. The `look*` primitives and read-only `Helpers` (`has`, `howManyAt`, `whatsAt`, …) work in any `QueryM` monad, which means both `Query` and `GameRule`. `query` embeds a `Query` in a `GameRule`. `Game.GameState.scoresOf` runs the score query for every player.
-- `Game.GameE.applyAction`: pure semantics of each `GameAction` on `(GameState, StdGen)`. `describeAction` produces the action-log line. `ShuffleRNG.shuffleList` is the pure shuffle.
+- `Game.GameE.applyAction`: pure semantics of each `GameAction` on a `GameState` and a `RandomGen`. `describeAction` produces the action-log line. `ShuffleRNG.shuffleList` is the pure shuffle.
 - `Game.GameE.playGame :: Env -> GameState -> StdGen -> IO (GameState, [Player])`: the turn loop, a `StateT (GameState, StdGen) IO`. `Env` holds the `GameRules`, an `Interface` (record of IO functions: `choose`, `update`, `announceWinners`, `announce`) and a `Logger` (`LogTag -> Text -> IO ()`).
 - `Interface.Controller.controllerInterface` turns a `GameController` (per-player channels) into an `Interface`.
 
-### Interfaces and agents (`Interface.Controller`, `Interface.Agent`, `Interface.Server`)
+### Interfaces and agents (`Interface.Controller`, `Interface.Agent`, `Run.Server`)
 
 The engine's `Interface` record is built from a `GameController` by `controllerInterface`. A `GameController` maps each `Player` to a `PlayerInterface` (two `Chan`s: `fromGame` and `toGame`).
 
@@ -94,7 +94,7 @@ Agent types:
 - `brickAgent` — bridges game channels to Brick `BChan`s for TUI
 - `termAgent` — reads/writes to terminal
 
-`Interface.Server` runs a WebSocket server on `127.0.0.1:9159`. Players connect, send their `PlayerNum`, and the server relays `GameToInterfacePayload` as JSON.
+`Run.Server` runs a WebSocket server on `127.0.0.1:9159`. Players connect, send their `PlayerNum`, and the server relays `GameToInterfacePayload` as JSON.
 
 ### Views and visibility (`Game.View`, `Game.Visibility`)
 
@@ -148,9 +148,9 @@ See `Games/NoMerci/` as the reference implementation:
    data NMResource = Chip | Card (NumberedPiece 35)
      deriving (Eq, Ord, Show, Generic, Finitary, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
    ```
-2. `NoMerci.hs` — define phases, play runner, scoring, initial state; export `noMerci :: Int -> (NMGameState, NMGameRules)`
+2. `NoMerci.hs` — define phases, play runner, scoring, initial state; export `noMerci :: Int -> (NMGameState, NMGameRules, [NMHint])`
 3. `Tui.hs` — define a Brick `app` using `Brick.Game.Tui` helpers
-4. `Main.hs` — wire together with `buildInterface`, `runGameSeparateChannels`, and `server`
+4. `Main.hs` — call `Run.Game.runGame` with the game, the TUI `app`, log paths and a run mode
 
 `Helpers/Helpers.hs` provides game-writing utilities (`transfer`, `draw`, `advanceTurn`, `endGame`, `activePlayer`, etc.) that wrap `Game.Rules` combinators.
 

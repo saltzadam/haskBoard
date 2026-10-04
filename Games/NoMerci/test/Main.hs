@@ -11,13 +11,15 @@ import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Set.NonEmpty as NES
+import qualified Data.Text as T
 import FinitaryMap (ftAt)
 import Game.GameAction (GameAction (..))
 import Game.Choose (Interface (..))
-import Game.GameE (Env (..), applyAction, playGame)
+import Game.GameE (Env (..), applyAction, describeAction, playGame)
 import Game.Location (LocationShape (..), NoCounters, howManyF, inventory, transfer)
 import Game.Options (Options (..))
 import Game.Player (Player (..), PlayerNum (..))
+import Game.Visibility (VisData (..))
 import Game.Rules (runQuery)
 import Game.View (project, viewGameStateAs')
 import Interface.Agent (randomAgent, runAgentIO)
@@ -131,6 +133,11 @@ stepTests =
     , testCase "shuffleList edge cases" $ do
         fst (shuffleList ([] :: [Int]) (mkStdGen 0)) @?= []
         fst (shuffleList [7 :: Int] (mkStdGen 0)) @?= [7]
+    , testCase "visibility log names the location, then the player" $ do
+        let (gs, _, _) = noMerci 3
+            vd = VisLocation CardDeck :: VisData NMLocation NoCounters
+        describeAction (MakeVisibleTo p1 vd) gs @?= Just (T.pack ("Made " <> show vd <> " visible to " <> show p1))
+        describeAction (MakeInvisibleTo p1 vd) gs @?= Just (T.pack ("Made " <> show vd <> " invisible to " <> show p1))
     ]
 
 -- | Picks the smallest legal play and ignores all notifications.
