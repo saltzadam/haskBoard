@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module Game.GameE (playGameTurns) where
+module Game.GameE (playGameTurns, applyAction, describeAction) where
 
 import Control.Applicative (asum)
-import Control.Lens (to, (^.))
+import Control.Lens (over, set, to, (^.))
 import Control.Monad.Free
 import Data.Aeson.Text (encodeToLazyText)
 import qualified Data.Foldable as F
@@ -13,6 +13,7 @@ import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Sequence as Seq
 import qualified Data.Set as S
+import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import Effectful
@@ -28,6 +29,8 @@ import Game.Rules hiding (choose, choose_)
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
 import ShuffleRNG
+import System.Random (RandomGen)
+import qualified System.Random as R
 import Util (tshow)
 
 -- TODO: some kind of history besides log
@@ -71,6 +74,62 @@ logAction2 (MkSwap l l' r r') = do
 logAction2 (MakeAnnouncement speaker announcement) =
   let speaker' = maybe "Nobody" tshow speaker
    in logComponent (speaker' <> " announced: " <> announcement)
+
+-- | Apply one action. Randomness comes from an explicit generator rather than IO.
+-- 'EndPhase', 'EndGame', 'MakeAnnouncement' and 'DoNothing' leave the state unchanged.
+applyAction ::
+  (GameLocation l, GameCounter cn, GameResource r, RandomGen g) =>
+  GameAction l cn r ph ->
+  (GameState l cn r ph pl, g) ->
+  (GameState l cn r ph pl, g)
+applyAction action (gs, g) = case action of
+  MkTransfer l l' r -> (over (#objects . #locations) (transfer r l l') gs, g)
+  MkSwap l l' r r' -> (over (#objects . #locations) (swap r r' l l') gs, g)
+  IncrementCounter c -> (over (counter c) increment gs, g)
+  DecrementCounter c -> (over (counter c) decrement gs, g)
+  SetCounter c v -> (over (counter c) (`setCounter` v) gs, g)
+  RollCounter c ->
+    let (v, g') = R.randomR (gs ^. counter c . #bounds) g
+     in (set (counterVal c) v gs, g')
+  TransferCounter from to -> (over (#objects . #counters) (transferCounter from to) gs, g)
+  Shuffle l -> case gs ^. location l of
+    Deck cards ->
+      let (shuffled, g') = shuffleList (F.toList cards) g
+       in (set (location l) (Deck (Seq.fromList shuffled)) gs, g')
+    _ -> (gs, g)
+  MakeVisibleTo p lc -> (over #visibility (\vis -> makeVisible vis p lc) gs, g)
+  MakeInvisibleTo p lc -> (over #visibility (\vis -> makeInvisible vis p lc) gs, g)
+  AdvanceTurn t -> (set #nextTurn t gs, g)
+  DoNothing -> (gs, g)
+  EndPhase -> (gs, g)
+  EndGame _ -> (gs, g)
+  MakeAnnouncement _ _ -> (gs, g)
+
+-- | The log line for an action. It reads the state after the action was applied.
+describeAction ::
+  (GameLocation l, GameCounter cn, GameResource r) =>
+  GameAction l cn r ph ->
+  GameState l cn r ph pl ->
+  Maybe Text
+describeAction action gs = case action of
+  DoNothing -> Nothing
+  IncrementCounter cn -> Just ("Incremented " <> tshow cn <> " to " <> tshow (gs ^. counterVal cn))
+  DecrementCounter cn -> Just ("Decremented " <> tshow cn <> " to " <> tshow (gs ^. counterVal cn))
+  SetCounter cn i -> Just ("Set " <> tshow cn <> " to " <> tshow i)
+  RollCounter cn -> Just ("Rolled " <> tshow cn <> " to " <> tshow (gs ^. counterVal cn))
+  TransferCounter cn cn' -> Just ("Moved one from " <> tshow cn <> " to " <> tshow cn')
+  Shuffle l -> Just ("Shuffled " <> tshow l)
+  MakeVisibleTo p vd -> Just ("Made " <> tshow vd <> " visible to " <> tshow p)
+  MakeInvisibleTo p vd -> Just ("Made " <> tshow vd <> " invisible to " <> tshow p)
+  EndPhase -> Just "Ended phase"
+  AdvanceTurn (Turn p _) -> Just ("advanced turn to " <> tshow p)
+  EndGame winners -> Just ("Game over! Winners: " <> tshow winners)
+  MkTransfer l l' r -> Just ("Transfered " <> tshow r <> " from " <> tshow l <> " to " <> tshow l' <> contents l l')
+  MkSwap l l' r r' -> Just ("Swapped " <> tshow r <> " and " <> tshow r' <> " between " <> tshow l <> " and " <> tshow l' <> contents l l')
+  MakeAnnouncement speaker announcement -> Just (maybe "Nobody" tshow speaker <> " announced: " <> announcement)
+  where
+    contents l l' = "\n Contents of " <> tshow l <> ": " <> inv l <> "\n Contents of " <> tshow l' <> ": " <> inv l'
+    inv l = tshow (inventory (gs ^. location l))
 
 -- order:
 -- modify

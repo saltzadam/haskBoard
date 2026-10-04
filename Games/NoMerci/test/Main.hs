@@ -4,13 +4,16 @@ import Control.Concurrent (forkIO)
 import Control.Lens ((%~), (&), (^.))
 import Control.Monad (forM_, void)
 import Data.Finitary (inhabitants)
+import qualified Data.Foldable as F
 import Data.Generics.Labels ()
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Set.NonEmpty as NES
 import FinitaryMap (ftAt)
-import Game.Location (howManyF, transfer)
+import Game.GameAction (GameAction (..))
+import Game.GameE (applyAction)
+import Game.Location (LocationShape (..), howManyF, inventory, transfer)
 import Game.Options (Options (..))
 import Game.Player (Player (..), PlayerNum (..))
 import Game.Rules (runQuery)
@@ -23,11 +26,13 @@ import NoMerci (noMerci, takeOverValued)
 import NumberedPiece (NumberedPiece (..))
 import Objects
 import Run (runGameSeparateChannelsNoLogs)
+import ShuffleRNG (shuffleList)
+import System.Random (mkStdGen)
 import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main = defaultMain (testGroup "NoMerci" [fullGameTests, queryTests])
+main = defaultMain (testGroup "NoMerci" [fullGameTests, queryTests, stepTests])
 
 -- | Play a full 3-player game with random agents through the channel API.
 playRandomGame :: IO (NMGameState, [Player])
@@ -95,4 +100,31 @@ queryTests =
               pure (if deckHasCard then Just Take else Nothing)
         applyHints (viewGameStateAs' gs p1) [h] opts @?= Nothing
         applyHints (project gs) [h] opts @?= Just Take
+    ]
+
+deckList :: NMGameState -> [NMResource]
+deckList gs = case gs ^. #objects . #locations . ftAt CardDeck of
+  Deck s -> F.toList s
+  _ -> []
+
+stepTests :: TestTree
+stepTests =
+  testGroup
+    "applyAction"
+    [ testCase "transfer moves one chip" $ do
+        let (gs, _, _) = noMerci 3
+            (gs', _) = applyAction (MkTransfer (PlayerStuff p1) ChipPile Chip) (gs, mkStdGen 0)
+            chips l = howManyF (gs' ^. #objects . #locations . ftAt l) (== Chip)
+        chips (PlayerStuff p1) @?= 10
+        chips ChipPile @?= 1
+    , testCase "shuffle keeps the cards and is reproducible" $ do
+        let (gs, _, _) = noMerci 3
+            shuffled seed = fst (applyAction (Shuffle CardDeck) (gs, mkStdGen seed))
+            locInv s = inventory (s ^. #objects . #locations . ftAt CardDeck)
+        locInv (shuffled 1) @?= locInv gs
+        deckList (shuffled 1) @?= deckList (shuffled 1)
+        assertBool "order changed" (deckList (shuffled 1) /= deckList gs)
+    , testCase "shuffleList edge cases" $ do
+        fst (shuffleList ([] :: [Int]) (mkStdGen 0)) @?= []
+        fst (shuffleList [7 :: Int] (mkStdGen 0)) @?= [7]
     ]
