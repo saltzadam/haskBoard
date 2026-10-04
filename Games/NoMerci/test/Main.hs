@@ -10,15 +10,16 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Data.Set.NonEmpty as NES
 import FinitaryMap (ftAt)
-import Game.Location (howMany', howManyF, transfer)
+import Game.Location (howManyF, transfer)
 import Game.Options (Options (..))
 import Game.Player (Player (..), PlayerNum (..))
 import Game.Rules (runQuery)
-import Game.View (viewGameStateAs')
+import Game.View (project, viewGameStateAs')
 import Interface.Agent (randomAgent, runAgentIO)
 import Interface.Controller (PlayerInterface (..), buildInterface)
 import Interface.Hint (applyHints)
-import NoMerci (noMerci)
+import Helpers (hasAny)
+import NoMerci (noMerci, takeOverValued)
 import NumberedPiece (NumberedPiece (..))
 import Objects
 import Run (runGameSeparateChannelsNoLogs)
@@ -46,7 +47,7 @@ checkEndState gs winners = do
   totalOf (== Chip) gs @?= 33 -- 3 players start with 11 chips each
   totalOf isCard gs @?= 33 -- all cards still exist
   howManyF (gs ^. #objects . #locations . ftAt CardDeck) isCard @?= 0 -- game ends on empty deck
-  howMany' (gs ^. #objects . #locations . ftAt BoxTop) Chip @?= 0
+  howManyF (gs ^. #objects . #locations . ftAt BoxTop) isCard @?= 9
 
 fullGameTests :: TestTree
 fullGameTests =
@@ -77,14 +78,21 @@ queryTests =
     [ testCase "score: 11 chips, no cards" $ do
         let (gs, gr, _) = noMerci 3
         runQuery ((gr ^. #score) p1) gs @?= 11,
-      testCase "score: run 3-4 counts 3, minus 11 chips" $ do
+      testCase "score: 11 chips minus run 3-4 (counts 3)" $ do
         let (_, gr, _) = noMerci 3
             gs = withTransfers [(CardDeck, PlayerStuff p1, card 3), (CardDeck, PlayerStuff p1, card 4)]
         runQuery ((gr ^. #score) p1) gs @?= 8,
       testCase "takeOverValued hint fires on the player's view" $ do
-        let (_, _, hints) = noMerci 3
-            takeOverValued = hints !! 1
-            gs = withTransfers ((CardDeck, CenterOfTableCard, card 3) : replicate 3 (PlayerStuff p1, ChipPile, Chip))
+        let gs = withTransfers ((CardDeck, CenterOfTableCard, card 3) : replicate 3 (PlayerStuff p1, ChipPile, Chip))
             opts = Options (NES.fromList (Take NE.:| [Decline])) p1
-        applyHints (viewGameStateAs' gs p1) [takeOverValued] opts @?= Just Take
+        applyHints (viewGameStateAs' gs p1) [takeOverValued] opts @?= Just Take,
+      testCase "hints cannot see hidden locations" $ do
+        let gs = withTransfers []
+            opts = Options (NES.fromList (Take NE.:| [Decline])) p1
+            h :: NMHint
+            h _ = do
+              deckHasCard <- CardDeck `hasAny` [card 3]
+              pure (if deckHasCard then Just Take else Nothing)
+        applyHints (viewGameStateAs' gs p1) [h] opts @?= Nothing
+        applyHints (project gs) [h] opts @?= Just Take
     ]

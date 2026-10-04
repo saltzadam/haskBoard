@@ -264,10 +264,6 @@ simpleTurn :: (Player -> Turn ph) -> ph -> GameRule l cn r ph pl () -> Phase ph 
 simpleTurn mkTurn ph prelude = mkPhase ph (prelude >> advanceTurnCyclic mkTurn)
 
 -- | Lift a pure scoring function into a 'Query'.
--- Use this when your score can be computed directly from the game state
--- without needing to sequence additional game actions.
---
--- Example:
 -- > score = simpleScore $ \p gs -> cardsScore gs p - chipScore gs p
 simpleScore :: (Player -> GameState l cn r ph pl -> Int) -> Player -> Query l cn r ph pl Int
 simpleScore f p = Query (f p)

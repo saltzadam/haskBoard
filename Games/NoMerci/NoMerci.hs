@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedLists #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 
-module NoMerci (noMerci) where
+module NoMerci (noMerci, takeOverValued) where
 
 import qualified Cards
 import Control.Monad (replicateM_)
