@@ -74,24 +74,20 @@ All of `l`, `cn`, `r` must be `Finitary` (from the `finitary` package) — they 
 
 ### Game rules DSL (`Game.Rules`, `Game.GameAction`)
 
-Games are defined as `GameRule l cn r ph pl a` — a free monad over `GameRuleF`. Game logic is written using combinators like `act`, `lookLocation`, `lookCounter`, `choose`, `lookCurrentTurnOwner`, etc.
+Games are defined as `GameRule l cn r ph pl a` — a free monad over `GameRuleF`, which has three nodes (`Act`, `Choose`, `Look`). The `look*` combinators work in any `QueryM`. Game logic is written using combinators like `act`, `lookLocation`, `lookCounter`, `choose`, `lookCurrentTurnOwner`, etc.
 
 `GameAction` is the set of all primitive game mutations: transfers between locations, counter operations, shuffle, visibility changes, turn/phase control, `EndGame`.
 
-### Effectful execution (`Game.GameE`)
+### Queries and the engine (`Game.Rules`, `Game.GameE`)
 
-`playGameTurns` runs the game using the `effectful` library (not MTL). The effect stack is:
-- `GameInteract` = `State (GameState ...)` — mutable game state
-- `GameRun` = `Reader (GameRules ...)` — read-only rules
-- `Interface l cn r ph pl` — dynamic effect for player interaction (choose, update, announce)
-- `RNG` (CryptoRNG) — randomness
-- `Log2` — logging to file
-
-`runRuleControl` interprets `GameRule` free monad nodes into effectful actions.
+- `Game.Rules`: `Query l cn r ph pl a` is a read-only computation (a newtype over `GameState -> a`), run with `runQuery`. The `look*` primitives and read-only `Helpers` (`has`, `howManyAt`, `whatsAt`, …) work in any `QueryM` monad, which means both `Query` and `GameRule`. `query` embeds a `Query` in a `GameRule`. `Game.GameState.scoresOf` runs the score query for every player.
+- `Game.GameE.applyAction`: pure semantics of each `GameAction` on `(GameState, StdGen)`. `describeAction` produces the action-log line. `ShuffleRNG.shuffleList` is the pure shuffle.
+- `Game.GameE.playGame :: Env -> GameState -> StdGen -> IO (GameState, [Player])`: the turn loop, a `StateT (GameState, StdGen) IO`. `Env` holds the `GameRules`, an `Interface` (record of IO functions: `choose`, `update`, `announceWinners`, `announce`) and a `Logger` (`LogTag -> Text -> IO ()`).
+- `Interface.Controller.controllerInterface` turns a `GameController` (per-player channels) into an `Interface`.
 
 ### Interfaces and agents (`Interface.Controller`, `Interface.Agent`, `Interface.Server`)
 
-The `Interface` effect is interpreted by `chooseInterface` using a `GameController`, which maps each `Player` to a `PlayerInterface` (two `Chan`s: `fromGame` and `toGame`).
+The engine's `Interface` record is built from a `GameController` by `controllerInterface`. A `GameController` maps each `Player` to a `PlayerInterface` (two `Chan`s: `fromGame` and `toGame`).
 
 Agent types:
 - `randomAgent` — picks random legal moves (AI)
@@ -125,10 +121,16 @@ See `Games/NoMerci/` as the reference implementation:
    type MyOptions     = Options MyPlayName
    type MyGameRules   = GameRules MyLocation MyCounters MyResource MyPhaseName MyPlayName
    type MyM a         = GameRule MyLocation MyCounters MyResource MyPhaseName MyPlayName a
+   type MyQ a         = Query MyLocation MyCounters MyResource MyPhaseName MyPlayName a
+   type MyLooks m     = QueryM MyLocation MyCounters MyResource MyPhaseName MyPlayName m
    type MyView        = GameStateView MyLocation MyCounters MyResource MyPhaseName
    type MyEvent       = BEvent MyLocation MyCounters MyResource MyPhaseName MyPlayName
    ```
    `MyM a` is the alias used most in game logic. Omitting any alias causes cryptic errors at module boundaries.
+
+   `MyLooks` needs `{-# LANGUAGE ConstraintKinds #-}` in `Objects.hs`.
+
+   **Read-only code:** `score :: Player -> MyQ Int` and hints (`HintM`) are queries: they can look but not act, and the compiler enforces it. Write hints with `hint` and `noHint` from `Interface.Hint`. Write read-only helpers that you need in both rules and scores as `MyLooks m => … -> m X` (see `hasInfluence` in `Games/Coup/Coup.hs`). To call a `MyQ` value from a `MyM` rule, wrap it in `query` (see `checkEnd` in `Games/NoMerci/NoMerci.hs`).
 
    Each game type also needs a full deriving clause. Every `l`, `cn`, `r`, `pl` type requires:
    ```haskell

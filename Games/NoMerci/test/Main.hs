@@ -1,6 +1,7 @@
 module Main where
 
 import Control.Concurrent (forkIO)
+import Data.Aeson (encode)
 import Control.Lens ((%~), (&), (^.))
 import Control.Monad (forM_, void)
 import Data.Finitary (inhabitants)
@@ -12,8 +13,9 @@ import qualified Data.Set as S
 import qualified Data.Set.NonEmpty as NES
 import FinitaryMap (ftAt)
 import Game.GameAction (GameAction (..))
-import Game.GameE (applyAction)
-import Game.Location (LocationShape (..), howManyF, inventory, transfer)
+import Game.Choose (Interface (..))
+import Game.GameE (Env (..), applyAction, playGame)
+import Game.Location (LocationShape (..), NoCounters, howManyF, inventory, transfer)
 import Game.Options (Options (..))
 import Game.Player (Player (..), PlayerNum (..))
 import Game.Rules (runQuery)
@@ -22,6 +24,7 @@ import Interface.Agent (randomAgent, runAgentIO)
 import Interface.Controller (PlayerInterface (..), buildInterface)
 import Interface.Hint (applyHints)
 import Helpers (hasAny)
+import Log (nullLogger)
 import NoMerci (noMerci, takeOverValued)
 import NumberedPiece (NumberedPiece (..))
 import Objects
@@ -32,7 +35,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main = defaultMain (testGroup "NoMerci" [fullGameTests, queryTests, stepTests])
+main = defaultMain (testGroup "NoMerci" [fullGameTests, queryTests, stepTests, engineTests])
 
 -- | Play a full 3-player game with random agents through the channel API.
 playRandomGame :: IO (NMGameState, [Player])
@@ -128,4 +131,33 @@ stepTests =
     , testCase "shuffleList edge cases" $ do
         fst (shuffleList ([] :: [Int]) (mkStdGen 0)) @?= []
         fst (shuffleList [7 :: Int] (mkStdGen 0)) @?= [7]
+    ]
+
+-- | Picks the smallest legal play and ignores all notifications.
+scriptedInterface :: Interface NMLocation NoCounters NMResource NMPhaseName NMPlayName
+scriptedInterface =
+  Interface
+    { choose = \_ opts -> pure (NES.findMin (opts ^. #legal)),
+      update = \_ _ -> pure (),
+      announceWinners = \_ -> pure (),
+      announce = \_ _ -> pure ()
+    }
+
+playSeeded :: Int -> IO (NMGameState, [Player])
+playSeeded seed =
+  let (gs, gr, _) = noMerci 3
+   in playGame Env {rules = gr, interface = scriptedInterface, logger = nullLogger} gs (mkStdGen seed)
+
+engineTests :: TestTree
+engineTests =
+  testGroup
+    "engine"
+    [ testCase "scripted seeded game ends consistently" $ do
+        (gs, winners) <- playSeeded 42
+        checkEndState gs winners
+    , testCase "same seed, same game" $ do
+        (gs1, w1) <- playSeeded 42
+        (gs2, w2) <- playSeeded 42
+        encode gs1 @?= encode gs2
+        w1 @?= w2
     ]
