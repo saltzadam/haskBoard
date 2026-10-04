@@ -74,7 +74,7 @@ All of `l`, `cn`, `r` must be `Finitary` (from the `finitary` package) — they 
 
 ### Game rules DSL (`Game.Rules`, `Game.GameAction`)
 
-Games are defined as `GameRule l cn r ph pl a` — a free monad over `GameRuleF`. Game logic is written using combinators like `act`, `lookLocation`, `lookCounter`, `makeChoice`, `lookCurrentTurnOwner`, etc.
+Games are defined as `GameRule l cn r ph pl a` — a free monad over `GameRuleF`. Game logic is written using combinators like `act`, `lookLocation`, `lookCounter`, `choose`, `lookCurrentTurnOwner`, etc.
 
 `GameAction` is the set of all primitive game mutations: transfers between locations, counter operations, shuffle, visibility changes, turn/phase control, `EndGame`.
 

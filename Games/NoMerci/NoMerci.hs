@@ -12,6 +12,7 @@ import Game.Player (Player (..), mkPlayers)
 import Game.Rules
 import Game.Visibility (VisData (..), VisibilityMap (..), hideManyFromAll)
 import Helpers
+import Interface.Hint (hint, noHint)
 import Game.Location (NoCounters)
 import Objects 
 import Util (ifM, maximaByScoreM)
@@ -31,7 +32,7 @@ chooseMove p = do
         if pHasChips 
           then Options [Take, Decline] p
           else Options [Take] p
-  makeChoice_ options
+  choose_ options
 
 score :: Player -> NMQ Int
 score p =
@@ -108,11 +109,6 @@ noMerci numPlayers =
 -- Take something if it has more chips than its value
 -- if you have the most chips and the card is >=18, don't take it
 
-hint :: a -> NMQ (Maybe a)
-hint x = return (Just x)
-
-noHint :: NMQ (Maybe a)
-noHint = return Nothing
 
 -- lookCenterCardVal :: GameRule NMLocation cn NMResource ph pl (Maybe Int)
 -- lookCenterCardVal = do

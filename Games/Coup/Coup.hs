@@ -82,7 +82,7 @@ loseInfluence p = do
     [] -> justDoNothing -- already out: nothing to lose or announce
     [only] -> revealCard p only >> afterLoss
     (r0 : _ : _) -> do
-      chosen <- makeChoice (opts p (map Reveal roles))
+      chosen <- choose (opts p (map Reveal roles))
       case chosen of
         Reveal role -> revealCard p role
         _ -> revealCard p r0
@@ -115,7 +115,7 @@ challengeWindow claimant role = aliveOthers claimant >>= go
   where
     go [] = return True
     go (c : cs) = do
-      dec <- makeChoice (opts c [Challenge, AllowIt])
+      dec <- choose (opts c [Challenge, AllowIt])
       case dec of
         Challenge -> resolveChallenge claimant role c
         _ -> go cs
@@ -156,7 +156,7 @@ blockWindow (b : bs) blockOpts = do
   if not alive
     then blockWindow bs blockOpts
     else do
-      dec <- makeChoice (opts b (AllowIt : map fst blockOpts))
+      dec <- choose (opts b (AllowIt : map fst blockOpts))
       case lookup dec blockOpts of
         Nothing -> blockWindow bs blockOpts -- allowed it
         Just role -> do
@@ -190,7 +190,7 @@ doExchange p = do
         [] -> justDoNothing
         [only] -> transfer (Influence pl) CourtDeck (RoleCard only)
         (r0 : _ : _) -> do
-          chosen <- makeChoice (opts pl (map ReturnCard roles))
+          chosen <- choose (opts pl (map ReturnCard roles))
           let role = case chosen of ReturnCard r -> r; _ -> r0
           transfer (Influence pl) CourtDeck (RoleCard role)
 
@@ -210,7 +210,7 @@ chooseAction p = do
               ++ coupPlays
               ++ assassinatePlays
               ++ stealPlays
-  makeChoice_ (opts p plays)
+  choose_ (opts p plays)
 
 coupRunPlay :: CoupPlayName -> CoupM ()
 coupRunPlay Income = activePlayer $ \p -> do
@@ -273,7 +273,7 @@ coupRunPlay ExchangeCards = activePlayer $ \p -> do
   stands <- challengeWindow p Ambassador
   if stands then doExchange p else justDoNothing
 -- reaction / sub-choice plays resolve to nothing; orchestration code branches
--- on the value returned from 'makeChoice' instead.
+-- on the value returned from 'choose' instead.
 coupRunPlay _ = justDoNothing
 
 -- Turn flow --------------------------------------------------------------------

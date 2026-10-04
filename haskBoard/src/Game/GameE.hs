@@ -18,13 +18,13 @@ import qualified Data.Text.Lazy as TL
 import Effectful
 import Effectful.Crypto.RNG (CryptoRNG (..), RNG (..))
 import FinitaryMap (ftAt)
-import Game.Choose
+import Game.Choose hiding (Choose)
 import Game.Constraints (GameCounter, GameLocation, GamePhase, GamePlay, GameResource)
 import Game.GameAction
 import Game.GameState
 import Game.Location (LocationShape (..), decrement, increment, inventory, setCounter, swap, transfer, transferCounter)
 import Game.Player (Player (..), Turn (..))
-import Game.Rules
+import Game.Rules hiding (choose, choose_)
 import Game.Visibility (makeInvisible, makeVisible)
 import Log
 import ShuffleRNG
@@ -192,7 +192,7 @@ runRuleControl' (Free (Act action next)) = do
   case result of
     PCContinue -> runRuleControl' next
     _          -> return result
-runRuleControl' (Free (MakeChoice opts k)) = do
+runRuleControl' (Free (Choose opts k)) = do
   gs <- getGameState
   pl <- choose gs opts
   logChoice (TL.toStrict (encodeToLazyText (gs, pl)))
@@ -202,7 +202,7 @@ runRuleControl' (Free (MakeChoice opts k)) = do
   case result of
     PCContinue -> runRuleControl' (k pl)
     _          -> return result
-runRuleControl' (Free (LookGameState next)) = getGameState >>= runRuleControl' . next
+runRuleControl' (Free (Look next)) = getGameState >>= runRuleControl' . next
 runRuleControl' (Pure _) = return PCContinue
 
 runRuleControl :: (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl, Interface l cn r ph pl :> es, GameInteract l cn r ph pl :> es, GameRun l cn r ph pl :> es, RNG :> es, Log2 :> es) => GameRule l cn r ph pl a -> Eff es PhaseControl

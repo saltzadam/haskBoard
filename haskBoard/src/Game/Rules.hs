@@ -16,8 +16,8 @@ import Game.Player (Player, Turn (..))
 
 data GameRuleF l cn r ph pl next
   = Act (GameAction l cn r ph) next
-  | MakeChoice (Options pl) (pl -> next)
-  | LookGameState (GameState l cn r ph pl -> next)
+  | Choose (Options pl) (pl -> next)
+  | Look (GameState l cn r ph pl -> next)
   deriving (Functor)
 
 newtype GameRule l cn r ph pl a = GameRule {unRule :: Free (GameRuleF l cn r ph pl) a}
@@ -55,13 +55,13 @@ instance QueryM l cn r ph pl (Query l cn r ph pl) where
   query = id
 
 instance QueryM l cn r ph pl (GameRule l cn r ph pl) where
-  query (Query f) = GameRule (liftF (LookGameState f))
+  query (Query f) = GameRule (liftF (Look f))
 
-makeChoice :: Options pl -> GameRule l cn r ph pl pl
-makeChoice opts = liftF (MakeChoice opts id)
+choose :: Options pl -> GameRule l cn r ph pl pl
+choose opts = liftF (Choose opts id)
 
-makeChoice_ :: Options a -> GameRule l cn r ph a ()
-makeChoice_ = void . makeChoice
+choose_ :: Options a -> GameRule l cn r ph a ()
+choose_ = void . choose
 
 act :: GameAction l cn r ph -> GameRule l cn r ph pl ()
 act action = liftF (Act action ())
