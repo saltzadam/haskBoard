@@ -15,16 +15,19 @@ module Game.GameState
     counter,
     counterVal,
     location,
+    scoresOf,
   )
 where
 
-import Control.Lens (Lens', makeFields)
+import Control.Lens (Lens', makeFields, (^.))
+import Data.Map (Map)
+import qualified Data.Map as M
 import FinitaryMap (ftAt)
 import GHC.Generics (Generic)
 import Game.GameStateBase (GameState (..))
 import Game.Location
 import Game.Player
-import Game.Rules (GameRule, Query)
+import Game.Rules (GameRule, Query, runQuery)
 
 data PhaseControl = PCContinue | PCEndPhase | PCEndTurn | PCEndGame [Player] deriving (Eq, Ord, Show, Generic)
 
@@ -68,3 +71,7 @@ location l = #objects . #locations . ftAt l
 makeFields ''GameState
 makeFields ''GameRules
 makeFields ''Phase
+
+-- | Every player's current score.
+scoresOf :: GameRules l cn r ph pl -> GameState l cn r ph pl -> Map Player Int
+scoresOf gr gs = M.fromSet (\p -> runQuery ((gr ^. #score) p) gs) (gs ^. #players)

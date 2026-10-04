@@ -3,7 +3,7 @@
 -- | The game engine. It runs 'GameRule's against the game state, asks the 'Interface'
 -- for choices and reports progress. 'applyAction' defines each state change purely
 -- and 'playGame' sequences the changes in IO.
-module Game.GameE (Env (..), playGame, scoresOf, applyAction, describeAction) where
+module Game.GameE (Env (..), playGame, applyAction, describeAction) where
 
 import Control.Applicative (asum)
 import Control.Lens (over, set, to, (&), (.~), (^.))
@@ -14,7 +14,6 @@ import Data.Aeson.Text (encodeToLazyText)
 import Data.Bifunctor (first)
 import qualified Data.Foldable as F
 import qualified Data.List.NonEmpty as NE
-import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import qualified Data.Sequence as Seq
@@ -45,10 +44,6 @@ data Env l cn r ph pl = Env
   deriving (Generic)
 
 type EngineM l cn r ph pl = StateT (GameState l cn r ph pl, StdGen) IO
-
--- | Every player's current score.
-scoresOf :: GameRules l cn r ph pl -> GameState l cn r ph pl -> Map Player Int
-scoresOf gr gs = M.fromSet (\p -> runQuery ((gr ^. #score) p) gs) (gs ^. #players)
 
 -- | Run setup, then turns until the game ends. Returns the final state and winners.
 playGame ::
