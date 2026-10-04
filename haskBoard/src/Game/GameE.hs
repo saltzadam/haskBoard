@@ -77,7 +77,7 @@ playGame env gs0 gen0 = do
           turns
 
 -- Every phase runs even after an earlier one ends the turn or game, and the first
--- result wins. This matches the pre-refactor engine. Fix separately.
+-- result wins. Changing this could alter multi-phase games. Fix separately.
 runPhases ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   Env l cn r ph pl ->
@@ -120,7 +120,7 @@ runRule env (GameRule rule) = go rule
         _ -> pure result
     go (Free (Look k)) = getGS >>= go . k
 
--- | Apply an action, then notify players and log. The order matches the pre-refactor engine.
+-- | Apply an action, then notify players, then log.
 runAction ::
   (GameLocation l, GameCounter cn, GameResource r, GamePhase ph, GamePlay pl) =>
   Env l cn r ph pl ->
