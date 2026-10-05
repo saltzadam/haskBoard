@@ -159,7 +159,7 @@ modifyGS :: (GameState l cn r ph pl -> GameState l cn r ph pl) -> EngineM l cn r
 modifyGS f = modify (first f)
 
 -- | Apply one action. Randomness comes from an explicit generator rather than IO.
--- 'EndPhase', 'EndGame', 'MakeAnnouncement' and 'DoNothing' leave the state unchanged.
+-- 'EndPhase', 'EndGame', 'MakeAnnouncement' and 'DoNothing' do not change the state.
 applyAction ::
   (GameLocation l, GameCounter cn, GameResource r, RandomGen g) =>
   GameAction l cn r ph ->
@@ -188,7 +188,7 @@ applyAction action (gs, g) = case action of
   EndGame _ -> (gs, g)
   MakeAnnouncement _ _ -> (gs, g)
 
--- | The log line for an action. It reads the state after the action was applied.
+-- | The log line for an action. It describes the state after the action was applied.
 describeAction ::
   (GameLocation l, GameCounter cn, GameResource r) =>
   GameAction l cn r ph ->
