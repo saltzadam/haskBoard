@@ -5,8 +5,9 @@ FROM haskell:9.10.1 AS haskell-deps
 ARG GAME_NAME=NoMerci
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    zlib1g-dev libgmp-dev pkg-config libncurses-dev git \
+# The base image already has git, zlib, gmp and ncurses. pkgconf provides pkg-config
+# without glib, whose bullseye security packages are no longer on the mirror.
+RUN apt-get update && apt-get install -y --no-install-recommends pkgconf \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only project config and .cabal files so this layer caches until
@@ -17,6 +18,7 @@ COPY haskBoard/haskBoard.cabal haskBoard/
 COPY Helpers/helpers.cabal Helpers/
 COPY Games/NoMerci/noMerci.cabal Games/NoMerci/
 COPY Games/CantStop/cantStop.cabal Games/CantStop/
+COPY Games/Coup/coup.cabal Games/Coup/
 
 RUN cabal update && cabal build --only-dependencies all
 
