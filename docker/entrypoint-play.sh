@@ -14,7 +14,7 @@ if [ "$HUMAN" -lt 0 ] || [ "$HUMAN" -ge "$PLAYERS" ]; then
   exit 1
 fi
 
-CHECKPOINT="/app/checkpoints/${PLAYERS}"
+CHECKPOINT="/app/checkpoints/${GAME}/${PLAYERS}"
 if [ ! -d "$CHECKPOINT" ]; then
   echo "Error: No checkpoint found for $PLAYERS players at $CHECKPOINT" >&2
   exit 1

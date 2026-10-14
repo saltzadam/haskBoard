@@ -2,7 +2,6 @@
 # Stage 1: Fetch and build Haskell dependencies (cached layer)
 # =============================================================================
 FROM haskell:9.10.1 AS haskell-deps
-ARG GAME_NAME=NoMerci
 WORKDIR /build
 
 # The base image already has git, zlib, gmp and ncurses. pkgconf provides pkg-config
@@ -26,16 +25,19 @@ RUN cabal update && cabal build --only-dependencies all
 # Stage 2: Compile the game binary
 # =============================================================================
 FROM haskell-deps AS haskell-build
-ARG GAME_NAME=NoMerci
 
 COPY haskBoard/src/ haskBoard/src/
 COPY Helpers/ Helpers/
 COPY Games/NoMerci/ Games/NoMerci/
 COPY Games/CantStop/ Games/CantStop/
+COPY Games/Coup/ Games/Coup/
 
-RUN cabal build ${GAME_NAME} \
-    && cp "$(cabal list-bin ${GAME_NAME})" /usr/local/bin/${GAME_NAME} \
-    && strip /usr/local/bin/${GAME_NAME}
+RUN cabal build NoMerci \
+    && cp "$(cabal list-bin NoMerci)" /usr/local/bin/NoMerci \
+    && strip /usr/local/bin/NoMerci
+RUN cabal build Coup \
+    && cp "$(cabal list-bin Coup)" /usr/local/bin/Coup \
+    && strip /usr/local/bin/Coup
 
 # =============================================================================
 # Stage 3: Final play image (python + numpy + binary + checkpoints)
@@ -52,7 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir numpy websockets
 
-COPY --from=haskell-build /usr/local/bin/${GAME_NAME} /usr/local/bin/${GAME_NAME}
+COPY --from=haskell-build /usr/local/bin/NoMerci /usr/local/bin/NoMerci
+COPY --from=haskell-build /usr/local/bin/Coup /usr/local/bin/Coup
 
 # Place lite script at the path Haskell expects (python/ws_agent_rllib.py)
 COPY python/ws_agent_lite.py /app/python/ws_agent_rllib.py
@@ -62,9 +65,16 @@ COPY python/ws_agent_lite.py /app/python/ws_agent_rllib.py
 ARG CHECKPOINT_DIR_3=python/runs/default_lrem5_3/rllib_checkpoints
 ARG CHECKPOINT_DIR_4=python/runs/default_lrem5_4/rllib_checkpoints
 ARG CHECKPOINT_DIR_5=python/runs/default_lrem5_5/rllib_checkpoints
-COPY ${CHECKPOINT_DIR_3} /app/checkpoints/3/
-COPY ${CHECKPOINT_DIR_4} /app/checkpoints/4/
-COPY ${CHECKPOINT_DIR_5} /app/checkpoints/5/
+COPY ${CHECKPOINT_DIR_3} /app/checkpoints/NoMerci/3/
+COPY ${CHECKPOINT_DIR_4} /app/checkpoints/NoMerci/4/
+COPY ${CHECKPOINT_DIR_5} /app/checkpoints/NoMerci/5/
+
+ARG CHECKPOINT_DIR_3_COUP=python/runs/Coup_default_3/rllib_checkpoints
+ARG CHECKPOINT_DIR_4_COUP=python/runs/Coup_default_4/rllib_checkpoints
+ARG CHECKPOINT_DIR_5_COUP=python/runs/Coup_default_5/rllib_checkpoints
+COPY ${CHECKPOINT_DIR_3_COUP} /app/checkpoints/Coup/3/
+COPY ${CHECKPOINT_DIR_4_COUP} /app/checkpoints/Coup/4/
+COPY ${CHECKPOINT_DIR_5_COUP} /app/checkpoints/Coup/5/
 
 COPY docker/entrypoint-play.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

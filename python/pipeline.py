@@ -7,6 +7,7 @@ Usage:
     uv run --project python python/pipeline.py --game NoMerci --min-players 3 --max-players 5
     uv run --project python python/pipeline.py --game NoMerci --force  # re-run all
     uv run --project python python/pipeline.py --game NoMerci --name custom_run
+    uv run --project python python/pipeline.py --game Coup --skip-bc  # no hints: PPO only
 """
 
 from __future__ import annotations
@@ -63,6 +64,8 @@ def main() -> None:
     parser.add_argument("--train-steps", type=int, default=1000, help="RL training iterations (default: 1000)")
     parser.add_argument("--num-env-runners", type=int, default=6, help="Parallel env runners for RL training (default: 6)")
     parser.add_argument("--force", action="store_true", help="Re-run all stages even if outputs exist")
+    parser.add_argument("--skip-bc", action="store_true",
+                        help="Skip collection and BC; train PPO from scratch (for games without hints)")
     args = parser.parse_args()
 
     # Resolve sibling scripts relative to this file's directory
@@ -88,7 +91,10 @@ def main() -> None:
     print(f"  game:    {args.game}")
     print(f"  binary:  {binary}")
     print(f"  players: {players_label}")
-    stages_desc = f"collect({args.collect_games}) -> bc({args.bc_epochs}ep) -> rl({args.train_steps}it)"
+    if args.skip_bc:
+        stages_desc = f"rl({args.train_steps}it, from scratch)"
+    else:
+        stages_desc = f"collect({args.collect_games}) -> bc({args.bc_epochs}ep) -> rl({args.train_steps}it)"
     if num_iterations > 1:
         stages_desc += f"  x{num_iterations} player counts"
     print(f"  stages:  {stages_desc}")
@@ -109,7 +115,10 @@ def main() -> None:
 
         # ── Stage 1: Collect BC data ──────────────────────────────────
         sentinel_1 = bc_data_dir / "init_msg.json"
-        if sentinel_1.exists() and not args.force:
+        if args.skip_bc:
+            header("Stage 1: Collect BC data", "SKIP (--skip-bc)")
+            summary.append("Stage 1 (collect): skipped (--skip-bc)")
+        elif sentinel_1.exists() and not args.force:
             header("Stage 1: Collect BC data", "SKIP")
             print(f"  Output exists: {sentinel_1}")
             summary.append("Stage 1 (collect): skipped")
@@ -128,7 +137,10 @@ def main() -> None:
 
         # ── Stage 2: Train BC ─────────────────────────────────────────
         sentinel_2 = bc_ckpt_dir / "player_0" / "module_state.pkl"
-        if sentinel_2.exists() and not args.force:
+        if args.skip_bc:
+            header("Stage 2: Train BC", "SKIP (--skip-bc)")
+            summary.append("Stage 2 (bc): skipped (--skip-bc)")
+        elif sentinel_2.exists() and not args.force:
             header("Stage 2: Train BC", "SKIP")
             print(f"  Output exists: {sentinel_2}")
             summary.append("Stage 2 (bc): skipped")
@@ -160,9 +172,10 @@ def main() -> None:
                 "--num-players", str(num_players),
                 "--train-steps", str(args.train_steps),
                 "--num-env-runners", str(args.num_env_runners),
-                "--bc-checkpoint", str(bc_ckpt_dir),
                 "--binary", binary,
             ]
+            if not args.skip_bc:
+                cmd += ["--bc-checkpoint", str(bc_ckpt_dir)]
             run_stage(cmd)
             summary.append(f"Stage 3 (rl): completed ({args.train_steps} iterations)")
 

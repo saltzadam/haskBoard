@@ -177,7 +177,7 @@ def main() -> None:
             ),
         )
         .training(
-            lr=3e-5, # down one oom
+            lr=3e-4, # down one oom
             gamma=GAMMA,
             lambda_=0.95,
             clip_param=0.2,
