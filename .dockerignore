@@ -17,3 +17,8 @@ log/
 haskBoard/src/scratch/
 todo.md
 plans/
+runs/*/bc_data/
+runs/*/bc_checkpoint/
+runs/*/tensorboard/
+python/runs/*/bc_checkpoint/
+python/runs/*/tensorboard/
