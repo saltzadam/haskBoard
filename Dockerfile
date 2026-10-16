@@ -62,16 +62,16 @@ COPY python/ws_agent_lite.py /app/python/ws_agent_rllib.py
 
 # Copy per-player-count checkpoints.
 # Override CHECKPOINT_DIR_N to use a different checkpoint for N players.
-ARG CHECKPOINT_DIR_3=python/runs/default_lrem5_3/rllib_checkpoints
-ARG CHECKPOINT_DIR_4=python/runs/default_lrem5_4/rllib_checkpoints
-ARG CHECKPOINT_DIR_5=python/runs/default_lrem5_5/rllib_checkpoints
+ARG CHECKPOINT_DIR_3=runs/NoMerci_lr3m4_3/rllib_checkpoints
+ARG CHECKPOINT_DIR_4=runs/NoMerci_lr3m4_4/rllib_checkpoints
+ARG CHECKPOINT_DIR_5=runs/NoMerci_lr3m4_5/rllib_checkpoints
 COPY ${CHECKPOINT_DIR_3} /app/checkpoints/NoMerci/3/
 COPY ${CHECKPOINT_DIR_4} /app/checkpoints/NoMerci/4/
 COPY ${CHECKPOINT_DIR_5} /app/checkpoints/NoMerci/5/
 
-ARG CHECKPOINT_DIR_3_COUP=python/runs/Coup_default_3/rllib_checkpoints
-ARG CHECKPOINT_DIR_4_COUP=python/runs/Coup_default_4/rllib_checkpoints
-ARG CHECKPOINT_DIR_5_COUP=python/runs/Coup_default_5/rllib_checkpoints
+ARG CHECKPOINT_DIR_3_COUP=runs/Coup_lr3m4_3/rllib_checkpoints
+ARG CHECKPOINT_DIR_4_COUP=runs/Coup_lr3m4_4/rllib_checkpoints
+ARG CHECKPOINT_DIR_5_COUP=runs/Coup_lr3m4_5/rllib_checkpoints
 COPY ${CHECKPOINT_DIR_3_COUP} /app/checkpoints/Coup/3/
 COPY ${CHECKPOINT_DIR_4_COUP} /app/checkpoints/Coup/4/
 COPY ${CHECKPOINT_DIR_5_COUP} /app/checkpoints/Coup/5/
