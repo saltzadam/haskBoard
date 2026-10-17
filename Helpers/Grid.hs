@@ -43,8 +43,7 @@ import Game.Location (LocationShape)
 import Game.Rules (GameRule, QueryM, lookLocation)
 import Helpers (has, transfer, whatsAt)
 
--- | Coordinates with a notion of adjacency. Square cells use orthogonal
--- adjacency; hex coordinates (future) will have six neighbours.
+-- | Coordinates with a notion of adjacency. 
 class (Finitary c, Ord c) => Coord c where
   neighbors :: c -> [c]
 
@@ -52,8 +51,8 @@ class (Finitary c, Ord c) => Coord c where
 data Cell (m :: Nat) (n :: Nat) = Cell (Finite m) (Finite n)
   deriving (Eq, Ord, Show, Generic)
 
--- | Generic deriving enumerates row-major, so 'inhabitants' agrees with the
--- derived 'Ord' ('FinitaryMap.reifyFn' relies on that; tested).
+-- | Generic deriving enumerates row-major, so the order of 'inhabitants' agrees with
+-- derived 'Ord'.
 -- @KnownNat (m * n)@ is in the context so we don't need the knownnat plugin.
 deriving anyclass instance (KnownNat m, KnownNat n, KnownNat (m * n)) => Finitary (Cell m n)
 
@@ -78,18 +77,16 @@ offset :: (KnownNat m, KnownNat n) => (Int, Int) -> Cell m n -> Maybe (Cell m n)
 offset (dr, dc) (Cell r c) =
   Cell <$> packFinite (getFinite r + toInteger dr) <*> packFinite (getFinite c + toInteger dc)
 
--- | Orthogonally adjacent cells (von Neumann neighbourhood).
+-- | Orthogonally adjacent cells
 neighbors4 :: (KnownNat m, KnownNat n) => Cell m n -> [Cell m n]
 neighbors4 cell = mapMaybe (`offset` cell) [(-1, 0), (0, -1), (0, 1), (1, 0)]
 
--- | Orthogonally and diagonally adjacent cells (Moore neighbourhood).
+-- | Orthogonally and diagonally adjacent cells
 neighbors8 :: (KnownNat m, KnownNat n) => Cell m n -> [Cell m n]
 neighbors8 cell = mapMaybe (`offset` cell) [(dr, dc) | dr <- [-1, 0, 1], dc <- [-1, 0, 1], (dr, dc) /= (0, 0)]
 
--- | Names the game location for each cell of a board. Like 'Track.Track', a
--- 'Grid' holds no pieces itself; the game state does. @c@ is usually
--- @'Cell' m n@; other tilings (e.g. hex) supply their own 'Coord' type and
--- reuse everything below.
+-- | Names the game location for each cell of a board. @c@ is usually
+-- @'Cell' m n@, but other tilings could be used.
 newtype Grid c l = Grid (FTMap c l)
 
 cellLoc :: Grid c l -> c -> l
@@ -108,8 +105,6 @@ occupied g cell = not . S.null <$> whatsAt (cellLoc g cell)
 findPiece :: (QueryM l cn r ph pl m, Finitary c, Ord r, Eq l) => Grid c l -> r -> m [c]
 findPiece g r = filterM (\cell -> cellHas g cell r) inhabitants
 
--- | 'findPiece' for each piece, concatenated. A cell holding several of the
--- pieces appears once per piece.
 findPieces :: (QueryM l cn r ph pl m, Finitary c, Ord r, Eq l) => Grid c l -> [r] -> m [c]
 findPieces g rs = concat <$> traverse (findPiece g) rs
 
