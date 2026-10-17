@@ -13,15 +13,31 @@ module Grid
     offset,
     neighbors4,
     neighbors8,
+    -- * Grids of locations
+    Grid (..),
+    cellLoc,
+    -- * Queries
+    lookCell,
+    cellHas,
+    occupied,
+    findPiece,
+    findPieces,
+    snapshot,
   )
 where
 
+import Control.Monad (filterM)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey)
-import Data.Finitary (Finitary)
+import Data.Finitary (Finitary, inhabitants)
 import Data.Finite (Finite, getFinite, packFinite)
 import Data.Maybe (mapMaybe)
+import qualified Data.Set as S
+import FinitaryMap (FTMap (..), (!!!))
 import GHC.Generics (Generic)
 import GHC.TypeLits (KnownNat, Nat, type (*))
+import Game.Location (LocationShape)
+import Game.Rules (QueryM, lookLocation)
+import Helpers (has, whatsAt)
 
 -- | Coordinates with a notion of adjacency. Square cells use orthogonal
 -- adjacency; hex coordinates (future) will have six neighbours.
@@ -65,3 +81,34 @@ neighbors4 cell = mapMaybe (`offset` cell) [(-1, 0), (0, -1), (0, 1), (1, 0)]
 -- | Orthogonally and diagonally adjacent cells (Moore neighbourhood).
 neighbors8 :: (KnownNat m, KnownNat n) => Cell m n -> [Cell m n]
 neighbors8 cell = mapMaybe (`offset` cell) [(dr, dc) | dr <- [-1, 0, 1], dc <- [-1, 0, 1], (dr, dc) /= (0, 0)]
+
+-- | Names the game location for each cell of a board. Like 'Track.Track', a
+-- 'Grid' holds no pieces itself; the game state does. @c@ is usually
+-- @'Cell' m n@; other tilings (e.g. hex) supply their own 'Coord' type and
+-- reuse everything below.
+newtype Grid c l = Grid (FTMap c l)
+
+cellLoc :: Grid c l -> c -> l
+cellLoc (Grid f) = (f !!!)
+
+lookCell :: (QueryM l cn r ph pl m, Eq l) => Grid c l -> c -> m (LocationShape r)
+lookCell g = lookLocation . cellLoc g
+
+cellHas :: (QueryM l cn r ph pl m, Ord r, Eq l) => Grid c l -> c -> r -> m Bool
+cellHas g = has . cellLoc g
+
+occupied :: (QueryM l cn r ph pl m, Ord r, Eq l) => Grid c l -> c -> m Bool
+occupied g cell = not . S.null <$> whatsAt (cellLoc g cell)
+
+-- | Cells holding the piece, in 'inhabitants' order. Scans every cell.
+findPiece :: (QueryM l cn r ph pl m, Finitary c, Ord r, Eq l) => Grid c l -> r -> m [c]
+findPiece g r = filterM (\cell -> cellHas g cell r) inhabitants
+
+-- | 'findPiece' for each piece, concatenated. A cell holding several of the
+-- pieces appears once per piece.
+findPieces :: (QueryM l cn r ph pl m, Finitary c, Ord r, Eq l) => Grid c l -> [r] -> m [c]
+findPieces g rs = concat <$> traverse (findPiece g) rs
+
+-- | The contents of every cell.
+snapshot :: (QueryM l cn r ph pl m, Ord c, Finitary c, Eq l) => Grid c l -> m (FTMap c (LocationShape r))
+snapshot (Grid f) = traverse lookLocation f
