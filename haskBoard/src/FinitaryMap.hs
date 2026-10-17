@@ -86,6 +86,11 @@ instance (Show a, Show b, Finitary a, Eq a) => Show (FTMap a b) where
 instance (Eq a, Finitary a) => Foldable (FTMap a) where
   foldMap g = foldMap g . reifyFn
 
+-- TODO: audit code that round-trips through reifyFn/unsafeUnreify or uses
+-- M.traverseWithKey over locations; 'traverse' may simplify it.
+instance (Ord a, Finitary a) => Traversable (FTMap a) where
+  traverse g = fmap unsafeUnreify . traverse g . reifyFn
+
 instance (Semigroup b) => Semigroup (FTMap a b) where
   (<>) = liftA2 (<>)
 
