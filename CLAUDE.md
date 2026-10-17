@@ -148,6 +148,15 @@ See `Games/NoMerci/` as the reference implementation:
    data NMResource = Chip | Card (NumberedPiece 35)
      deriving (Eq, Ord, Show, Generic, Finitary, ToJSON, FromJSON, ToJSONKey, FromJSONKey)
    ```
+
+   **Boards:** For a fixed-size 2D board, give the location type a constructor
+   holding a `Cell m n` (from `Grid` in the `Helpers` library) and wrap it in a
+   `Grid`: `data MyLocation = Square (Cell 8 8) | ...`, `board = Grid (FTMap Square)`.
+   `Grid` is a view onto ordinary locations (like `Track`), so visibility and
+   observation encoding need nothing extra. Adjacency is the `Coord` class
+   (`neighbors`; orthogonal for `Cell`). It also provides `neighbors4`/`neighbors8`/
+   `offset`, read-only queries (`lookCell`, `cellHas`, `occupied`, `findPiece(s)`,
+   `snapshot`) and rules (`moveCell`, `placeAt`, `removeFrom`).
 2. `NoMerci.hs` — define phases, play runner, scoring, initial state; export `noMerci :: Int -> (NMGameState, NMGameRules, [NMHint])`
 3. `Tui.hs` — define a Brick `app` using `Brick.Game.Tui` helpers
 4. `Main.hs` — call `Run.Game.runGame` with the game, the TUI `app`, log paths and a run mode
