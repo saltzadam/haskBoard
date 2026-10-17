@@ -23,6 +23,10 @@ module Grid
     findPiece,
     findPieces,
     snapshot,
+    -- * Rules
+    moveCell,
+    placeAt,
+    removeFrom,
   )
 where
 
@@ -36,8 +40,8 @@ import FinitaryMap (FTMap (..), (!!!))
 import GHC.Generics (Generic)
 import GHC.TypeLits (KnownNat, Nat, type (*))
 import Game.Location (LocationShape)
-import Game.Rules (QueryM, lookLocation)
-import Helpers (has, whatsAt)
+import Game.Rules (GameRule, QueryM, lookLocation)
+import Helpers (has, transfer, whatsAt)
 
 -- | Coordinates with a notion of adjacency. Square cells use orthogonal
 -- adjacency; hex coordinates (future) will have six neighbours.
@@ -112,3 +116,12 @@ findPieces g rs = concat <$> traverse (findPiece g) rs
 -- | The contents of every cell.
 snapshot :: (QueryM l cn r ph pl m, Ord c, Finitary c, Eq l) => Grid c l -> m (FTMap c (LocationShape r))
 snapshot (Grid f) = traverse lookLocation f
+
+moveCell :: Grid c l -> c -> c -> r -> GameRule l cn r ph pl ()
+moveCell g from to = transfer (cellLoc g from) (cellLoc g to)
+
+placeAt :: l -> Grid c l -> c -> r -> GameRule l cn r ph pl ()
+placeAt source g cell = transfer source (cellLoc g cell)
+
+removeFrom :: Grid c l -> c -> l -> r -> GameRule l cn r ph pl ()
+removeFrom g cell = transfer (cellLoc g cell)

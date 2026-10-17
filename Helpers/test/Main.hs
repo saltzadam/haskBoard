@@ -14,14 +14,16 @@ import GHC.Generics (Generic)
 import Game.GameStateBase (GameState (..))
 import Game.Location (GameObjects (..), LocationShape (..), NoCounters, dummyCounter)
 import Game.Player (Player (..), PlayerNum (..), Turn (..), mkPlayers)
-import Game.Rules (Query, runQuery)
+import Control.Monad.Free (Free (..))
+import Game.GameAction (GameAction (..))
+import Game.Rules (GameRule (..), GameRuleF (..), Query, runQuery)
 import Game.Visibility (allVisible)
 import Grid
 import Test.Tasty
 import Test.Tasty.HUnit
 
 main :: IO ()
-main = defaultMain (testGroup "Helpers" [cellTests, geometryTests, queryTests])
+main = defaultMain (testGroup "Helpers" [cellTests, geometryTests, queryTests, ruleTests])
 
 -- Fixture: a 3-row, 4-column board.
 
@@ -123,4 +125,26 @@ queryTests =
         runQ (snapshot board) !!! c 2 3 @?= Slot (Just X),
       testCase "snapshot covers the whole board" $
         length (filter (/= Slot Nothing) (toList (runQ (snapshot board)))) @?= 3
+    ]
+
+-- | The actions a rule emits. Reads see 'testState'; the grid rules don't
+-- depend on state changes, so no state threading is needed.
+actionsOf :: GameRule TLoc NoCounters TRes () () a -> [GameAction TLoc NoCounters TRes ()]
+actionsOf (GameRule rule) = go rule
+  where
+    go (Pure _) = []
+    go (Free (Act a k)) = a : go k
+    go (Free (Look f)) = go (f testState)
+    go (Free (Choose _ _)) = error "actionsOf: unexpected choice"
+
+ruleTests :: TestTree
+ruleTests =
+  testGroup
+    "rules"
+    [ testCase "moveCell" $
+        actionsOf (moveCell board (c 0 0) (c 0 1) X) @?= [MkTransfer (Sq (c 0 0)) (Sq (c 0 1)) X],
+      testCase "placeAt" $
+        actionsOf (placeAt Bag board (c 0 1) O) @?= [MkTransfer Bag (Sq (c 0 1)) O],
+      testCase "removeFrom" $
+        actionsOf (removeFrom board (c 1 1) Bag O) @?= [MkTransfer (Sq (c 1 1)) Bag O]
     ]
